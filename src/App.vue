@@ -10,6 +10,7 @@ const HALF = SIZE / 2
 const CELL_SIZE = SIZE / CELLS
 const SEGMENTS = CELLS * 30
 const HEIGHT_SCALE = 5
+const THICKNESS = 1
 const NOISE_AMP = 1.2
 const NOISE_FREQ = 0.35
 const GROW_SPEED = 0.6
@@ -73,7 +74,22 @@ function getHeight(wx: number, wz: number): number {
   return h * HEIGHT_SCALE + n * Math.abs(h)
 }
 
-function rebuildMesh(pos: THREE.BufferAttribute) {
+function buildPerimeter(): number[] {
+  const s = SEGMENTS + 1
+  const p: number[] = []
+  for (let ix = 0; ix < SEGMENTS; ix++) p.push(ix)
+  for (let iz = 0; iz < SEGMENTS; iz++) p.push(iz * s + SEGMENTS)
+  for (let ix = SEGMENTS; ix > 0; ix--) p.push(SEGMENTS * s + ix)
+  for (let iz = SEGMENTS; iz > 0; iz--) p.push(iz * s)
+  return p
+}
+const PERIMETER = buildPerimeter()
+
+function rebuildMesh(
+  pos: THREE.BufferAttribute,
+  bottomPos: THREE.BufferAttribute | null,
+  skirtPos: THREE.BufferAttribute | null
+) {
   const stride = SEGMENTS + 1
 
   for (let i = 0; i < pos.count; i++) {
@@ -91,8 +107,21 @@ function rebuildMesh(pos: THREE.BufferAttribute) {
     }
 
     pos.setXYZ(i, baseX + dx, y, baseZ + dz)
+    if (bottomPos) bottomPos.setXYZ(i, baseX + dx, y - THICKNESS, baseZ + dz)
   }
   pos.needsUpdate = true
+  if (bottomPos) bottomPos.needsUpdate = true
+
+  if (skirtPos) {
+    const n = PERIMETER.length
+    for (let k = 0; k < n; k++) {
+      const vi = PERIMETER[k]
+      const sx = pos.getX(vi), sy = pos.getY(vi), sz = pos.getZ(vi)
+      skirtPos.setXYZ(k, sx, sy, sz)
+      skirtPos.setXYZ(n + k, sx, sy - THICKNESS, sz)
+    }
+    skirtPos.needsUpdate = true
+  }
 }
 
 // --- Three.js ---
@@ -140,6 +169,26 @@ onMounted(() => {
   const mat = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true })
   const mesh = new THREE.Mesh(geo, mat)
   scene.add(mesh)
+
+  const bottomGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
+  bottomGeo.rotateX(-Math.PI / 2)
+  const bottomPos = bottomGeo.attributes.position as THREE.BufferAttribute
+  const bottomMesh = new THREE.Mesh(bottomGeo, mat)
+  scene.add(bottomMesh)
+
+  const perimN = PERIMETER.length
+  const skirtVerts = new Float32Array(perimN * 2 * 3)
+  const skirtIdxArr: number[] = []
+  for (let i = 0; i < perimN; i++) {
+    const next = (i + 1) % perimN
+    skirtIdxArr.push(i, perimN + i, next, next, perimN + i, perimN + next)
+  }
+  const skirtGeo = new THREE.BufferGeometry()
+  const skirtPos = new THREE.BufferAttribute(skirtVerts, 3)
+  skirtGeo.setAttribute('position', skirtPos)
+  skirtGeo.setIndex(skirtIdxArr)
+  const skirtMesh = new THREE.Mesh(skirtGeo, mat)
+  scene.add(skirtMesh)
 
   const gridStep = SIZE / SEGMENTS
   const gridPts = new Float32Array((CELLS + 1) * SEGMENTS * 4 * 3)
@@ -190,7 +239,7 @@ onMounted(() => {
 
     if (animating) {
       const done = stepAnimation(1 / 60)
-      rebuildMesh(pos)
+      rebuildMesh(pos, bottomPos, skirtPos)
       geo.computeVertexNormals()
       rebuildGrid()
       if (done) animating = false
@@ -199,7 +248,7 @@ onMounted(() => {
     renderer.render(scene, camera)
   }
 
-  rebuildMesh(pos)
+  rebuildMesh(pos, bottomPos, skirtPos)
   geo.computeVertexNormals()
   rebuildGrid()
 
