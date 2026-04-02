@@ -44,6 +44,63 @@ function fbm(x: number, y: number) {
        - 0.45
 }
 
+// --- Vertex color helpers ---
+function sstep(e0: number, e1: number, x: number) {
+  const t = clamp((x - e0) / (e1 - e0), 0, 1)
+  return t * t * (3 - 2 * t)
+}
+
+function mix(a: number, b: number, t: number) { return a + (b - a) * t }
+
+function paintColors(geo: THREE.BufferGeometry, isBottom: boolean) {
+  const p = geo.attributes.position as THREE.BufferAttribute
+  const nm = geo.attributes.normal as THREE.BufferAttribute
+  if (!nm) return
+  let col = geo.attributes.color as THREE.BufferAttribute | undefined
+  if (!col) {
+    col = new THREE.Float32BufferAttribute(new Float32Array(p.count * 3), 3)
+    geo.setAttribute('color', col)
+  }
+  for (let i = 0; i < p.count; i++) {
+    const wx = p.getX(i), wy = p.getY(i), wz = p.getZ(i)
+    const nv = noise2d(wx * 0.5 + 77, wz * 0.5 + 77) * 0.12
+    const nv2 = noise2d(wx * 0.9 + 33, wz * 0.9 + 33) * 0.08
+
+    if (isBottom) {
+      col.setXYZ(i, 0.25 + nv, 0.22 + nv, 0.2 + nv)
+      continue
+    }
+
+    const slope = Math.abs(nm.getY(i))
+
+    const mudW = 1 - sstep(-3.5, -1.5, wy)
+    const snowW = sstep(2.0, 4.0, wy)
+    const grassW = clamp(1 - mudW - snowW, 0, 1)
+
+    const patchN = noise2d(wx * 0.2, wz * 0.2)
+    const sgb = sstep(0.35, 0.55, patchN) * 0.4
+
+    const gr0 = 0.18 + nv + nv2, gr1 = 0.44 + nv + nv2, gr2 = 0.1 + nv * 0.5
+    const md0 = 0.39 + nv * 0.7, md1 = 0.27 + nv * 0.5, md2 = 0.13 + nv * 0.3
+    const sn0 = 0.88 + nv * 0.3 - sgb * 0.55
+    const sn1 = 0.90 + nv * 0.3 - sgb * 0.35
+    const sn2 = 0.97 + nv * 0.2 - sgb * 0.65
+
+    let r = gr0 * grassW + md0 * mudW + sn0 * snowW
+    let g = gr1 * grassW + md1 * mudW + sn1 * snowW
+    let b = gr2 * grassW + md2 * mudW + sn2 * snowW
+
+    const rockW = 1 - sstep(0.3, 0.75, slope)
+    const rk0 = 0.38 + nv * 0.6, rk1 = 0.34 + nv * 0.5, rk2 = 0.30 + nv * 0.5
+    r = mix(r, rk0, rockW)
+    g = mix(g, rk1, rockW)
+    b = mix(b, rk2, rockW)
+
+    col.setXYZ(i, clamp(r, 0, 1), clamp(g, 0, 1), clamp(b, 0, 1))
+  }
+  col.needsUpdate = true
+}
+
 // --- Terrain state ---
 const target = Array.from({ length: CELLS }, () => new Float32Array(CELLS))
 const current = Array.from({ length: CELLS }, () => new Float32Array(CELLS))
@@ -166,14 +223,23 @@ onMounted(() => {
   geo.rotateX(-Math.PI / 2)
   const pos = geo.attributes.position as THREE.BufferAttribute
 
-  const mat = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true })
-  const mesh = new THREE.Mesh(geo, mat)
+  const terrainMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.85,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
+  })
+
+  const mesh = new THREE.Mesh(geo, terrainMat)
   scene.add(mesh)
 
   const bottomGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
   bottomGeo.rotateX(-Math.PI / 2)
   const bottomPos = bottomGeo.attributes.position as THREE.BufferAttribute
-  const bottomMesh = new THREE.Mesh(bottomGeo, mat)
+  const bottomMesh = new THREE.Mesh(bottomGeo, terrainMat)
   scene.add(bottomMesh)
 
   const perimN = PERIMETER.length
@@ -187,7 +253,7 @@ onMounted(() => {
   const skirtPos = new THREE.BufferAttribute(skirtVerts, 3)
   skirtGeo.setAttribute('position', skirtPos)
   skirtGeo.setIndex(skirtIdxArr)
-  const skirtMesh = new THREE.Mesh(skirtGeo, mat)
+  const skirtMesh = new THREE.Mesh(skirtGeo, terrainMat)
   scene.add(skirtMesh)
 
   const gridStep = SIZE / SEGMENTS
@@ -241,6 +307,11 @@ onMounted(() => {
       const done = stepAnimation(1 / 60)
       rebuildMesh(pos, bottomPos, skirtPos)
       geo.computeVertexNormals()
+      bottomGeo.computeVertexNormals()
+      skirtGeo.computeVertexNormals()
+      paintColors(geo, false)
+      paintColors(bottomGeo, true)
+      paintColors(skirtGeo, false)
       rebuildGrid()
       if (done) animating = false
     }
@@ -250,6 +321,11 @@ onMounted(() => {
 
   rebuildMesh(pos, bottomPos, skirtPos)
   geo.computeVertexNormals()
+  bottomGeo.computeVertexNormals()
+  skirtGeo.computeVertexNormals()
+  paintColors(geo, false)
+  paintColors(bottomGeo, true)
+  paintColors(skirtGeo, false)
   rebuildGrid()
 
   animating = true
