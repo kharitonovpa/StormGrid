@@ -36,7 +36,6 @@ onMounted(() => {
   controls.dampingFactor = 0.08
   controls.maxPolarAngle = Math.PI
 
-  scene.add(new THREE.AxesHelper(15))
   scene.add(new THREE.AmbientLight(0xffffff, 0.5))
 
   const dirLight = new THREE.DirectionalLight(0xffffff, 1.2)
@@ -92,7 +91,7 @@ onMounted(() => {
   const gridGeo = new THREE.BufferGeometry()
   const gridPos = new THREE.BufferAttribute(gridPts, 3)
   gridGeo.setAttribute('position', gridPos)
-  const gridLines = new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: 0xffaa00 }))
+  const gridLines = new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: 0x2a4a2a, transparent: true, opacity: 0.35 }))
   scene.add(gridLines)
 
   function rebuildGrid() {
