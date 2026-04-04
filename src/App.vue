@@ -8,6 +8,7 @@ import { terrainState } from './lib/terrain'
 import { createWaterSystem } from './lib/water'
 import { createWindSystem } from './lib/wind'
 import { createRainSystem } from './lib/rain'
+import { createCompassSystem } from './lib/compass'
 
 const container = ref<HTMLElement | null>(null)
 let renderer: THREE.WebGLRenderer
@@ -115,6 +116,7 @@ onMounted(() => {
   const water = createWaterSystem(scene, terrainState)
   const wind = createWindSystem(scene, terrainState)
   const rain = createRainSystem(scene, terrainState)
+  const compass = createCompassSystem(scene)
 
   // --- Initial build ---
   terrainState.rebuildMesh(pos, bottomPos, skirtPos)
@@ -189,6 +191,7 @@ onMounted(() => {
     water.dispose()
     wind.dispose()
     rain.dispose()
+    compass.dispose()
   }
 })
 
