@@ -248,6 +248,10 @@ export function computeFloodBot() {
   computeFloodGeneric((z, x) => -target[z][x], 1, floodStateBot, floodBodiesBot)
 }
 
+export function invalidateHeightCache() {
+  heightCacheDirty = true
+}
+
 // --- Animation step ---
 export function stepAnimation(dt: number): boolean {
   let done = true
@@ -273,6 +277,7 @@ export interface TerrainState {
   getHeight(wx: number, wz: number): number
   getHeightRaw(wx: number, wz: number): number
   rebuildHeightCache(): void
+  invalidateHeightCache(): void
   generateTerrain(): void
   computeFlood(): void
   computeFloodBot(): void
@@ -294,6 +299,7 @@ export const terrainState: TerrainState = {
   getHeight,
   getHeightRaw,
   rebuildHeightCache,
+  invalidateHeightCache,
   generateTerrain,
   computeFlood,
   computeFloodBot,
