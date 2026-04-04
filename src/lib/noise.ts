@@ -2,7 +2,7 @@ export function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v
 }
 
-export function hash(n: number) {
+function hash(n: number) {
   const x = Math.sin(n) * 43758.5453
   return x - Math.floor(x)
 }
