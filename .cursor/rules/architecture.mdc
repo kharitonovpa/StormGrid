@@ -1,0 +1,27 @@
+---
+description: StormGrid module architecture conventions
+globs: src/**/*.ts, src/**/*.vue
+alwaysApply: true
+---
+
+# StormGrid Architecture
+
+## Module layout
+
+- `src/lib/constants.ts` — shared grid/world constants (CELLS, SIZE, HALF, etc.)
+- `src/lib/noise.ts` — pure math: clamp, hash, noise2d, fbm, sstep, mix
+- `src/lib/terrain.ts` — terrain state, height cache, mesh rebuild, paintColors, flood BFS, stepAnimation; exports a `terrainState` singleton implementing `TerrainState`
+- `src/lib/water.ts` — water body rendering and animation
+- `src/lib/wind.ts` — wind streamlines and dust particles
+- `src/lib/rain.ts` — rain drops and splash rings
+- `src/App.vue` — thin orchestrator: scene/camera/renderer setup, animation loop, event handlers
+
+## Rules
+
+1. **Each visual/game system lives in its own `src/lib/*.ts` module.** Do not add system logic directly to App.vue.
+2. **Modules export factory functions, not bare globals.** Pattern: `export function create*System(scene: THREE.Scene, terrain: TerrainState) { ... }`.
+3. **Factory return type is `{ update(dt: number): void; dispose(): void }` at minimum.** Additional methods (e.g. `buildTop()`, `buildBot()`) are allowed.
+4. **App.vue is orchestration only** — scene setup, animation loop calling `system.update(dt)`, event handlers, and disposal. No particle math, BFS, or geometry building.
+5. **Shared constants live in `constants.ts`.** Noise/math utilities live in `noise.ts`. Never duplicate them in other files.
+6. **Terrain is the shared dependency.** Other systems receive a `TerrainState` object from `terrain.ts` to access height, flood data, etc.
+7. **New systems follow the same pattern:** create a `src/lib/newSystem.ts`, export `createNewSystem(scene, terrain)`, wire it up in App.vue's animation loop.
