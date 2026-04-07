@@ -1,4 +1,6 @@
-export const CELLS = 7
+import { BOARD_SIZE } from '@stormgrid/shared'
+
+export const CELLS = BOARD_SIZE
 export const SIZE = 60
 export const HALF = SIZE / 2
 export const CELL_SIZE = SIZE / CELLS

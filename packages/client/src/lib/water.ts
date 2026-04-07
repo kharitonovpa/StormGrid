@@ -150,6 +150,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
   const waterBodies: WaterBody[] = []
   const waterBodiesBot: WaterBody[] = []
   let waterTime = 0
+  let normalFrame = 0
 
   function updateWaterBodies(bodies: WaterBody[], dt: number) {
     for (const wb of bodies) {
@@ -167,7 +168,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
       }
 
       wb.posAttr.needsUpdate = true
-      wb.geo.computeVertexNormals()
+      if (normalFrame === 0) wb.geo.computeVertexNormals()
     }
   }
 
@@ -176,6 +177,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
     buildBot() { buildWaterSet(botWaterCfg, waterBodiesBot) },
     update(dt: number) {
       waterTime += dt
+      normalFrame = (normalFrame + 1) % 3
       updateWaterBodies(waterBodies, dt)
       updateWaterBodies(waterBodiesBot, dt)
     },
@@ -184,6 +186,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
       waterBodies.length = 0
       for (const wb of waterBodiesBot) { scene.remove(wb.mesh); wb.geo.dispose() }
       waterBodiesBot.length = 0
+      waterMat.dispose()
     },
   }
 }

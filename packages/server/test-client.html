@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>StormGrid — Test Client</title>
+  <style>
+    * { margin: 0; box-sizing: border-box; }
+    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+    h1 { color: #e94560; margin-bottom: 12px; }
+    #status { padding: 8px 12px; background: #16213e; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
+    #log { background: #0f0f23; border: 1px solid #333; border-radius: 6px; padding: 12px; height: 400px; overflow-y: auto; font-size: 13px; line-height: 1.6; }
+    .msg-in { color: #50fa7b; }
+    .msg-out { color: #8be9fd; }
+    .msg-sys { color: #f1fa8c; }
+    .msg-err { color: #ff5555; }
+    #controls { margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+    button { background: #e94560; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 13px; }
+    button:hover { background: #c73e54; }
+    button:disabled { background: #555; cursor: not-allowed; }
+    .action-group { background: #16213e; padding: 10px; border-radius: 6px; margin-top: 8px; }
+    .action-group h3 { margin-bottom: 6px; font-size: 13px; color: #e94560; }
+  </style>
+</head>
+<body>
+  <h1>StormGrid Test Client</h1>
+  <div id="status">Disconnected</div>
+
+  <div id="controls">
+    <button onclick="connect()">Connect</button>
+    <button onclick="joinQueue()" id="btnQueue" disabled>Join Queue</button>
+  </div>
+
+  <div class="action-group" id="actionPanel" style="display:none">
+    <h3>Actions (pick one per tick)</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="sendMove('N')">Move N</button>
+      <button onclick="sendMove('S')">Move S</button>
+      <button onclick="sendMove('E')">Move E</button>
+      <button onclick="sendMove('W')">Move W</button>
+      <button onclick="sendTerrain('raise',0,0)">Raise 0,0</button>
+      <button onclick="sendTerrain('lower',0,0)">Lower 0,0</button>
+      <button onclick="sendAction(null)">Skip</button>
+    </div>
+  </div>
+
+  <h3 style="margin:12px 0 6px">Log</h3>
+  <div id="log"></div>
+
+  <script>
+    let ws = null
+    let myId = null
+
+    function log(text, cls = 'msg-sys') {
+      const el = document.getElementById('log')
+      const line = document.createElement('div')
+      line.className = cls
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${text}`
+      el.appendChild(line)
+      el.scrollTop = el.scrollHeight
+    }
+
+    function setStatus(text) {
+      document.getElementById('status').textContent = text
+    }
+
+    function connect() {
+      if (ws) ws.close()
+      ws = new WebSocket('ws://localhost:3001/ws')
+
+      ws.onopen = () => {
+        log('Connected to server')
+        setStatus('Connected — not in queue')
+        document.getElementById('btnQueue').disabled = false
+      }
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data)
+        log(`← ${msg.type}: ${JSON.stringify(msg)}`, 'msg-in')
+        handleMessage(msg)
+      }
+
+      ws.onclose = () => {
+        log('Disconnected', 'msg-err')
+        setStatus('Disconnected')
+        document.getElementById('btnQueue').disabled = true
+        document.getElementById('actionPanel').style.display = 'none'
+      }
+
+      ws.onerror = () => log('WebSocket error', 'msg-err')
+    }
+
+    function handleMessage(msg) {
+      switch (msg.type) {
+        case 'queue:waiting':
+          setStatus('In queue — waiting for opponent...')
+          break
+        case 'game:start':
+          myId = msg.playerId
+          setStatus(`Game started! You are Player ${myId}`)
+          document.getElementById('actionPanel').style.display = 'block'
+          break
+        case 'round:start':
+          setStatus(`Player ${myId} — Round ${msg.state.round} — Forecast phase`)
+          break
+        case 'tick:start':
+          setStatus(`Player ${myId} — Tick ${msg.tick + 1}/5 — Choose action! (${Math.round((msg.deadline - Date.now()) / 1000)}s)`)
+          break
+        case 'tick:resolve':
+          const p = msg.state.players[myId]
+          setStatus(`Player ${myId} — Tick resolved — pos (${p.x},${p.y})`)
+          break
+        case 'weather:result':
+          const deaths = msg.result.deaths
+          if (deaths.length === 0) setStatus(`Player ${myId} — Weather passed, no deaths`)
+          else setStatus(`Player ${myId} — Deaths: ${deaths.join(', ')}`)
+          break
+        case 'game:end':
+          setStatus(`Game over! Winner: ${msg.winner}`)
+          document.getElementById('actionPanel').style.display = 'none'
+          break
+        case 'error':
+          log(`Error: ${msg.message}`, 'msg-err')
+          break
+      }
+    }
+
+    function joinQueue() {
+      send({ type: 'queue:join' })
+    }
+
+    function sendMove(dir) {
+      send({ type: 'action:submit', action: { kind: 'move', dir } })
+    }
+
+    function sendTerrain(kind, x, y) {
+      send({ type: 'action:submit', action: { kind, x, y } })
+    }
+
+    function sendAction() {
+      // skip — do nothing, let timer expire
+      log('Skipping this tick', 'msg-sys')
+    }
+
+    function send(msg) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
+      ws.send(JSON.stringify(msg))
+      log(`→ ${msg.type}: ${JSON.stringify(msg)}`, 'msg-out')
+    }
+  </script>
+</body>
+</html>

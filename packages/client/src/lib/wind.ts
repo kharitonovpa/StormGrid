@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { HALF, SIZE, THICKNESS } from './constants'
 import { noise2d } from './noise'
 import type { TerrainState } from './terrain'
+import type { WindDir } from '@stormgrid/shared'
 
 const WIND_Y_MIN = -4
 const WIND_Y_MAX = 8
@@ -128,18 +129,29 @@ export function createWindSystem(scene: THREE.Scene, terrain: TerrainState) {
   const dustObj = new THREE.Points(dg.geo, dustMat)
   const dustObjBot = new THREE.Points(dgBot.geo, dustMat)
 
-  scene.add(streamObj)
-  scene.add(streamObjBot)
-  scene.add(dustObj)
-  scene.add(dustObjBot)
+  const windGroup = new THREE.Group()
+  windGroup.add(streamObj)
+  windGroup.add(streamObjBot)
+  windGroup.add(dustObj)
+  windGroup.add(dustObjBot)
+  windGroup.visible = false
+  scene.add(windGroup)
 
-  function isBlocked(x: number, y: number, z: number): boolean {
-    if (x < -HALF || x > HALF || z < -HALF || z > HALF) return false
-    return terrain.getHeight(x, z) >= y
+  let cosR = 1, sinR = 0
+
+  function worldXZ(lx: number, lz: number): [number, number] {
+    return [lx * cosR + lz * sinR, -lx * sinR + lz * cosR]
   }
-  function isBlockedBottom(x: number, y: number, z: number): boolean {
-    if (x < -HALF || x > HALF || z < -HALF || z > HALF) return false
-    return y >= terrain.getHeight(x, z) - THICKNESS
+
+  function isBlocked(lx: number, y: number, lz: number): boolean {
+    const [wx, wz] = worldXZ(lx, lz)
+    if (wx < -HALF || wx > HALF || wz < -HALF || wz > HALF) return false
+    return terrain.getHeight(wx, wz) >= y
+  }
+  function isBlockedBottom(lx: number, y: number, lz: number): boolean {
+    const [wx, wz] = worldXZ(lx, lz)
+    if (wx < -HALF || wx > HALF || wz < -HALF || wz > HALF) return false
+    return y >= terrain.getHeight(wx, wz) - THICKNESS
   }
 
   function makeRespawnStream(yMin: number, yMax: number) {
@@ -278,17 +290,26 @@ export function createWindSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   return {
     update(dt: number) {
+      if (!windGroup.visible) return
       windTime += dt
       updateStreamSet(streams, sg.verts, sg.colors, sg.posAttr, sg.colAttr, isBlocked, respawnStream, dt)
       updateStreamSet(streamsBot, sgBot.verts, sgBot.colors, sgBot.posAttr, sgBot.colAttr, isBlockedBottom, respawnStreamBot, dt)
       updateDustSet(dustArr, dg.positions, dg.sizes, dg.opacities, dg.geo, isBlocked, respawnDust, dt)
       updateDustSet(dustArrBot, dgBot.positions, dgBot.sizes, dgBot.opacities, dgBot.geo, isBlockedBottom, respawnDustBot, dt)
     },
+    setDirection(dir: WindDir) {
+      switch (dir) {
+        case 'N': windGroup.rotation.y = 0;            cosR = 1;  sinR = 0;  break
+        case 'E': windGroup.rotation.y = -Math.PI / 2; cosR = 0;  sinR = -1; break
+        case 'S': windGroup.rotation.y = Math.PI;      cosR = -1; sinR = 0;  break
+        case 'W': windGroup.rotation.y = Math.PI / 2;  cosR = 0;  sinR = 1;  break
+      }
+    },
+    setVisible(v: boolean) {
+      windGroup.visible = v
+    },
     dispose() {
-      scene.remove(streamObj)
-      scene.remove(streamObjBot)
-      scene.remove(dustObj)
-      scene.remove(dustObjBot)
+      scene.remove(windGroup)
       sg.geo.dispose()
       sgBot.geo.dispose()
       dg.geo.dispose()

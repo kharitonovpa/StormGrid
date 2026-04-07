@@ -1,0 +1,986 @@
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref, computed } from 'vue'
+import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
+import type { Action, CharacterType, GameState, MoveDir } from '@stormgrid/shared'
+import { SIZE, HALF, CELL_SIZE, SEGMENTS } from './lib/constants'
+import { terrainState } from './lib/terrain'
+import { createWaterSystem } from './lib/water'
+import { createWindSystem } from './lib/wind'
+import { createRainSystem } from './lib/rain'
+import { createCompassSystem } from './lib/compass'
+import { createInteractionSystem } from './lib/interaction'
+import { createPlayerSystem } from './lib/player'
+import { createPreviewSystem } from './lib/preview'
+import { celebrate, disposeCelebrate } from './lib/celebrate'
+import { useGameSocket } from './composables/useGameSocket'
+import { useGameState } from './composables/useGameState'
+import LobbyOverlay from './components/LobbyOverlay.vue'
+import GameHud from './components/GameHud.vue'
+import GameOverOverlay from './components/GameOverOverlay.vue'
+import ForecastPanel from './components/ForecastPanel.vue'
+import WatcherHud from './components/WatcherHud.vue'
+import ArchitectHud from './components/ArchitectHud.vue'
+
+const container = ref<HTMLElement | null>(null)
+let renderer: THREE.WebGLRenderer
+let controls: OrbitControls | TrackballControls
+let animId: number
+let sceneCamera: THREE.PerspectiveCamera
+
+const socket = useGameSocket()
+const game = useGameState()
+
+function worldToScreen(wx: number, wy: number, wz: number): { x: number; y: number } {
+  const v = new THREE.Vector3(wx, wy, wz)
+  v.project(sceneCamera)
+  return {
+    x: (v.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+  }
+}
+
+const winnerPopup = ref<{ player: 'A' | 'B'; points: number } | null>(null)
+let winnerPopupTimer = 0
+let celebrateTimer = 0
+let unsubMessage1: (() => void) | null = null
+let unsubMessage2: (() => void) | null = null
+
+function triggerCelebration(prediction: import('@stormgrid/shared').WatcherPrediction) {
+  let wx = 0, wy = 2, wz = 0
+  const state = game.gameState.value
+  if (prediction.type === 'move' && prediction.target && state) {
+    const p = state.players[prediction.target]
+    wx = -HALF + (p.x + 0.5) * CELL_SIZE
+    wz = -HALF + (p.y + 0.5) * CELL_SIZE
+    wy = terrainState.getHeight(wx, wz) + (prediction.target === 'B' ? -1 : 1) * 0.5
+  }
+
+  if (prediction.type === 'winner' && prediction.predictedWinner) {
+    winnerPopup.value = { player: prediction.predictedWinner, points: prediction.points }
+    clearTimeout(winnerPopupTimer)
+    winnerPopupTimer = window.setTimeout(() => {
+      winnerPopup.value = null
+    }, 2800)
+  }
+
+  const delay = prediction.type === 'winner' ? 600 : 0
+  clearTimeout(celebrateTimer)
+  celebrateTimer = window.setTimeout(() => {
+    if (!sceneCamera) return
+    const src = worldToScreen(wx, wy, wz)
+    const scoreEl = document.querySelector('.wh-score-num')
+    const rect = scoreEl?.getBoundingClientRect()
+    const tx = rect ? rect.left + rect.width / 2 : 40
+    const ty = rect ? rect.top + rect.height / 2 : 30
+    celebrate(src.x, src.y, tx, ty, prediction.points, () => {
+      const el = document.querySelector('.wh-score-num')
+      if (!el) return
+      el.classList.remove('wh-score-pop')
+      void (el as HTMLElement).offsetWidth
+      el.classList.add('wh-score-pop')
+    })
+  }, delay)
+}
+
+unsubMessage1 = socket.onMessage((msg) => {
+  if (msg.type === 'game:end' && pendingGameEnd === null && game.phase.value === 'weather') {
+    pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
+    return
+  }
+  if (msg.type === 'watcher:score' && msg.prediction.correct) {
+    triggerCelebration(msg.prediction)
+  }
+  game.handleMessage(msg)
+})
+
+const showLobby = computed(() =>
+  game.phase.value === 'lobby' ||
+  game.phase.value === 'queue' ||
+  game.phase.value === 'watch_queue' ||
+  game.phase.value === 'architect_queue',
+)
+const showHud = computed(() =>
+  game.phase.value === 'forecast' ||
+  game.phase.value === 'ticking' ||
+  game.phase.value === 'weather',
+)
+const showGameOver = computed(() => game.phase.value === 'finished')
+const showWatcher = computed(() => game.isWatcher.value && game.gameState.value !== null)
+const showArchitect = computed(() => game.isArchitect.value && game.gameState.value !== null)
+
+function onConnect() {
+  socket.connect()
+}
+
+function onPlay(character: CharacterType) {
+  game.selectedCharacter.value = character
+  socket.joinQueue()
+}
+
+function onWatch() {
+  socket.joinWatch()
+}
+
+function onArchitect() {
+  socket.joinArchitect()
+}
+
+const pendingBonusType = ref<import('@stormgrid/shared').BonusType | null>(null)
+const architectHudRef = ref<InstanceType<typeof ArchitectHud> | null>(null)
+
+function onSetWeather(weatherType: import('@stormgrid/shared').WeatherType, dir: import('@stormgrid/shared').WindDir) {
+  socket.setWeather(weatherType, dir)
+  game.weatherSubmitted.value = true
+}
+
+function onStartBonusPlace(bonusType: import('@stormgrid/shared').BonusType) {
+  pendingBonusType.value = bonusType
+}
+
+function onPlayAgain() {
+  pendingGameEnd = null
+  game.reset()
+  socket.joinQueue()
+}
+
+function onPredictWinner(playerId: 'A' | 'B') {
+  socket.predictWinner(playerId)
+  game.winnerPredicted.value = true
+}
+
+const watcherTarget = ref<'A' | 'B'>('A')
+
+function onPredictMove(target: 'A' | 'B', action: Action) {
+  socket.predictMove(target, action)
+  game.movePredicted.value = { ...game.movePredicted.value, [target]: true }
+}
+
+function onBreakInstrument(instrument: 'vane' | 'barometer') {
+  socket.breakInstrument(instrument)
+  game.breakUsed.value = true
+}
+
+function switchToTrackball() {
+  if (controls instanceof TrackballControls) return
+  const cam = sceneCamera
+  controls.dispose()
+  const tb = new TrackballControls(cam, renderer.domElement)
+  tb.rotateSpeed = 3.0
+  tb.zoomSpeed = 1.5
+  tb.panSpeed = 0.8
+  tb.dynamicDampingFactor = 0.15
+  tb.noZoom = false
+  tb.noPan = false
+  controls = tb
+}
+
+function switchToOrbit() {
+  if (controls instanceof OrbitControls) return
+  const cam = sceneCamera
+  controls.dispose()
+  const oc = new OrbitControls(cam, renderer.domElement)
+  oc.enableDamping = true
+  oc.dampingFactor = 0.08
+  oc.maxPolarAngle = Math.PI * 0.85
+  controls = oc
+}
+
+let cameraAnimTarget: THREE.Vector3 | null = null
+let cameraAnimFrom: THREE.Vector3 | null = null
+let cameraAnimProgress = 0
+
+function animateCameraToSide(side: 'top' | 'bottom') {
+  const cam = sceneCamera
+  const pos = cam.position.clone()
+  const dist = pos.length()
+  const targetY = side === 'top' ? Math.abs(pos.y) || dist * 0.6 : -(Math.abs(pos.y) || dist * 0.6)
+  if ((side === 'top' && pos.y > 0) || (side === 'bottom' && pos.y < 0)) return
+  cameraAnimFrom = pos.clone()
+  cameraAnimTarget = new THREE.Vector3(pos.x, targetY, pos.z)
+  cameraAnimProgress = 0
+}
+
+// --- Radial menu state ---
+const menuVisible = ref(false)
+const menuX = ref(0)
+const menuY = ref(0)
+const menuCx = ref(0)
+const menuCz = ref(0)
+const menuCellValue = ref(0)
+const menuIsPlayer = ref(false)
+
+type MenuAction = 'raise' | 'lower' | 'move'
+
+const menuOptions = computed(() => {
+  const v = menuCellValue.value
+  const opts: { action: MenuAction; label: string; icon: string; disabled: boolean }[] = []
+  if (menuIsPlayer.value && !game.isWatcher.value) {
+    opts.push({ action: 'move', label: 'Move', icon: 'move', disabled: false })
+  }
+  opts.push(
+    { action: 'raise', label: 'Raise', icon: 'raise', disabled: v === 1 },
+    { action: 'lower', label: 'Lower', icon: 'lower', disabled: v === -1 },
+  )
+  return opts
+})
+
+const menuStyle = computed(() => ({
+  left: menuX.value + 'px',
+  top: menuY.value + 'px',
+}))
+
+function closeMenu() {
+  menuVisible.value = false
+}
+
+let handleAction: ((action: MenuAction) => void) | null = null
+let playersSystem: ReturnType<typeof createPlayerSystem> | null = null
+let sceneCleanup: (() => void) | null = null
+
+function selectOption(action: MenuAction) {
+  handleAction?.(action)
+  closeMenu()
+}
+
+const RING_R = 50
+function optionStyle(index: number) {
+  const count = menuOptions.value.length
+  if (count === 2) {
+    const x = index === 0 ? -1 : 1
+    return { transform: `translate(${x * RING_R - 24}px, -24px)` }
+  }
+  const angles = [-90, -210, -330]
+  const rad = (angles[index] * Math.PI) / 180
+  const x = Math.cos(rad) * RING_R - 24
+  const y = Math.sin(rad) * RING_R - 24
+  return { transform: `translate(${x}px, ${y}px)` }
+}
+
+function applyGameState(state: GameState) {
+  terrainState.applyBoardState(state.board)
+  if (playersSystem) {
+    playersSystem.applyPositions(state.players.A, state.players.B)
+  }
+}
+
+function resetVisuals() {
+  windSystem?.setVisible(false)
+  rainSystem?.setVisible(false)
+  waterSystem?.dispose()
+  shouldBuildWater = false
+}
+
+// React to server state changes
+unsubMessage2 = socket.onMessage((msg) => {
+  switch (msg.type) {
+    case 'game:start': {
+      pendingGameEnd = null
+      terrainState.resetFlat()
+      if (playersSystem) {
+        playersSystem.setActivePlayer(msg.playerId)
+        playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
+      }
+      resetVisuals()
+      switchToOrbit()
+      startAnimating()
+      break
+    }
+    case 'watch:assigned': {
+      terrainState.resetFlat()
+      if (playersSystem) {
+        playersSystem.setActivePlayer(null)
+        playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
+      }
+      resetVisuals()
+      switchToTrackball()
+      applyGameState(msg.state)
+      startAnimating()
+      break
+    }
+    case 'architect:assigned': {
+      terrainState.resetFlat()
+      if (playersSystem) {
+        playersSystem.setActivePlayer(null)
+        playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
+      }
+      resetVisuals()
+      switchToTrackball()
+      applyGameState(msg.state)
+      startAnimating()
+      break
+    }
+    case 'architect:prompt': {
+      architectHudRef.value?.startCountdown()
+      break
+    }
+    case 'watcher:redirect': {
+      resetVisuals()
+      socket.joinWatch()
+      break
+    }
+    case 'tick:start': {
+      previewSystem?.hide()
+      playersSystem?.hideMoveOptions()
+      break
+    }
+    case 'tick:resolve': {
+      previewSystem?.hide()
+      applyGameState(msg.state)
+      startAnimating()
+      break
+    }
+    case 'weather:result': {
+      terrainState.applyBoardState(msg.result.state.board)
+      const weather = msg.result.state.weather
+      if (weather) {
+        windSystem?.setDirection(weather.dir)
+        windSystem?.setVisible(true)
+      }
+      if (weather?.type === 'wind_rain') rainSystem?.setVisible(true)
+      if (msg.result.floodedCells.length > 0) shouldBuildWater = true
+      startAnimating()
+
+      if (playersSystem) {
+        const paths = msg.result.windPath as Record<'A' | 'B', { x: number; y: number }[]>
+        const deaths = msg.result.deaths as ('A' | 'B')[]
+        playersSystem.animateWindPaths(paths, deaths).then(() => {
+          if (!playersSystem) return
+          playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B)
+          if (pendingGameEnd) {
+            game.handleMessage(pendingGameEnd)
+            pendingGameEnd = null
+          }
+        })
+      }
+      break
+    }
+    case 'round:start': {
+      resetVisuals()
+      applyGameState(msg.state)
+      startAnimating()
+      break
+    }
+  }
+})
+
+let animating = false
+let waterSystem: ReturnType<typeof createWaterSystem> | null = null
+let windSystem: ReturnType<typeof createWindSystem> | null = null
+let rainSystem: ReturnType<typeof createRainSystem> | null = null
+let shouldBuildWater = false
+let previewSystem: ReturnType<typeof createPreviewSystem> | null = null
+let pendingGameEnd: { type: 'game:end'; winner: 'A' | 'B' | 'draw' } | null = null
+
+function startAnimating() {
+  animating = true
+}
+
+onMounted(() => {
+  const el = container.value!
+  const w = el.clientWidth
+  const h = el.clientHeight
+
+  const scene = new THREE.Scene()
+  scene.background = new THREE.Color(0x0a0e14)
+
+  const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 500)
+  camera.position.set(30, 25, 30)
+  camera.lookAt(0, 0, 0)
+  sceneCamera = camera
+
+  renderer = new THREE.WebGLRenderer({ antialias: true })
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+  renderer.setSize(w, h)
+  el.appendChild(renderer.domElement)
+
+  controls = new OrbitControls(camera, renderer.domElement)
+  controls.enableDamping = true
+  controls.dampingFactor = 0.08
+  controls.maxPolarAngle = Math.PI * 0.85
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5))
+
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2)
+  dirLight.position.set(10, 20, 15)
+  scene.add(dirLight)
+
+  const dirLightBottom = new THREE.DirectionalLight(0xffffff, 1.0)
+  dirLightBottom.position.set(-10, -20, -15)
+  scene.add(dirLightBottom)
+
+  const players = createPlayerSystem(scene, terrainState)
+  playersSystem = players
+
+  // --- Terrain meshes ---
+  const terrainMat = new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.85, metalness: 0,
+    side: THREE.DoubleSide, polygonOffset: true,
+    polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+  })
+
+  const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
+  geo.rotateX(-Math.PI / 2)
+  const pos = geo.attributes.position as THREE.BufferAttribute
+  const topMesh = new THREE.Mesh(geo, terrainMat)
+  scene.add(topMesh)
+
+  const bottomGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
+  bottomGeo.rotateX(-Math.PI / 2)
+  const bottomPos = bottomGeo.attributes.position as THREE.BufferAttribute
+  const bottomMesh = new THREE.Mesh(bottomGeo, terrainMat)
+  scene.add(bottomMesh)
+
+  const perimN = terrainState.PERIMETER.length
+  const skirtVerts = new Float32Array(perimN * 2 * 3)
+  const skirtIdxArr: number[] = []
+  for (let i = 0; i < perimN; i++) {
+    const next = (i + 1) % perimN
+    skirtIdxArr.push(i, perimN + i, next, next, perimN + i, perimN + next)
+  }
+  const skirtGeo = new THREE.BufferGeometry()
+  const skirtPos = new THREE.BufferAttribute(skirtVerts, 3)
+  skirtGeo.setAttribute('position', skirtPos)
+  skirtGeo.setIndex(skirtIdxArr)
+  scene.add(new THREE.Mesh(skirtGeo, terrainMat))
+
+  const gridStep = SIZE / SEGMENTS
+  const gridLineCount = (7 + 1) * SEGMENTS * 4
+  const gridPts = new Float32Array(gridLineCount * 3)
+  const gridGeo = new THREE.BufferGeometry()
+  const gridPos = new THREE.BufferAttribute(gridPts, 3)
+  gridGeo.setAttribute('position', gridPos)
+  const gridLineMat = new THREE.LineBasicMaterial({ color: 0x2a4a2a, transparent: true, opacity: 0.35 })
+  const gridLines = new THREE.LineSegments(gridGeo, gridLineMat)
+  scene.add(gridLines)
+
+  const botGridPts = new Float32Array(gridLineCount * 3)
+  const botGridGeo = new THREE.BufferGeometry()
+  const botGridPos = new THREE.BufferAttribute(botGridPts, 3)
+  botGridGeo.setAttribute('position', botGridPos)
+  const botGridLines = new THREE.LineSegments(botGridGeo, gridLineMat)
+  scene.add(botGridLines)
+
+  function rebuildGrid() {
+    let idx = 0
+    let bidx = 0
+    const CELLS = 7
+    const THICK = 1
+    for (let i = 0; i <= CELLS; i++) {
+      const off = -HALF + i * CELL_SIZE
+      for (let j = 0; j < SEGMENTS; j++) {
+        const t0 = -HALF + j * gridStep
+        const t1 = t0 + gridStep
+        const h00 = terrainState.getHeight(off, t0)
+        const h01 = terrainState.getHeight(off, t1)
+        const h10 = terrainState.getHeight(t0, off)
+        const h11 = terrainState.getHeight(t1, off)
+
+        gridPts[idx++] = off; gridPts[idx++] = h00 + 0.05; gridPts[idx++] = t0
+        gridPts[idx++] = off; gridPts[idx++] = h01 + 0.05; gridPts[idx++] = t1
+        gridPts[idx++] = t0; gridPts[idx++] = h10 + 0.05; gridPts[idx++] = off
+        gridPts[idx++] = t1; gridPts[idx++] = h11 + 0.05; gridPts[idx++] = off
+
+        botGridPts[bidx++] = off; botGridPts[bidx++] = h00 - THICK - 0.05; botGridPts[bidx++] = t0
+        botGridPts[bidx++] = off; botGridPts[bidx++] = h01 - THICK - 0.05; botGridPts[bidx++] = t1
+        botGridPts[bidx++] = t0; botGridPts[bidx++] = h10 - THICK - 0.05; botGridPts[bidx++] = off
+        botGridPts[bidx++] = t1; botGridPts[bidx++] = h11 - THICK - 0.05; botGridPts[bidx++] = off
+      }
+    }
+    gridPos.needsUpdate = true
+    botGridPos.needsUpdate = true
+  }
+
+  const water = createWaterSystem(scene, terrainState)
+  waterSystem = water
+  const wind = createWindSystem(scene, terrainState)
+  windSystem = wind
+  const rain = createRainSystem(scene, terrainState)
+  rainSystem = rain
+  const compass = createCompassSystem(scene)
+  const preview = createPreviewSystem(scene, terrainState)
+  previewSystem = preview
+
+  const DIR_MAP: Record<string, MoveDir> = {
+    '0,-1': 'N', '0,1': 'S', '1,0': 'E', '-1,0': 'W',
+    '1,-1': 'NE', '-1,-1': 'NW', '1,1': 'SE', '-1,1': 'SW',
+  }
+
+  const interaction = createInteractionSystem(
+    scene, camera, renderer.domElement as HTMLCanvasElement, topMesh, terrainState,
+    (e) => {
+      const isWatcher = game.isWatcher.value
+      const isArch = game.isArchitect.value
+      const gamePhase = game.gameState.value?.phase
+
+      if (isArch) {
+        if (pendingBonusType.value && gamePhase === 'forecast') {
+          socket.placeBonus(e.cx, e.cz, pendingBonusType.value)
+          pendingBonusType.value = null
+          architectHudRef.value?.resetBonusState()
+        }
+        return
+      }
+
+      if (isWatcher) {
+        if (gamePhase !== 'ticking') return
+
+        if (players.moveMode) {
+          if (players.isValidMove(e.cx, e.cz)) {
+            const pid = players.moveModePlayer
+            const s = pid === 'A' ? players.playerA.state : players.playerB.state
+            const off = players.surfaceOffsetFor(pid)
+            const dx = e.cx - s.cx
+            const dz = e.cz - s.cz
+            const dir = DIR_MAP[`${dx},${dz}`] ?? null
+            if (dir) {
+              onPredictMove(pid, { kind: 'move', dir })
+              preview.showMove(s.cx, s.cz, e.cx, e.cz, off)
+            }
+          }
+          players.hideMoveOptions()
+          return
+        }
+
+        const clickedPlayer = players.playerAtCell(e.cx, e.cz)
+        if (clickedPlayer) {
+          watcherTarget.value = clickedPlayer
+          animateCameraToSide(clickedPlayer === 'A' ? 'top' : 'bottom')
+          if (!game.movePredicted.value[clickedPlayer]) {
+            players.showMoveOptionsFor(clickedPlayer)
+          }
+          return
+        }
+
+        watcherTarget.value = e.isBottom ? 'B' : 'A'
+        menuCx.value = e.cx
+        menuCz.value = e.cz
+        menuX.value = e.screenX
+        menuY.value = e.screenY
+        menuCellValue.value = terrainState.target[e.cz][e.cx]
+        menuIsPlayer.value = false
+        menuVisible.value = true
+        return
+      }
+
+      if (game.phase.value !== 'ticking' || game.actionSubmitted.value || !game.myPlayerId.value) return
+
+      if (players.moveMode) {
+        if (players.isValidMove(e.cx, e.cz)) {
+          const s = game.myPlayerId.value === 'A' ? players.playerA.state : players.playerB.state
+          const dx = e.cx - s.cx
+          const dz = e.cz - s.cz
+          const dir = DIR_MAP[`${dx},${dz}`] ?? null
+          if (dir) {
+            socket.submitAction({ kind: 'move', dir })
+            game.actionSubmitted.value = true
+            const s2 = game.myPlayerId.value === 'A' ? players.playerA.state : players.playerB.state
+            preview.showMove(s2.cx, s2.cz, e.cx, e.cz)
+          }
+        }
+        players.hideMoveOptions()
+        return
+      }
+      menuCx.value = e.cx
+      menuCz.value = e.cz
+      menuX.value = e.screenX
+      menuY.value = e.screenY
+      menuCellValue.value = terrainState.target[e.cz][e.cx]
+      menuIsPlayer.value = players.isMyCell(e.cx, e.cz)
+      menuVisible.value = true
+    },
+    (cell) => {
+      const canvas = renderer.domElement
+      const isWatcher = game.isWatcher.value
+
+      if (isWatcher) {
+        if (cell && players.playerAtCell(cell.cx, cell.cz)) {
+          players.setHovered(true)
+          canvas.style.cursor = 'pointer'
+        } else if (cell && players.moveMode && players.isValidMove(cell.cx, cell.cz)) {
+          players.setHovered(false)
+          canvas.style.cursor = 'pointer'
+        } else if (cell) {
+          players.setHovered(false)
+          canvas.style.cursor = 'pointer'
+        } else {
+          players.setHovered(false)
+          canvas.style.cursor = ''
+        }
+        return
+      }
+
+      if (cell && players.isMyCell(cell.cx, cell.cz)) {
+        players.setHovered(true)
+        canvas.style.cursor = 'pointer'
+      } else if (cell && players.moveMode && players.isValidMove(cell.cx, cell.cz)) {
+        players.setHovered(false)
+        canvas.style.cursor = 'pointer'
+      } else {
+        players.setHovered(false)
+        canvas.style.cursor = ''
+      }
+    },
+    [bottomMesh],
+  )
+
+  handleAction = (action) => {
+    const cx = menuCx.value
+    const cz = menuCz.value
+
+    if (game.isWatcher.value) {
+      if (action === 'raise' || action === 'lower') {
+        const target = watcherTarget.value
+        const off = players.surfaceOffsetFor(target)
+        onPredictMove(target, { kind: action, x: cx, y: cz })
+        if (action === 'raise') preview.showRaise(cx, cz, off)
+        else preview.showLower(cx, cz, off)
+      }
+      return
+    }
+
+    if (game.phase.value !== 'ticking' || game.actionSubmitted.value) return
+    if (action === 'move') {
+      players.showMoveOptions()
+      return
+    }
+    const serverAction: Action = { kind: action, x: cx, y: cz }
+    socket.submitAction(serverAction)
+    game.actionSubmitted.value = true
+    if (action === 'raise') preview.showRaise(cx, cz)
+    else if (action === 'lower') preview.showLower(cx, cz)
+  }
+
+  // Start flat
+  terrainState.resetFlat()
+
+  terrainState.rebuildMesh(pos, bottomPos, skirtPos)
+  terrainState.rebuildHeightCache()
+  geo.computeVertexNormals()
+  bottomGeo.computeVertexNormals()
+  skirtGeo.computeVertexNormals()
+  terrainState.paintColors(geo)
+  terrainState.paintColors(bottomGeo, true)
+  terrainState.paintColors(skirtGeo)
+  rebuildGrid()
+
+  let prevTime = performance.now()
+
+  function animate() {
+    animId = requestAnimationFrame(animate)
+    const now = performance.now()
+    const dt = Math.min((now - prevTime) / 1000, 0.1)
+    prevTime = now
+    controls.update()
+
+    if (cameraAnimTarget && cameraAnimFrom) {
+      cameraAnimProgress = Math.min(cameraAnimProgress + dt * 2.5, 1)
+      const t = cameraAnimProgress * cameraAnimProgress * (3 - 2 * cameraAnimProgress)
+      camera.position.lerpVectors(cameraAnimFrom, cameraAnimTarget, t)
+      camera.lookAt(0, 0, 0)
+      if (cameraAnimProgress >= 1) {
+        cameraAnimTarget = null
+        cameraAnimFrom = null
+      }
+    }
+
+    if (animating) {
+      const done = terrainState.stepAnimation(dt)
+      terrainState.rebuildMesh(pos, bottomPos, skirtPos)
+      geo.computeVertexNormals()
+      bottomGeo.computeVertexNormals()
+      skirtGeo.computeVertexNormals()
+      terrainState.paintColors(geo)
+      terrainState.paintColors(bottomGeo, true)
+      terrainState.paintColors(skirtGeo)
+      rebuildGrid()
+      if (done) {
+        animating = false
+        terrainState.rebuildHeightCache()
+        if (shouldBuildWater) {
+          water.buildTop()
+          water.buildBot()
+          shouldBuildWater = false
+        }
+      }
+    }
+
+    water.update(dt)
+    wind.update(dt)
+    rain.update(dt)
+    players.update(dt)
+    interaction.update(dt)
+    preview.update(dt)
+    renderer.render(scene, camera)
+  }
+
+  animate()
+
+  const onResize = () => {
+    const rw = el.clientWidth, rh = el.clientHeight
+    camera.aspect = rw / rh
+    camera.updateProjectionMatrix()
+    renderer.setSize(rw, rh)
+    if (controls instanceof TrackballControls) controls.handleResize()
+  }
+  window.addEventListener('resize', onResize)
+
+  sceneCleanup = () => {
+    window.removeEventListener('resize', onResize)
+    water.dispose()
+    wind.dispose()
+    rain.dispose()
+    compass.dispose()
+    players.dispose()
+    interaction.dispose()
+    preview.dispose()
+    handleAction = null
+    playersSystem = null
+    previewSystem = null
+    waterSystem = null
+    windSystem = null
+    rainSystem = null
+    socket.disconnect()
+  }
+})
+
+onUnmounted(() => {
+  cancelAnimationFrame(animId)
+  clearTimeout(winnerPopupTimer)
+  clearTimeout(celebrateTimer)
+  disposeCelebrate()
+  unsubMessage1?.()
+  unsubMessage2?.()
+  sceneCleanup?.()
+  sceneCleanup = null
+  controls?.dispose()
+  if (renderer) {
+    renderer.domElement.parentElement?.removeChild(renderer.domElement)
+    renderer.dispose()
+  }
+})
+</script>
+
+<template>
+  <div ref="container" class="canvas-root" />
+
+  <LobbyOverlay
+    v-if="showLobby"
+    :phase="game.phase.value"
+    :connected="socket.connected.value"
+    @connect="onConnect"
+    @play="onPlay"
+    @watch="onWatch"
+    @architect="onArchitect"
+  />
+
+  <GameHud
+    v-if="showHud"
+    :phase="game.phase.value"
+    :round="game.gameState.value?.round ?? 1"
+    :tick="game.currentTick.value"
+    :tick-deadline="game.tickDeadline.value"
+    :action-submitted="game.actionSubmitted.value"
+    :my-player-id="game.myPlayerId.value ?? 'A'"
+  />
+
+  <ForecastPanel
+    v-if="showHud && game.forecast.value"
+    :wind-candidates="game.forecast.value.windCandidates"
+    :rain-probability="game.forecast.value.rainProbability"
+    :vane-broken="game.myInstrumentsBroken.value.vane"
+    :barometer-broken="game.myInstrumentsBroken.value.barometer"
+  />
+
+  <WatcherHud
+    v-if="showWatcher"
+    :phase="game.gameState.value?.phase ?? 'waiting'"
+    :score="game.watcherScore.value"
+    :predictions="game.watcherPredictions.value"
+    :break-used="game.breakUsed.value"
+    :winner-predicted="game.winnerPredicted.value"
+    :move-predicted="game.movePredicted.value"
+    @predict-winner="onPredictWinner"
+    @break-instrument="(i: 'vane' | 'barometer') => onBreakInstrument(i)"
+  />
+
+  <ArchitectHud
+    v-if="showArchitect"
+    ref="architectHudRef"
+    :phase="game.gameState.value?.phase ?? 'waiting'"
+    :deadline="game.architectDeadline.value"
+    :weather-submitted="game.weatherSubmitted.value"
+    @set-weather="onSetWeather"
+    @start-bonus-place="onStartBonusPlace"
+  />
+
+  <GameOverOverlay
+    v-if="showGameOver"
+    :winner="game.winner.value"
+    :my-player-id="game.myPlayerId.value"
+    @play-again="onPlayAgain"
+  />
+
+  <!-- Winner Prediction Popup -->
+  <Teleport to="body">
+    <Transition name="wp">
+      <div v-if="winnerPopup" class="wp-overlay">
+        <div class="wp-card" :class="'wp-' + winnerPopup.player">
+          <div class="wp-icon">
+            <svg viewBox="0 0 48 48" width="48" height="48" fill="none">
+              <path d="M24 4l5.5 11.2L42 17l-9 8.8L35.1 38 24 32.2 12.9 38 15 25.8 6 17l12.5-1.8z" fill="currentColor" opacity="0.85"/>
+            </svg>
+          </div>
+          <div class="wp-text">Winner predicted</div>
+          <div class="wp-points">+{{ winnerPopup.points }}</div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- Radial Menu -->
+  <Teleport to="body">
+    <div v-if="menuVisible" class="radial-backdrop" @click="closeMenu" />
+    <Transition name="radial">
+      <div v-if="menuVisible" class="radial-menu" :style="menuStyle">
+        <button
+          v-for="(opt, i) in menuOptions"
+          :key="opt.action"
+          class="radial-option"
+          :class="[opt.icon, { disabled: opt.disabled }]"
+          :style="optionStyle(i)"
+          @click.stop="!opt.disabled && selectOption(opt.action)"
+        >
+          <svg viewBox="0 0 32 32" width="26" height="26">
+            <template v-if="opt.icon === 'move'">
+              <polygon points="16,4 20,10 12,10" fill="currentColor" />
+              <polygon points="16,28 12,22 20,22" fill="currentColor" />
+              <polygon points="4,16 10,12 10,20" fill="currentColor" />
+              <polygon points="28,16 22,12 22,20" fill="currentColor" />
+              <rect x="14" y="10" width="4" height="12" rx="1" fill="currentColor" opacity="0.4" />
+              <rect x="10" y="14" width="12" height="4" rx="1" fill="currentColor" opacity="0.4" />
+            </template>
+            <polygon v-else-if="opt.icon === 'raise'" points="16,6 28,26 4,26" fill="currentColor" />
+            <polygon v-else points="16,26 28,6 4,6" fill="currentColor" />
+          </svg>
+          <span class="radial-label">{{ opt.label }}</span>
+        </button>
+      </div>
+    </Transition>
+  </Teleport>
+</template>
+
+<style scoped>
+.canvas-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+</style>
+
+<style>
+.radial-backdrop { position: fixed; inset: 0; z-index: 1000; }
+.radial-menu { position: fixed; z-index: 1001; pointer-events: none; width: 0; height: 0; }
+.radial-option {
+  position: absolute; width: 48px; height: 48px; border-radius: 50%;
+  border: 2px solid rgba(180, 190, 210, 0.35);
+  background: rgba(30, 35, 45, 0.82); color: rgba(210, 215, 225, 0.85);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; pointer-events: auto; transition: all 0.18s ease;
+  padding: 0; gap: 1px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.radial-option svg { flex-shrink: 0; }
+.radial-label { font-size: 8px; font-weight: 600; letter-spacing: 0.3px; opacity: 0.7; white-space: nowrap; }
+.radial-option.raise { border-color: rgba(150, 210, 170, 0.4); color: rgba(170, 220, 185, 0.85); }
+.radial-option.raise:hover:not(.disabled) { background: rgba(40, 60, 48, 0.88); border-color: rgba(170, 225, 185, 0.6); box-shadow: 0 0 14px rgba(150, 210, 170, 0.2); }
+.radial-option.move { border-color: rgba(160, 170, 220, 0.4); color: rgba(175, 185, 230, 0.85); }
+.radial-option.move:hover:not(.disabled) { background: rgba(42, 44, 62, 0.88); border-color: rgba(175, 185, 235, 0.6); box-shadow: 0 0 14px rgba(160, 170, 220, 0.2); }
+.radial-option.lower { border-color: rgba(220, 170, 150, 0.4); color: rgba(225, 180, 165, 0.85); }
+.radial-option.lower:hover:not(.disabled) { background: rgba(60, 42, 38, 0.88); border-color: rgba(230, 185, 165, 0.6); box-shadow: 0 0 14px rgba(220, 170, 150, 0.2); }
+.radial-option.disabled { opacity: 0.2; cursor: default; pointer-events: none; }
+.radial-enter-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.radial-leave-active { transition: opacity 0.1s ease, transform 0.1s ease; }
+.radial-enter-from, .radial-leave-to { opacity: 0; transform: scale(0.7); }
+
+/* ── Winner Prediction Popup ── */
+
+.wp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.wp-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 44px;
+  border-radius: 20px;
+  background: rgba(18, 20, 28, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  animation: wp-entrance 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+.wp-A {
+  color: rgba(255, 215, 100, 0.9);
+  box-shadow: 0 0 60px rgba(230, 180, 60, 0.12), 0 0 120px rgba(230, 180, 60, 0.06);
+}
+
+.wp-B {
+  color: rgba(120, 210, 240, 0.9);
+  box-shadow: 0 0 60px rgba(80, 180, 220, 0.12), 0 0 120px rgba(80, 180, 220, 0.06);
+}
+
+.wp-icon {
+  animation: wp-star 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wp-text {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.wp-points {
+  font-size: 36px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
+  animation: wp-count 0.5s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.wp-A .wp-points { text-shadow: 0 0 30px rgba(255, 200, 60, 0.35); }
+.wp-B .wp-points { text-shadow: 0 0 30px rgba(80, 180, 220, 0.35); }
+
+@keyframes wp-entrance {
+  0%   { opacity: 0; transform: scale(0.6) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes wp-star {
+  0%   { opacity: 0; transform: scale(0) rotate(-30deg); }
+  50%  { transform: scale(1.2) rotate(8deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes wp-count {
+  0%   { opacity: 0; transform: scale(0.5) translateY(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.wp-enter-active { transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.wp-leave-active { transition: opacity 0.5s ease; }
+.wp-enter-from { opacity: 0; }
+.wp-leave-to { opacity: 0; }
+</style>

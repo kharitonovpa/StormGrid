@@ -207,18 +207,18 @@ function computeFloodGeneric(
         }
       }
 
-      const floodedSet = new Set<string>()
+      const floodedSet = new Set<number>()
       for (const [cz, cx] of comp) {
         if (heightOf(cz, cx) === minH) {
           stateOut[cz][cx] = true
-          floodedSet.add(`${cz},${cx}`)
+          floodedSet.add(cz * CELLS + cx)
         }
       }
 
-      const subVis = new Set<string>()
+      const subVis = new Set<number>()
       for (const key of floodedSet) {
         if (subVis.has(key)) continue
-        const [sz2, sx2] = key.split(',').map(Number)
+        const sz2 = (key / CELLS) | 0, sx2 = key % CELLS
         const body: [number, number][] = []
         const q: [number, number][] = [[sz2, sx2]]
         let qh = 0
@@ -227,7 +227,7 @@ function computeFloodGeneric(
           const [z, x] = q[qh++]
           body.push([z, x])
           for (const [dz, dx] of dirs) {
-            const nk = `${z + dz},${x + dx}`
+            const nk = (z + dz) * CELLS + (x + dx)
             if (!subVis.has(nk) && floodedSet.has(nk)) {
               subVis.add(nk)
               q.push([z + dz, x + dx])
@@ -252,6 +252,30 @@ export function invalidateHeightCache() {
   heightCacheDirty = true
 }
 
+export function applyBoardState(board: { height: number }[][]) {
+  for (let cz = 0; cz < CELLS; cz++) {
+    for (let cx = 0; cx < CELLS; cx++) {
+      target[cz][cx] = board[cz][cx].height
+    }
+  }
+  terrainVersion++
+  heightCacheDirty = true
+}
+
+export function resetFlat() {
+  for (let cz = 0; cz < CELLS; cz++) {
+    for (let cx = 0; cx < CELLS; cx++) {
+      target[cz][cx] = 0
+      current[cz][cx] = 0
+    }
+  }
+  terrainVersion++
+  heightCacheDirty = true
+}
+
+// --- Terrain version counter (incremented on any terrain mutation) ---
+let terrainVersion = 0
+
 // --- Animation step ---
 export function stepAnimation(dt: number): boolean {
   let done = true
@@ -267,6 +291,7 @@ export function stepAnimation(dt: number): boolean {
       }
     }
   }
+  if (!done) terrainVersion++
   return done
 }
 
@@ -279,6 +304,8 @@ export interface TerrainState {
   rebuildHeightCache(): void
   invalidateHeightCache(): void
   generateTerrain(): void
+  applyBoardState(board: { height: number }[][]): void
+  resetFlat(): void
   computeFlood(): void
   computeFloodBot(): void
   floodBodies: FloodBody[]
@@ -290,6 +317,7 @@ export interface TerrainState {
   ): void
   paintColors(geo: THREE.BufferGeometry, isBottom?: boolean): void
   stepAnimation(dt: number): boolean
+  readonly version: number
   PERIMETER: number[]
 }
 
@@ -301,6 +329,8 @@ export const terrainState: TerrainState = {
   rebuildHeightCache,
   invalidateHeightCache,
   generateTerrain,
+  applyBoardState,
+  resetFlat,
   computeFlood,
   computeFloodBot,
   get floodBodies() { return floodBodies },
@@ -308,5 +338,6 @@ export const terrainState: TerrainState = {
   rebuildMesh,
   paintColors,
   stepAnimation,
+  get version() { return terrainVersion },
   PERIMETER,
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { CELLS, HALF, CELL_SIZE, SEGMENTS } from './constants'
+import { CELLS, HALF, CELL_SIZE, SEGMENTS, THICKNESS } from './constants'
 import type { TerrainState } from './terrain'
 
 export interface CellClickEvent {
@@ -7,6 +7,7 @@ export interface CellClickEvent {
   cz: number
   screenX: number
   screenY: number
+  isBottom: boolean
 }
 
 export function createInteractionSystem(
@@ -16,14 +17,17 @@ export function createInteractionSystem(
   terrainMesh: THREE.Mesh,
   terrain: TerrainState,
   onCellClick: (e: CellClickEvent) => void,
-  onHoverChange: (cell: { cx: number; cz: number } | null) => void,
+  onHoverChange: (cell: { cx: number; cz: number; isBottom: boolean } | null) => void,
+  extraMeshes: THREE.Mesh[] = [],
 ) {
   const raycaster = new THREE.Raycaster()
   const mouse = new THREE.Vector2()
+  const _projVec = new THREE.Vector3()
 
-  let hoveredCell: { cx: number; cz: number } | null = null
+  let hoveredCell: { cx: number; cz: number; isBottom: boolean } | null = null
   let mouseDownPos = { x: 0, y: 0 }
   let isDown = false
+  let lastTerrainVersion = -1
 
   // --- Surface highlight overlay ---
   const HL_SEG = Math.ceil(SEGMENTS / CELLS)
@@ -58,11 +62,11 @@ export function createInteractionSystem(
   hlMesh.renderOrder = 998
   scene.add(hlMesh)
 
-  function updateHighlight(cx: number, cz: number) {
+  function updateHighlight(cx: number, cz: number, yOffset = 0) {
     const x0 = -HALF + cx * CELL_SIZE
     const z0 = -HALF + cz * CELL_SIZE
     const step = CELL_SIZE / HL_SEG
-    const lift = 0.08
+    const lift = yOffset < 0 ? -0.08 : 0.08
 
     let idx = 0
     for (let iz = 0; iz <= HL_SEG; iz++) {
@@ -70,7 +74,7 @@ export function createInteractionSystem(
         const wx = x0 + ix * step
         const wz = z0 + iz * step
         hlPositions[idx++] = wx
-        hlPositions[idx++] = terrain.getHeight(wx, wz) + lift
+        hlPositions[idx++] = terrain.getHeight(wx, wz) + yOffset + lift
         hlPositions[idx++] = wz
       }
     }
@@ -93,18 +97,19 @@ export function createInteractionSystem(
     onHoverChange(null)
   }
 
-  function setHover(cx: number, cz: number) {
-    if (hoveredCell && hoveredCell.cx === cx && hoveredCell.cz === cz) return
-    hoveredCell = { cx, cz }
-    updateHighlight(cx, cz)
+  function setHover(cx: number, cz: number, isBottom: boolean) {
+    if (hoveredCell && hoveredCell.cx === cx && hoveredCell.cz === cz && hoveredCell.isBottom === isBottom) return
+    hoveredCell = { cx, cz, isBottom }
+    lastTerrainVersion = -1
+    updateHighlight(cx, cz, isBottom ? -THICKNESS : 0)
     onHoverChange(hoveredCell)
   }
 
-  function projectCellCenter(cx: number, cz: number) {
+  function projectCellCenter(cx: number, cz: number, isBottom = false) {
     const centerX = -HALF + (cx + 0.5) * CELL_SIZE
     const centerZ = -HALF + (cz + 0.5) * CELL_SIZE
-    const centerY = terrain.getHeight(centerX, centerZ)
-    const vec = new THREE.Vector3(centerX, centerY, centerZ).project(camera)
+    const centerY = terrain.getHeight(centerX, centerZ) + (isBottom ? -THICKNESS : 0)
+    const vec = _projVec.set(centerX, centerY, centerZ).project(camera)
     const rect = domElement.getBoundingClientRect()
     return {
       x: (vec.x * 0.5 + 0.5) * rect.width + rect.left,
@@ -112,19 +117,24 @@ export function createInteractionSystem(
     }
   }
 
-  function raycastCell(clientX: number, clientY: number) {
+  const allMeshes = [terrainMesh, ...extraMeshes]
+
+  function raycastCell(clientX: number, clientY: number): { cx: number; cz: number; isBottom: boolean } | null {
     const rect = domElement.getBoundingClientRect()
     mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1
     mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(mouse, camera)
-    const hits = raycaster.intersectObject(terrainMesh)
-    if (hits.length > 0) return worldToCell(hits[0].point.x, hits[0].point.z)
+    const hits = raycaster.intersectObjects(allMeshes)
+    if (hits.length > 0) {
+      const cell = worldToCell(hits[0].point.x, hits[0].point.z)
+      if (cell) return { ...cell, isBottom: hits[0].object !== terrainMesh }
+    }
     return null
   }
 
   function onMouseMove(e: MouseEvent) {
     const cell = raycastCell(e.clientX, e.clientY)
-    if (cell) setHover(cell.cx, cell.cz)
+    if (cell) setHover(cell.cx, cell.cz, cell.isBottom)
     else clearHover()
   }
 
@@ -143,8 +153,8 @@ export function createInteractionSystem(
 
     const cell = raycastCell(e.clientX, e.clientY)
     if (cell) {
-      const screen = projectCellCenter(cell.cx, cell.cz)
-      onCellClick({ cx: cell.cx, cz: cell.cz, screenX: screen.x, screenY: screen.y })
+      const screen = projectCellCenter(cell.cx, cell.cz, cell.isBottom)
+      onCellClick({ cx: cell.cx, cz: cell.cz, screenX: screen.x, screenY: screen.y, isBottom: cell.isBottom })
     }
   }
 
@@ -154,8 +164,9 @@ export function createInteractionSystem(
 
   return {
     update(_dt: number) {
-      if (hoveredCell) {
-        updateHighlight(hoveredCell.cx, hoveredCell.cz)
+      if (hoveredCell && terrain.version !== lastTerrainVersion) {
+        lastTerrainVersion = terrain.version
+        updateHighlight(hoveredCell.cx, hoveredCell.cz, hoveredCell.isBottom ? -THICKNESS : 0)
       }
     },
     clearHover,

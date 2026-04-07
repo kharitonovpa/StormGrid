@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { CELLS, HALF, CELL_SIZE, SEGMENTS } from './constants'
+import { CELLS, HALF, CELL_SIZE, SEGMENTS, THICKNESS } from './constants'
 import { createFlame } from '../flame'
 import type { TerrainState } from './terrain'
 
@@ -9,10 +9,15 @@ export interface PlayerState {
   cz: number
 }
 
-const DIRS = [
-  [-1, -1], [-1, 0], [-1, 1],
-  [0, -1],           [0, 1],
-  [1, -1],  [1, 0],  [1, 1],
+const DIRS_8: [number, number][] = [
+  [0, -1],   // N
+  [0, 1],    // S
+  [-1, 0],   // W
+  [1, 0],    // E
+  [1, -1],   // NE
+  [-1, -1],  // NW
+  [1, 1],    // SE
+  [-1, 1],   // SW
 ]
 
 export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
@@ -50,19 +55,20 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     return mesh
   }
 
-  function positionHighlight(mesh: THREE.Mesh, cx: number, cz: number) {
+  function positionHighlight(mesh: THREE.Mesh, cx: number, cz: number, yOffset = 0) {
     const posAttr = mesh.geometry.attributes.position as THREE.BufferAttribute
     const arr = posAttr.array as Float32Array
     const x0 = -HALF + cx * CELL_SIZE
     const z0 = -HALF + cz * CELL_SIZE
     const step = CELL_SIZE / HL_SEG
+    const lift = yOffset < 0 ? -0.1 : 0.1
     let idx = 0
     for (let iz = 0; iz <= HL_SEG; iz++) {
       for (let ix = 0; ix <= HL_SEG; ix++) {
         const wx = x0 + ix * step
         const wz = z0 + iz * step
         arr[idx++] = wx
-        arr[idx++] = terrain.getHeight(wx, wz) + 0.1
+        arr[idx++] = terrain.getHeight(wx, wz) + yOffset + lift
         arr[idx++] = wz
       }
     }
@@ -108,10 +114,14 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   let ringPulseTime = 0
 
   function updateRingVertices() {
-    const s = playerA.state
+    const pid = inMoveMode ? moveModePlayerId : activePlayerId
+    const me = pid === 'A' ? playerA : playerB
+    const s = me.state
+    const isBottom = me.surface === 'bottom'
+    const yOff = isBottom ? -THICKNESS : 0
+    const lift = isBottom ? -0.15 : 0.15
     const cx = -HALF + (s.cx + 0.5) * CELL_SIZE
     const cz = -HALF + (s.cz + 0.5) * CELL_SIZE
-    const lift = 0.15
 
     for (let i = 0; i <= RING_SEGS; i++) {
       const angle = (i / RING_SEGS) * Math.PI * 2
@@ -121,14 +131,14 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
       const iz = cz + sinA * RING_INNER
       const innerOff = i * 2 * 3
       ringPositions[innerOff] = ix
-      ringPositions[innerOff + 1] = terrain.getHeight(ix, iz) + lift
+      ringPositions[innerOff + 1] = terrain.getHeight(ix, iz) + yOff + lift
       ringPositions[innerOff + 2] = iz
 
       const ox = cx + cosA * RING_OUTER
       const oz = cz + sinA * RING_OUTER
       const outerOff = (i * 2 + 1) * 3
       ringPositions[outerOff] = ox
-      ringPositions[outerOff + 1] = terrain.getHeight(ox, oz) + lift
+      ringPositions[outerOff + 1] = terrain.getHeight(ox, oz) + yOff + lift
       ringPositions[outerOff + 2] = oz
     }
     ringPosAttr.needsUpdate = true
@@ -170,8 +180,8 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   arrowMesh.renderOrder = 999
   scene.add(arrowMesh)
 
-  function buildArrows(from: { cx: number; cz: number }, targets: { cx: number; cz: number }[]) {
-    const lift = 0.18
+  function buildArrows(from: { cx: number; cz: number }, targets: { cx: number; cz: number }[], yOffset = 0) {
+    const lift = yOffset < 0 ? -0.18 : 0.18
     const halfL = ARROW_LEN / 2
     const headBase = halfL - HEAD_L
     const halfHW = HEAD_W / 2
@@ -192,26 +202,25 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
       const ddz = t.cz - from.cz
       const len = Math.sqrt(ddx * ddx + ddz * ddz)
       const fx = ddx / len, fz = ddz / len
-      // right vector (90° CW in XZ plane)
       const rx = -fz, rz = fx
 
       function setV(vi: number, fwdD: number, rightD: number) {
         const wx = cx + fx * fwdD + rx * rightD
         const wz = cz + fz * fwdD + rz * rightD
-        const wy = terrain.getHeight(wx, wz) + lift
+        const wy = terrain.getHeight(wx, wz) + yOffset + lift
         const idx = off + vi * 3
         arrowPositions[idx] = wx
         arrowPositions[idx + 1] = wy
         arrowPositions[idx + 2] = wz
       }
 
-      setV(0, halfL, 0)            // tip
-      setV(1, headBase, -halfHW)    // head left
-      setV(2, headBase, halfHW)     // head right
-      setV(3, headBase, -halfSW)    // shaft top left
-      setV(4, headBase, halfSW)     // shaft top right
-      setV(5, -halfL, -halfSW)      // shaft bottom left
-      setV(6, -halfL, halfSW)       // shaft bottom right
+      setV(0, halfL, 0)
+      setV(1, headBase, -halfHW)
+      setV(2, headBase, halfHW)
+      setV(3, headBase, -halfSW)
+      setV(4, headBase, halfSW)
+      setV(5, -halfL, -halfSW)
+      setV(6, -halfL, halfSW)
     }
 
     arrowPosAttr.needsUpdate = true
@@ -222,6 +231,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   // --- Player ---
   const JUMP_DURATION = 0.35
   const JUMP_HEIGHT = CELL_SIZE * 0.6
+  const WIND_SLIDE_DURATION = 1.5
 
   function easeInOut(t: number): number {
     return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
@@ -229,22 +239,36 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   function makePlayer(id: 'A' | 'B', startCx: number, startCz: number) {
     const mesh = createFlame()
-    mesh.scale.setScalar(2)
+    mesh.scale.set(2, 2, 2)
     scene.add(mesh)
     const state: PlayerState = { id, cx: startCx, cz: startCz }
+    let surface: 'top' | 'bottom' = 'top'
 
     let jumping = false
     let jumpT = 0
     let jumpFrom = { x: 0, y: 0, z: 0 }
     let jumpTo = { x: 0, y: 0, z: 0 }
 
+    let windSliding = false
+    let windPoints: { wx: number; wy: number; wz: number }[] = []
+    let windDied = false
+    let windT = 0
+    let windResolve: (() => void) | null = null
+    let cachedMaterials: THREE.Material[] | null = null
+
     function cellWorldPos(cx?: number, cz?: number) {
       const _cx = cx ?? state.cx
       const _cz = cz ?? state.cz
       const wx = -HALF + (_cx + 0.5) * CELL_SIZE
       const wz = -HALF + (_cz + 0.5) * CELL_SIZE
-      const wy = terrain.getHeight(wx, wz)
+      const topY = terrain.getHeight(wx, wz)
+      const wy = surface === 'top' ? topY : topY - THICKNESS
       return { wx, wy, wz }
+    }
+
+    function applySurface(s: 'top' | 'bottom') {
+      surface = s
+      mesh.scale.set(2, s === 'top' ? 2 : -2, 2)
     }
 
     const p = cellWorldPos()
@@ -253,7 +277,10 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     return {
       state,
       mesh,
+      get surface() { return surface },
+      setSurface: applySurface,
       get isJumping() { return jumping },
+      get isWindSliding() { return windSliding },
       moveTo(cx: number, cz: number) {
         jumpFrom.x = mesh.position.x
         jumpFrom.y = mesh.position.y
@@ -267,8 +294,69 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         state.cx = cx
         state.cz = cz
       },
+      startWindSlide(path: { x: number; y: number }[], died: boolean): Promise<void> {
+        windPoints = path.map(p => cellWorldPos(p.x, p.y))
+
+        if (died && windPoints.length >= 2) {
+          const last = windPoints[windPoints.length - 1]
+          const prev = windPoints[windPoints.length - 2]
+          windPoints.push({
+            wx: last.wx + (last.wx - prev.wx),
+            wy: last.wy,
+            wz: last.wz + (last.wz - prev.wz),
+          })
+        } else if (died && windPoints.length === 1) {
+          const only = windPoints[0]
+          windPoints.push({ wx: only.wx + CELL_SIZE, wy: only.wy, wz: only.wz })
+        }
+
+        windSliding = true
+        windDied = died
+        windT = 0
+        jumping = false
+
+        if (died) {
+          cachedMaterials = []
+          mesh.traverse(child => {
+            const m = (child as THREE.Mesh).material as THREE.Material | undefined
+            if (m) { m.transparent = true; cachedMaterials!.push(m) }
+          })
+        }
+
+        const last = path[path.length - 1]
+        if (!died) {
+          state.cx = last.x
+          state.cz = last.y
+        }
+
+        return new Promise(resolve => { windResolve = resolve })
+      },
       update(dt: number) {
-        if (jumping) {
+        if (windSliding) {
+          windT += dt / WIND_SLIDE_DURATION
+          if (windT >= 1) {
+            windT = 1
+            windSliding = false
+            if (windDied) mesh.visible = false
+            if (windResolve) { windResolve(); windResolve = null }
+          }
+
+          const segs = windPoints.length - 1
+          const raw = easeInOut(windT) * segs
+          const idx = Math.min(Math.floor(raw), segs - 1)
+          const frac = raw - idx
+          const a = windPoints[idx]
+          const b = windPoints[idx + 1]
+          mesh.position.x = a.wx + (b.wx - a.wx) * frac
+          mesh.position.z = a.wz + (b.wz - a.wz) * frac
+          mesh.position.y = a.wy + (b.wy - a.wy) * frac
+
+          if (windDied && cachedMaterials) {
+            const fadeStart = 0.7
+            const opacity = windT < fadeStart ? 1 : 1 - (windT - fadeStart) / (1 - fadeStart)
+            for (const mat of cachedMaterials) mat.opacity = opacity
+          }
+        } else if (jumping) {
           jumpT += dt / JUMP_DURATION
           if (jumpT >= 1) {
             jumpT = 1
@@ -278,7 +366,8 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
           mesh.position.x = jumpFrom.x + (jumpTo.x - jumpFrom.x) * e
           mesh.position.z = jumpFrom.z + (jumpTo.z - jumpFrom.z) * e
           const baseY = jumpFrom.y + (jumpTo.y - jumpFrom.y) * e
-          const arc = 4 * JUMP_HEIGHT * jumpT * (1 - jumpT)
+          const arcDir = surface === 'top' ? 1 : -1
+          const arc = arcDir * 4 * JUMP_HEIGHT * jumpT * (1 - jumpT)
           mesh.position.y = baseY + arc
         } else {
           const t = cellWorldPos()
@@ -296,15 +385,18 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   }
 
   const playerA = makePlayer('A', 3, 3)
+  const playerB = makePlayer('B', 3, 3)
 
   // --- Movement mode ---
   let inMoveMode = false
   let validMoves: { cx: number; cz: number }[] = []
+  let activePlayerId: 'A' | 'B' = 'A'
+  let lastTerrainVersion = -1
 
   function getValidMoves(): { cx: number; cz: number }[] {
-    const s = playerA.state
+    const s = activePlayerId === 'A' ? playerA.state : playerB.state
     const moves: { cx: number; cz: number }[] = []
-    for (const [dz, dx] of DIRS) {
+    for (const [dx, dz] of DIRS_8) {
       const nx = s.cx + dx
       const nz = s.cz + dz
       if (nx >= 0 && nx < CELLS && nz >= 0 && nz < CELLS) {
@@ -315,16 +407,36 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   }
 
   function showMoveOptions() {
+    showMoveOptionsFor(activePlayerId)
+  }
+
+  let moveModePlayerId: 'A' | 'B' = 'A'
+  let moveSurfaceOffset = 0
+
+  function showMoveOptionsFor(pid: 'A' | 'B') {
     inMoveMode = true
-    validMoves = getValidMoves()
+    moveModePlayerId = pid
+    const player = pid === 'A' ? playerA : playerB
+    const s = player.state
+    const off = player.surface === 'bottom' ? -THICKNESS : 0
+    const moves: { cx: number; cz: number }[] = []
+    for (const [dx, dz] of DIRS_8) {
+      const nx = s.cx + dx
+      const nz = s.cz + dz
+      if (nx >= 0 && nx < CELLS && nz >= 0 && nz < CELLS) {
+        moves.push({ cx: nx, cz: nz })
+      }
+    }
+    validMoves = moves
+    moveSurfaceOffset = off
     for (let i = 0; i < 8; i++) {
       if (i < validMoves.length) {
-        positionHighlight(moveHighlights[i], validMoves[i].cx, validMoves[i].cz)
+        positionHighlight(moveHighlights[i], validMoves[i].cx, validMoves[i].cz, off)
       } else {
         moveHighlights[i].visible = false
       }
     }
-    buildArrows(playerA.state, validMoves)
+    buildArrows(s, validMoves, off)
   }
 
   function hideMoveOptions() {
@@ -338,26 +450,89 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     return validMoves.some(m => m.cx === cx && m.cz === cz)
   }
 
+  function applyPositions(
+    a: { x: number; y: number; alive: boolean },
+    b: { x: number; y: number; alive: boolean },
+  ) {
+    if (a.alive && (a.x !== playerA.state.cx || a.y !== playerA.state.cz)) {
+      playerA.moveTo(a.x, a.y)
+    }
+    playerA.mesh.visible = a.alive
+
+    if (b.alive && (b.x !== playerB.state.cx || b.y !== playerB.state.cz)) {
+      playerB.moveTo(b.x, b.y)
+    }
+    playerB.mesh.visible = b.alive
+  }
+
+  function setActivePlayer(id: 'A' | 'B' | null) {
+    activePlayerId = id ?? 'A'
+    if (id === 'B') {
+      playerB.setSurface('top')
+      playerA.setSurface('bottom')
+    } else {
+      playerA.setSurface('top')
+      playerB.setSurface('bottom')
+    }
+  }
+
+  function animateWindPaths(
+    paths: Record<'A' | 'B', { x: number; y: number }[]>,
+    deaths: ('A' | 'B')[],
+  ): Promise<void> {
+    const promises: Promise<void>[] = []
+    for (const pid of ['A', 'B'] as const) {
+      const path = paths[pid]
+      if (path.length <= 1) continue
+      const player = pid === 'A' ? playerA : playerB
+      const died = deaths.includes(pid)
+      promises.push(player.startWindSlide(path, died))
+    }
+    return promises.length > 0 ? Promise.all(promises).then(() => {}) : Promise.resolve()
+  }
+
   return {
     playerA,
+    playerB,
+    applyPositions,
+    animateWindPaths,
+    setActivePlayer,
     isOccupied(cx: number, cz: number) {
-      return playerA.state.cx === cx && playerA.state.cz === cz
+      const a = playerA.state, b = playerB.state
+      return (a.cx === cx && a.cz === cz) || (b.cx === cx && b.cz === cz)
+    },
+    isMyCell(cx: number, cz: number) {
+      const s = activePlayerId === 'A' ? playerA.state : playerB.state
+      return s.cx === cx && s.cz === cz
+    },
+    playerAtCell(cx: number, cz: number): 'A' | 'B' | null {
+      if (playerA.state.cx === cx && playerA.state.cz === cz) return 'A'
+      if (playerB.state.cx === cx && playerB.state.cz === cz) return 'B'
+      return null
     },
     get moveMode() { return inMoveMode },
+    get moveModePlayer() { return moveModePlayerId },
+    surfaceOffsetFor(pid: 'A' | 'B'): number {
+      const p = pid === 'A' ? playerA : playerB
+      return p.surface === 'bottom' ? -THICKNESS : 0
+    },
     showMoveOptions,
+    showMoveOptionsFor,
     hideMoveOptions,
     isValidMove,
     setHovered(val: boolean) { isPlayerHovered = val },
     update(dt: number) {
       playerA.update(dt)
-      if (inMoveMode) {
+      playerB.update(dt)
+      if (inMoveMode && terrain.version !== lastTerrainVersion) {
+        lastTerrainVersion = terrain.version
         for (let i = 0; i < validMoves.length; i++) {
-          positionHighlight(moveHighlights[i], validMoves[i].cx, validMoves[i].cz)
+          positionHighlight(moveHighlights[i], validMoves[i].cx, validMoves[i].cz, moveSurfaceOffset)
         }
-        buildArrows(playerA.state, validMoves)
+        const active = moveModePlayerId === 'A' ? playerA : playerB
+        buildArrows(active.state, validMoves, moveSurfaceOffset)
       }
 
-      // Ring animation
       if (inMoveMode) {
         ringPulseTime += dt
         const target = 0.3 + 0.15 * Math.sin(ringPulseTime * 3.5)
@@ -377,7 +552,19 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
       if (ring.visible) updateRingVertices()
     },
     dispose() {
-      scene.remove(playerA.mesh)
+      function disposeGroup(g: THREE.Object3D) {
+        g.traverse(child => {
+          const m = child as THREE.Mesh
+          if (m.geometry) m.geometry.dispose()
+          if (m.material) {
+            const mat = m.material
+            if (Array.isArray(mat)) mat.forEach(x => x.dispose())
+            else (mat as THREE.Material).dispose()
+          }
+        })
+      }
+      scene.remove(playerA.mesh); disposeGroup(playerA.mesh)
+      scene.remove(playerB.mesh); disposeGroup(playerB.mesh)
       for (const hl of moveHighlights) { scene.remove(hl); hl.geometry.dispose() }
       scene.remove(arrowMesh)
       arrowGeo.dispose()

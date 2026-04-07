@@ -1,27 +1,64 @@
 ---
 description: StormGrid module architecture conventions
-globs: src/**/*.ts, src/**/*.vue
+globs: "**/*.ts, **/*.vue"
 alwaysApply: true
 ---
 
 # StormGrid Architecture
 
-## Module layout
+## Monorepo layout
 
-- `src/lib/constants.ts` — shared grid/world constants (CELLS, SIZE, HALF, etc.)
-- `src/lib/noise.ts` — pure math: clamp, hash, noise2d, fbm, sstep, mix
-- `src/lib/terrain.ts` — terrain state, height cache, mesh rebuild, paintColors, flood BFS, stepAnimation; exports a `terrainState` singleton implementing `TerrainState`
-- `src/lib/water.ts` — water body rendering and animation
-- `src/lib/wind.ts` — wind streamlines and dust particles
-- `src/lib/rain.ts` — rain drops and splash rings
-- `src/App.vue` — thin orchestrator: scene/camera/renderer setup, animation loop, event handlers
+- `packages/shared/` — `@stormgrid/shared`: game types (`GameState`, `Action`, `Player`, etc.) and constants (`BOARD_SIZE`, `DIRECTIONS`, etc.)
+- `packages/server/` — `@stormgrid/server`: game engine, (future) HTTP + WebSocket server
+- `packages/client/` — `@stormgrid/client`: Vue 3 + Three.js frontend
+- `game/` — design docs: `GAME_DESIGN.md`, `PLAN.md`, `TERRA.md`
+
+## Server: engine modules
+
+- `packages/server/src/engine/board.ts` — board creation, cloning, bounds checks, `stateForPlayer()` (height inversion for B), `resultForPlayer()`
+- `packages/server/src/engine/tick.ts` — tick resolution: 8-dir king movement, terrain changes (including under player), bonus activation
+- `packages/server/src/engine/wind.ts` — upwind shielding scan, downwind push, two-sided height perception (§13 of GAME_DESIGN)
+- `packages/server/src/engine/rain.ts` — basin detection BFS, separate flooding per player side (floodedCellsA/B), drowning (§14)
+- `packages/server/src/engine/forecast.ts` — weather decision generation (wind every cataclysm), forecast hints
+- `packages/server/src/Room.ts` — game room: GameEngine + tick timer + player slots + per-player state broadcast + action inversion for B
+- `packages/server/src/RoomManager.ts` — room registry, create/get/cleanup
+- `packages/server/src/matchmaking.ts` — in-memory queue, auto-pair
+- `packages/server/src/engine/GameEngine.ts` — orchestrator class: round lifecycle, phase management
+
+## Client: visual modules
+
+- `packages/client/src/lib/constants.ts` — shared grid/world constants (CELLS, SIZE, HALF, etc.)
+- `packages/client/src/lib/noise.ts` — pure math: clamp, hash, noise2d, fbm, sstep, mix
+- `packages/client/src/lib/terrain.ts` — terrain state, height cache, mesh rebuild, paintColors, flood BFS, stepAnimation; exports `terrainState`
+- `packages/client/src/lib/water.ts` — water body rendering and animation
+- `packages/client/src/lib/wind.ts` — wind streamlines and dust particles
+- `packages/client/src/lib/rain.ts` — rain drops and splash rings
+- `packages/client/src/lib/player.ts` — two players (A + B) as flame meshes, 8-dir movement highlights, wind slide animation
+- `packages/client/src/lib/preview.ts` — action preview: displacement-line grid (raise/lower), gradient ribbon (move)
+- `packages/client/src/lib/compass.ts` — 3D compass system
+- `packages/client/src/lib/interaction.ts` — raycasting, cell click/hover handling
+
+## Client: composables
+
+- `packages/client/src/composables/useGameSocket.ts` — typed WebSocket connection, action submission
+- `packages/client/src/composables/useGameState.ts` — reactive game state store (phase, tick, players, board)
+
+## Client: UI components
+
+- `packages/client/src/components/LobbyOverlay.vue` — character select + Play button
+- `packages/client/src/components/GameHud.vue` — tick countdown, round info, phase display
+- `packages/client/src/components/GameOverOverlay.vue` — win/lose/draw + Play Again
+- `packages/client/src/components/ForecastPanel.vue` — wind direction + rain probability
+- `packages/client/src/App.vue` — thin orchestrator: scene/camera/renderer setup, animation loop, event handlers
 
 ## Rules
 
-1. **Each visual/game system lives in its own `src/lib/*.ts` module.** Do not add system logic directly to App.vue.
-2. **Modules export factory functions, not bare globals.** Pattern: `export function create*System(scene: THREE.Scene, terrain: TerrainState) { ... }`.
-3. **Factory return type is `{ update(dt: number): void; dispose(): void }` at minimum.** Additional methods (e.g. `buildTop()`, `buildBot()`) are allowed.
-4. **App.vue is orchestration only** — scene setup, animation loop calling `system.update(dt)`, event handlers, and disposal. No particle math, BFS, or geometry building.
-5. **Shared constants live in `constants.ts`.** Noise/math utilities live in `noise.ts`. Never duplicate them in other files.
-6. **Terrain is the shared dependency.** Other systems receive a `TerrainState` object from `terrain.ts` to access height, flood data, etc.
-7. **New systems follow the same pattern:** create a `src/lib/newSystem.ts`, export `createNewSystem(scene, terrain)`, wire it up in App.vue's animation loop.
+1. **Types and constants shared between client/server live in `@stormgrid/shared`.** Never duplicate game types.
+2. **Game logic lives in `packages/server/src/engine/`.** The client NEVER computes game rules — it only renders state received from server.
+3. **GameEngine is pure logic.** No I/O, no Three.js, no side effects. Fully testable.
+4. **Each visual system lives in its own `packages/client/src/lib/*.ts` module.** Do not add system logic directly to App.vue.
+5. **Visual modules export factory functions.** Pattern: `export function create*System(scene: THREE.Scene, terrain: TerrainState) { ... }`.
+6. **Factory return type is `{ update(dt: number): void; dispose(): void }` at minimum.**
+7. **App.vue is orchestration only** — scene setup, animation loop, event handlers, disposal.
+8. **Terrain is the shared visual dependency.** Other client systems receive a `TerrainState` object.
+9. **Tests live next to the code they test** in `__tests__/` directories. Use bun:test.

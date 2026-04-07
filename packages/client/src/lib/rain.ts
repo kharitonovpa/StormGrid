@@ -19,6 +19,8 @@ interface RainSet {
   rPosAttr: THREE.BufferAttribute; rColAttr: THREE.BufferAttribute
   sVerts: Float32Array; sColors: Float32Array
   sPosAttr: THREE.BufferAttribute; sColAttr: THREE.BufferAttribute
+  rainMesh: THREE.LineSegments
+  splashMesh: THREE.LineSegments
   dir: 1 | -1
   groundFn: (x: number, z: number) => number
   splashOffset: number
@@ -55,7 +57,9 @@ export function createRainSystem(scene: THREE.Scene, terrain: TerrainState) {
     const rColAttr = new THREE.BufferAttribute(rColors, 3)
     rGeo.setAttribute('position', rPosAttr)
     rGeo.setAttribute('color', rColAttr)
-    scene.add(new THREE.LineSegments(rGeo, rainMat))
+    const rainMesh = new THREE.LineSegments(rGeo, rainMat)
+    rainMesh.visible = false
+    scene.add(rainMesh)
 
     const sVerts = new Float32Array(SPLASH_MAX * SPLASH_RING_PTS * 2 * 3)
     const sColors = new Float32Array(SPLASH_MAX * SPLASH_RING_PTS * 2 * 3)
@@ -64,12 +68,15 @@ export function createRainSystem(scene: THREE.Scene, terrain: TerrainState) {
     const sColAttr = new THREE.BufferAttribute(sColors, 3)
     sGeo.setAttribute('position', sPosAttr)
     sGeo.setAttribute('color', sColAttr)
-    scene.add(new THREE.LineSegments(sGeo, splashMat))
+    const splashMesh = new THREE.LineSegments(sGeo, splashMat)
+    splashMesh.visible = false
+    scene.add(splashMesh)
 
     return {
       drops, splashes: [],
       rVerts, rColors, rPosAttr, rColAttr,
       sVerts, sColors, sPosAttr, sColAttr,
+      rainMesh, splashMesh,
       dir,
       groundFn: dir === -1
         ? (x, z) => terrain.getHeight(x, z)
@@ -155,10 +162,23 @@ export function createRainSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   return {
     update(dt: number) {
+      if (!rainTop.rainMesh.visible) return
       updateRainSet(rainTop, dt)
       updateRainSet(rainBot, dt)
     },
+    setVisible(v: boolean) {
+      rainTop.rainMesh.visible = v
+      rainTop.splashMesh.visible = v
+      rainBot.rainMesh.visible = v
+      rainBot.splashMesh.visible = v
+    },
     dispose() {
+      for (const rs of [rainTop, rainBot]) {
+        scene.remove(rs.rainMesh)
+        scene.remove(rs.splashMesh)
+        rs.rainMesh.geometry.dispose()
+        rs.splashMesh.geometry.dispose()
+      }
       rainMat.dispose()
       splashMat.dispose()
     },
