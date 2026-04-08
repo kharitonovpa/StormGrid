@@ -126,8 +126,6 @@ export function createCompassSystem(scene: THREE.Scene) {
 
     const tex = new THREE.CanvasTexture(canvas)
     tex.needsUpdate = true
-    canvas.width = 0
-    canvas.height = 0
 
     const mat = new THREE.MeshBasicMaterial({
       map: tex,

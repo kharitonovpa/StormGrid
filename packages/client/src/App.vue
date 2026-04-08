@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
@@ -14,6 +14,7 @@ import { createInteractionSystem } from './lib/interaction'
 import { createPlayerSystem } from './lib/player'
 import { createPreviewSystem } from './lib/preview'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
+import { createLobbyDemo } from './lib/lobbyDemo'
 import { useGameSocket } from './composables/useGameSocket'
 import { useGameState } from './composables/useGameState'
 import LobbyOverlay from './components/LobbyOverlay.vue'
@@ -31,6 +32,8 @@ let sceneCamera: THREE.PerspectiveCamera
 
 const socket = useGameSocket()
 const game = useGameState()
+
+socket.connect()
 
 function worldToScreen(wx: number, wy: number, wz: number): { x: number; y: number } {
   const v = new THREE.Vector3(wx, wy, wz)
@@ -85,6 +88,10 @@ function triggerCelebration(prediction: import('@stormgrid/shared').WatcherPredi
 }
 
 unsubMessage1 = socket.onMessage((msg) => {
+  if (msg.type === 'lobby:status') {
+    onlineCount.value = msg.online
+    return
+  }
   if (msg.type === 'game:end' && pendingGameEnd === null && game.phase.value === 'weather') {
     pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
     return
@@ -110,21 +117,37 @@ const showGameOver = computed(() => game.phase.value === 'finished')
 const showWatcher = computed(() => game.isWatcher.value && game.gameState.value !== null)
 const showArchitect = computed(() => game.isArchitect.value && game.gameState.value !== null)
 
-function onConnect() {
-  socket.connect()
+const onlineCount = ref(0)
+let pendingAction: (() => void) | null = null
+
+function ensureConnected(then: () => void) {
+  if (socket.connected.value) {
+    then()
+  } else {
+    pendingAction = then
+    socket.connect()
+  }
 }
+
+watch(() => socket.connected.value, (connected) => {
+  if (connected && pendingAction) {
+    const fn = pendingAction
+    pendingAction = null
+    fn()
+  }
+})
 
 function onPlay(character: CharacterType) {
   game.selectedCharacter.value = character
-  socket.joinQueue()
+  ensureConnected(() => socket.joinQueue())
 }
 
 function onWatch() {
-  socket.joinWatch()
+  ensureConnected(() => socket.joinWatch())
 }
 
 function onArchitect() {
-  socket.joinArchitect()
+  ensureConnected(() => socket.joinArchitect())
 }
 
 const pendingBonusType = ref<import('@stormgrid/shared').BonusType | null>(null)
@@ -142,7 +165,7 @@ function onStartBonusPlace(bonusType: import('@stormgrid/shared').BonusType) {
 function onPlayAgain() {
   pendingGameEnd = null
   game.reset()
-  socket.joinQueue()
+  ensureConnected(() => socket.joinQueue())
 }
 
 function onPredictWinner(playerId: 'A' | 'B') {
@@ -258,6 +281,8 @@ function optionStyle(index: number) {
   return { transform: `translate(${x}px, ${y}px)` }
 }
 
+let sceneReady = false
+
 function applyGameState(state: GameState) {
   terrainState.applyBoardState(state.board)
   if (playersSystem) {
@@ -272,10 +297,21 @@ function resetVisuals() {
   shouldBuildWater = false
 }
 
-// React to server state changes
+function stopLobbyDemo() {
+  if (!lobbyDemoActive) return
+  lobbyDemoActive = false
+  lobbyDemo?.stop()
+  if (controls instanceof OrbitControls) {
+    controls.autoRotate = false
+  }
+}
+
+// React to server state changes (deferred until scene is mounted)
 unsubMessage2 = socket.onMessage((msg) => {
+  if (!sceneReady) return
   switch (msg.type) {
     case 'game:start': {
+      stopLobbyDemo()
       pendingGameEnd = null
       terrainState.resetFlat()
       if (playersSystem) {
@@ -288,6 +324,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       break
     }
     case 'watch:assigned': {
+      stopLobbyDemo()
       terrainState.resetFlat()
       if (playersSystem) {
         playersSystem.setActivePlayer(null)
@@ -300,6 +337,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       break
     }
     case 'architect:assigned': {
+      stopLobbyDemo()
       terrainState.resetFlat()
       if (playersSystem) {
         playersSystem.setActivePlayer(null)
@@ -323,10 +361,12 @@ unsubMessage2 = socket.onMessage((msg) => {
     case 'tick:start': {
       previewSystem?.hide()
       playersSystem?.hideMoveOptions()
+      menuVisible.value = false
       break
     }
     case 'tick:resolve': {
       previewSystem?.hide()
+      menuVisible.value = false
       applyGameState(msg.state)
       startAnimating()
       break
@@ -362,6 +402,11 @@ unsubMessage2 = socket.onMessage((msg) => {
       startAnimating()
       break
     }
+    case 'forecast:update': {
+      applyGameState(msg.state)
+      startAnimating()
+      break
+    }
   }
 })
 
@@ -372,6 +417,8 @@ let rainSystem: ReturnType<typeof createRainSystem> | null = null
 let shouldBuildWater = false
 let previewSystem: ReturnType<typeof createPreviewSystem> | null = null
 let pendingGameEnd: { type: 'game:end'; winner: 'A' | 'B' | 'draw' } | null = null
+let lobbyDemo: ReturnType<typeof createLobbyDemo> | null = null
+let lobbyDemoActive = false
 
 function startAnimating() {
   animating = true
@@ -665,6 +712,20 @@ onMounted(() => {
   terrainState.paintColors(skirtGeo)
   rebuildGrid()
 
+  sceneReady = true
+
+  // --- Lobby demo: cinematic showcase ---
+  lobbyDemo = createLobbyDemo(terrainState, wind, rain, water, {
+    onTerrainChanged() { animating = true },
+    onRequestFlood() { shouldBuildWater = true },
+  })
+  lobbyDemo.start()
+  lobbyDemoActive = true
+  if (controls instanceof OrbitControls) {
+    controls.autoRotate = true
+    controls.autoRotateSpeed = 0.4
+  }
+
   let prevTime = performance.now()
 
   function animate() {
@@ -673,6 +734,10 @@ onMounted(() => {
     const dt = Math.min((now - prevTime) / 1000, 0.1)
     prevTime = now
     controls.update()
+
+    if (lobbyDemoActive && lobbyDemo) {
+      lobbyDemo.update(dt)
+    }
 
     if (cameraAnimTarget && cameraAnimFrom) {
       cameraAnimProgress = Math.min(cameraAnimProgress + dt * 2.5, 1)
@@ -699,6 +764,8 @@ onMounted(() => {
         animating = false
         terrainState.rebuildHeightCache()
         if (shouldBuildWater) {
+          terrainState.computeFlood()
+          terrainState.computeFloodBot()
           water.buildTop()
           water.buildBot()
           shouldBuildWater = false
@@ -741,6 +808,10 @@ onMounted(() => {
     waterSystem = null
     windSystem = null
     rainSystem = null
+    lobbyDemo?.stop()
+    lobbyDemo = null
+    lobbyDemoActive = false
+    sceneReady = false
     socket.disconnect()
   }
 })
@@ -750,6 +821,7 @@ onUnmounted(() => {
   clearTimeout(winnerPopupTimer)
   clearTimeout(celebrateTimer)
   disposeCelebrate()
+  pendingGameEnd = null
   unsubMessage1?.()
   unsubMessage2?.()
   sceneCleanup?.()
@@ -768,8 +840,7 @@ onUnmounted(() => {
   <LobbyOverlay
     v-if="showLobby"
     :phase="game.phase.value"
-    :connected="socket.connected.value"
-    @connect="onConnect"
+    :online-count="onlineCount"
     @play="onPlay"
     @watch="onWatch"
     @architect="onArchitect"
@@ -777,7 +848,7 @@ onUnmounted(() => {
 
   <GameHud
     v-if="showHud"
-    :phase="game.phase.value"
+    :phase="(game.phase.value as 'forecast' | 'ticking' | 'weather')"
     :round="game.gameState.value?.round ?? 1"
     :tick="game.currentTick.value"
     :tick-deadline="game.tickDeadline.value"

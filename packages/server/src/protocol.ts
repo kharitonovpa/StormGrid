@@ -32,6 +32,8 @@ export type {
   ArchitectAssignedMsg,
   ArchitectNoMatchMsg,
   ArchitectPromptMsg,
+  ForecastUpdateMsg,
+  LobbyStatusMsg,
 } from '@stormgrid/shared'
 
 import type { ClientMessage, ServerMessage } from '@stormgrid/shared'

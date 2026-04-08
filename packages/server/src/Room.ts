@@ -108,11 +108,15 @@ export class Room {
     delete this.players[pid]
     this.ended = true
     this.clearTimer()
+    this.clearArchitectTimer()
 
     const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
     const oppSlot = this.players[opponent]
     if (oppSlot) {
       send(oppSlot.ws, { type: 'game:end', winner: opponent })
+      oppSlot.ws.data.roomId = null
+      oppSlot.ws.data.playerId = null
+      oppSlot.ws.data.role = null
     }
     this.broadcastSpectators({ type: 'game:end', winner: opponent })
     this.scheduleCleanup()
@@ -179,12 +183,8 @@ export class Room {
     this.engine.breakInstrument('B', instrument)
 
     const updatedState = this.engine.getState()
-    for (const pid of ['A', 'B'] as const) {
-      const playerSlot = this.players[pid]
-      if (playerSlot) {
-        send(playerSlot.ws, { type: 'round:start', state: stateForPlayer(updatedState, pid) })
-      }
-    }
+    this.sendEach((pid) => ({ type: 'forecast:update', state: stateForPlayer(updatedState, pid) }))
+    this.broadcastWatchers({ type: 'forecast:update', state: updatedState })
   }
 
   /* ── Architect management ── */
@@ -252,7 +252,7 @@ export class Room {
     this.ended = true
     this.clearTimer()
     if (this.cleanupTimer) { clearTimeout(this.cleanupTimer); this.cleanupTimer = null }
-    if (this.architectTimer) { clearTimeout(this.architectTimer); this.architectTimer = null }
+    this.clearArchitectTimer()
     this.redirectWatchers()
     this.players = {}
     this.watchers.clear()
@@ -296,15 +296,14 @@ export class Room {
   }
 
   private proceedToTicking(): void {
-    if (this.architectTimer) {
-      clearTimeout(this.architectTimer)
-      this.architectTimer = null
-    }
+    if (this.ended) return
+    this.clearArchitectTimer()
     this.engine.beginTicking()
     this.beginTick()
   }
 
   private beginTick(): void {
+    if (this.ended) return
     if (this.players.A) this.players.A.action = null
     if (this.players.B) this.players.B.action = null
 
@@ -340,7 +339,7 @@ export class Room {
     if (result.state.phase === 'weather') {
       this.tickTimer = setTimeout(() => this.executeWeather(), 500)
     } else {
-      this.beginTick()
+      this.tickTimer = setTimeout(() => this.beginTick(), 300)
     }
   }
 
@@ -355,6 +354,7 @@ export class Room {
       const endMsg: ServerMessage = { type: 'game:end', winner: result.state.winner }
       this.broadcast(endMsg)
       this.broadcastSpectators(endMsg)
+      this.releasePlayerSlots()
       this.scheduleCleanup()
     } else {
       this.tickTimer = setTimeout(() => this.beginRound(), WEATHER_DISPLAY_MS)
@@ -433,6 +433,17 @@ export class Room {
     }
   }
 
+  private releasePlayerSlots(): void {
+    for (const pid of ['A', 'B'] as PlayerId[]) {
+      const slot = this.players[pid]
+      if (slot) {
+        slot.ws.data.roomId = null
+        slot.ws.data.playerId = null
+        slot.ws.data.role = null
+      }
+    }
+  }
+
   private scheduleCleanup(): void {
     this.clearTimer()
     if (this.cleanupTimer) { clearTimeout(this.cleanupTimer); this.cleanupTimer = null }
@@ -474,6 +485,13 @@ export class Room {
     if (this.tickTimer !== null) {
       clearTimeout(this.tickTimer)
       this.tickTimer = null
+    }
+  }
+
+  private clearArchitectTimer(): void {
+    if (this.architectTimer !== null) {
+      clearTimeout(this.architectTimer)
+      this.architectTimer = null
     }
   }
 }

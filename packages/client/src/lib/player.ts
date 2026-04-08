@@ -232,6 +232,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   const JUMP_DURATION = 0.35
   const JUMP_HEIGHT = CELL_SIZE * 0.6
   const WIND_SLIDE_DURATION = 1.5
+  const WIND_DEATH_OVERSHOOT = CELL_SIZE * 5
 
   function easeInOut(t: number): number {
     return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
@@ -300,14 +301,23 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         if (died && windPoints.length >= 2) {
           const last = windPoints[windPoints.length - 1]
           const prev = windPoints[windPoints.length - 2]
+          const dx = last.wx - prev.wx
+          const dz = last.wz - prev.wz
+          const len = Math.sqrt(dx * dx + dz * dz) || 1
+          const nx = dx / len
+          const nz = dz / len
           windPoints.push({
-            wx: last.wx + (last.wx - prev.wx),
-            wy: last.wy,
-            wz: last.wz + (last.wz - prev.wz),
+            wx: last.wx + nx * WIND_DEATH_OVERSHOOT,
+            wy: last.wy + CELL_SIZE * 2,
+            wz: last.wz + nz * WIND_DEATH_OVERSHOOT,
           })
         } else if (died && windPoints.length === 1) {
           const only = windPoints[0]
-          windPoints.push({ wx: only.wx + CELL_SIZE, wy: only.wy, wz: only.wz })
+          windPoints.push({
+            wx: only.wx + WIND_DEATH_OVERSHOOT,
+            wy: only.wy + CELL_SIZE * 2,
+            wz: only.wz,
+          })
         }
 
         windSliding = true
@@ -352,8 +362,9 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
           mesh.position.y = a.wy + (b.wy - a.wy) * frac
 
           if (windDied && cachedMaterials) {
-            const fadeStart = 0.7
-            const opacity = windT < fadeStart ? 1 : 1 - (windT - fadeStart) / (1 - fadeStart)
+            const fadeStart = 0.35
+            const fade = windT < fadeStart ? 1 : 1 - (windT - fadeStart) / (1 - fadeStart)
+            const opacity = fade * fade
             for (const mat of cachedMaterials) mat.opacity = opacity
           }
         } else if (jumping) {
@@ -392,19 +403,6 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   let validMoves: { cx: number; cz: number }[] = []
   let activePlayerId: 'A' | 'B' = 'A'
   let lastTerrainVersion = -1
-
-  function getValidMoves(): { cx: number; cz: number }[] {
-    const s = activePlayerId === 'A' ? playerA.state : playerB.state
-    const moves: { cx: number; cz: number }[] = []
-    for (const [dx, dz] of DIRS_8) {
-      const nx = s.cx + dx
-      const nz = s.cz + dz
-      if (nx >= 0 && nx < CELLS && nz >= 0 && nz < CELLS) {
-        moves.push({ cx: nx, cz: nz })
-      }
-    }
-    return moves
-  }
 
   function showMoveOptions() {
     showMoveOptionsFor(activePlayerId)

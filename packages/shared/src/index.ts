@@ -25,6 +25,7 @@ export type {
 } from './types.js'
 
 export {
+  GAME_TITLE,
   BOARD_SIZE,
   TICKS_PER_ROUND,
   TICK_DURATION_MS,
@@ -67,4 +68,6 @@ export type {
   ArchitectAssignedMsg,
   ArchitectNoMatchMsg,
   ArchitectPromptMsg,
+  ForecastUpdateMsg,
+  LobbyStatusMsg,
 } from './protocol.js'

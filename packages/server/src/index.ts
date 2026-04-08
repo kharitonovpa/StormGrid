@@ -8,6 +8,21 @@ const app = new Hono()
 const roomManager = new RoomManager()
 const matchmaking = new Matchmaking(roomManager)
 
+const allClients = new Set<ServerWebSocket<WsData>>()
+
+let lobbyStatusTimer: ReturnType<typeof setTimeout> | null = null
+
+function broadcastLobbyStatus() {
+  if (lobbyStatusTimer) return
+  lobbyStatusTimer = setTimeout(() => {
+    lobbyStatusTimer = null
+    const msg = JSON.stringify({ type: 'lobby:status', online: allClients.size })
+    for (const ws of allClients) {
+      try { ws.send(msg) } catch { /* closed */ }
+    }
+  }, 500)
+}
+
 app.get('/health', (c) => c.json({ ok: true }))
 
 app.get('/', (c) =>
@@ -40,6 +55,8 @@ const server = Bun.serve<WsData>({
   websocket: {
     open(ws) {
       console.log(`[ws] connect ${ws.data.sessionId}`)
+      allClients.add(ws)
+      broadcastLobbyStatus()
     },
 
     message(ws, raw) {
@@ -174,6 +191,8 @@ const server = Bun.serve<WsData>({
 
     close(ws) {
       console.log(`[ws] disconnect ${ws.data.sessionId}`)
+      allClients.delete(ws)
+      broadcastLobbyStatus()
       matchmaking.dequeue(ws)
 
       const { roomId, role } = ws.data

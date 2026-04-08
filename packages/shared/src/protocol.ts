@@ -51,6 +51,10 @@ export type ArchitectAssignedMsg = { type: 'architect:assigned'; roomId: string;
 export type ArchitectNoMatchMsg = { type: 'architect:no_match' }
 export type ArchitectPromptMsg = { type: 'architect:prompt'; deadline: number }
 
+export type ForecastUpdateMsg = { type: 'forecast:update'; state: GameState }
+
+export type LobbyStatusMsg = { type: 'lobby:status'; online: number }
+
 export type ServerMessage =
   | QueueWaitingMsg
   | GameStartMsg
@@ -67,3 +71,5 @@ export type ServerMessage =
   | ArchitectAssignedMsg
   | ArchitectNoMatchMsg
   | ArchitectPromptMsg
+  | ForecastUpdateMsg
+  | LobbyStatusMsg

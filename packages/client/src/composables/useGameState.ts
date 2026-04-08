@@ -149,6 +149,10 @@ export function useGameState() {
         isArchitect.value = false
         break
 
+      case 'forecast:update':
+        gameState.value = msg.state
+        break
+
       case 'architect:prompt':
         architectDeadline.value = msg.deadline
         break
