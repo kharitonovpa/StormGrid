@@ -360,4 +360,18 @@ defineExpose({ startCountdown, resetBonusState })
   margin-top: 4px;
   letter-spacing: 0.3px;
 }
+
+/* ── Mobile ── */
+
+@media (max-width: 640px) {
+  .ah { top: 12px; left: 12px; gap: 10px; }
+  .ah-timer-num { font-size: 22px; }
+  .ah-wt { padding: 8px 10px 5px; }
+  .ah-wt-label { font-size: 9px; }
+  .ah-dir { width: 44px; height: 44px; font-size: 12px; }
+  .ah-confirm { min-height: 44px; font-size: 12px; }
+  .ah-bonus { padding: 8px 10px 4px; }
+  .ah-bonus-label { font-size: 9px; }
+  .ah-hint { font-size: 9px; }
+}
 </style>

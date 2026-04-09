@@ -227,10 +227,12 @@ function computeFloodGeneric(
           const [z, x] = q[qh++]
           body.push([z, x])
           for (const [dz, dx] of dirs) {
-            const nk = (z + dz) * CELLS + (x + dx)
+            const nz = z + dz, nx = x + dx
+            if (nz < 0 || nz >= CELLS || nx < 0 || nx >= CELLS) continue
+            const nk = nz * CELLS + nx
             if (!subVis.has(nk) && floodedSet.has(nk)) {
               subVis.add(nk)
-              q.push([z + dz, x + dx])
+              q.push([nz, nx])
             }
           }
         }

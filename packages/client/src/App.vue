@@ -252,6 +252,16 @@ function animateCameraToSide(side: 'top' | 'bottom') {
 }
 
 // --- Radial menu state ---
+const MENU_MARGIN = 96
+function clampMenuPos(x: number, y: number) {
+  const mx = Math.min(MENU_MARGIN, window.innerWidth / 2)
+  const my = Math.min(MENU_MARGIN, window.innerHeight / 2)
+  return {
+    x: Math.max(mx, Math.min(x, window.innerWidth - mx)),
+    y: Math.max(my, Math.min(y, window.innerHeight - my)),
+  }
+}
+
 const menuVisible = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
@@ -284,6 +294,20 @@ function closeMenu() {
   menuVisible.value = false
 }
 
+function onDocumentPointerDown(e: PointerEvent) {
+  const el = e.target as HTMLElement | null
+  if (el?.closest('.radial-menu')) return
+  closeMenu()
+}
+
+watch(menuVisible, (open) => {
+  if (open) {
+    setTimeout(() => document.addEventListener('pointerdown', onDocumentPointerDown, { capture: true }), 0)
+  } else {
+    document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  }
+})
+
 let handleAction: ((action: MenuAction) => void) | null = null
 let playersSystem: ReturnType<typeof createPlayerSystem> | null = null
 let sceneCleanup: (() => void) | null = null
@@ -293,18 +317,30 @@ function selectOption(action: MenuAction) {
   closeMenu()
 }
 
-const RING_R = 50
+const RING_R = 64
+const BTN_HALF = 30
+const RING_R_M = 58
+const BTN_HALF_M = 28
+
+function isMobileLayout() { return window.innerWidth <= 640 }
+
 function optionStyle(index: number) {
+  const mobile = isMobileLayout()
+  const r = mobile ? RING_R_M : RING_R
+  const h = mobile ? BTN_HALF_M : BTN_HALF
   const count = menuOptions.value.length
+  let x: number, y: number
   if (count === 2) {
-    const x = index === 0 ? -1 : 1
-    return { transform: `translate(${x * RING_R - 24}px, -24px)` }
+    const side = index === 0 ? -1 : 1
+    x = side * r - h
+    y = -h
+  } else {
+    const step = (2 * Math.PI) / count
+    const rad = -Math.PI / 2 - index * step
+    x = Math.cos(rad) * r - h
+    y = Math.sin(rad) * r - h
   }
-  const angles = [-90, -210, -330]
-  const rad = (angles[index] * Math.PI) / 180
-  const x = Math.cos(rad) * RING_R - 24
-  const y = Math.sin(rad) * RING_R - 24
-  return { transform: `translate(${x}px, ${y}px)` }
+  return { left: `${x}px`, top: `${y}px`, '--i': String(index) } as Record<string, string>
 }
 
 let sceneReady = false
@@ -648,8 +684,9 @@ onMounted(() => {
         watcherTarget.value = e.isBottom ? 'B' : 'A'
         menuCx.value = e.cx
         menuCz.value = e.cz
-        menuX.value = e.screenX
-        menuY.value = e.screenY
+        const wp = clampMenuPos(e.screenX, e.screenY)
+        menuX.value = wp.x
+        menuY.value = wp.y
         menuCellValue.value = terrainState.target[e.cz][e.cx]
         menuIsPlayer.value = false
         menuVisible.value = true
@@ -676,8 +713,9 @@ onMounted(() => {
       }
       menuCx.value = e.cx
       menuCz.value = e.cz
-      menuX.value = e.screenX
-      menuY.value = e.screenY
+      const pp = clampMenuPos(e.screenX, e.screenY)
+      menuX.value = pp.x
+      menuY.value = pp.y
       menuCellValue.value = terrainState.target[e.cz][e.cx]
       menuIsPlayer.value = players.isMyCell(e.cx, e.cz)
       menuVisible.value = true
@@ -717,6 +755,7 @@ onMounted(() => {
       }
     },
     [bottomMesh],
+    closeMenu,
   )
 
   handleAction = (action) => {
@@ -885,6 +924,7 @@ onUnmounted(() => {
   pendingGameEnd = null
   unsubMessage1?.()
   unsubMessage2?.()
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   sceneCleanup?.()
   sceneCleanup = null
   controls?.dispose()
@@ -991,28 +1031,37 @@ onUnmounted(() => {
 
   <!-- Radial Menu -->
   <Teleport to="body">
-    <div v-if="menuVisible" class="radial-backdrop" @click="closeMenu" />
     <Transition name="radial">
       <div v-if="menuVisible" class="radial-menu" :style="menuStyle">
+        <div class="radial-ring"></div>
+        <div class="radial-center"></div>
         <button
           v-for="(opt, i) in menuOptions"
           :key="opt.action"
-          class="radial-option"
+          class="radial-btn"
           :class="[opt.icon, { disabled: opt.disabled }]"
           :style="optionStyle(i)"
           @click.stop="!opt.disabled && selectOption(opt.action)"
         >
-          <svg viewBox="0 0 32 32" width="26" height="26">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
             <template v-if="opt.icon === 'move'">
-              <polygon points="16,4 20,10 12,10" fill="currentColor" />
-              <polygon points="16,28 12,22 20,22" fill="currentColor" />
-              <polygon points="4,16 10,12 10,20" fill="currentColor" />
-              <polygon points="28,16 22,12 22,20" fill="currentColor" />
-              <rect x="14" y="10" width="4" height="12" rx="1" fill="currentColor" opacity="0.4" />
-              <rect x="10" y="14" width="12" height="4" rx="1" fill="currentColor" opacity="0.4" />
+              <line x1="12" y1="3" x2="12" y2="21" opacity="0.15" />
+              <line x1="3" y1="12" x2="21" y2="12" opacity="0.15" />
+              <polyline points="9,6 12,3 15,6" />
+              <polyline points="9,18 12,21 15,18" />
+              <polyline points="6,9 3,12 6,15" />
+              <polyline points="18,9 21,12 18,15" />
             </template>
-            <polygon v-else-if="opt.icon === 'raise'" points="16,6 28,26 4,26" fill="currentColor" />
-            <polygon v-else points="16,26 28,6 4,6" fill="currentColor" />
+            <template v-else-if="opt.icon === 'raise'">
+              <polyline points="4,17 12,7 20,17" />
+              <line x1="8" y1="20" x2="16" y2="20" opacity="0.35" />
+            </template>
+            <template v-else>
+              <polyline points="4,7 12,17 20,7" />
+              <line x1="8" y1="4" x2="16" y2="4" opacity="0.35" />
+            </template>
           </svg>
           <span class="radial-label">{{ opt.label }}</span>
         </button>
@@ -1030,28 +1079,141 @@ onUnmounted(() => {
 </style>
 
 <style>
-.radial-backdrop { position: fixed; inset: 0; z-index: 1000; }
-.radial-menu { position: fixed; z-index: 1001; pointer-events: none; width: 0; height: 0; }
-.radial-option {
-  position: absolute; width: 48px; height: 48px; border-radius: 50%;
-  border: 2px solid rgba(180, 190, 210, 0.35);
-  background: rgba(30, 35, 45, 0.82); color: rgba(210, 215, 225, 0.85);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  cursor: pointer; pointer-events: auto; transition: all 0.18s ease;
-  padding: 0; gap: 1px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+/* ── Radial Menu ── */
+
+.radial-menu {
+  position: fixed;
+  z-index: 1001;
+  pointer-events: none;
+  width: 0;
+  height: 0;
 }
-.radial-option svg { flex-shrink: 0; }
-.radial-label { font-size: 8px; font-weight: 600; letter-spacing: 0.3px; opacity: 0.7; white-space: nowrap; }
-.radial-option.raise { border-color: rgba(150, 210, 170, 0.4); color: rgba(170, 220, 185, 0.85); }
-.radial-option.raise:hover:not(.disabled) { background: rgba(40, 60, 48, 0.88); border-color: rgba(170, 225, 185, 0.6); box-shadow: 0 0 14px rgba(150, 210, 170, 0.2); }
-.radial-option.move { border-color: rgba(160, 170, 220, 0.4); color: rgba(175, 185, 230, 0.85); }
-.radial-option.move:hover:not(.disabled) { background: rgba(42, 44, 62, 0.88); border-color: rgba(175, 185, 235, 0.6); box-shadow: 0 0 14px rgba(160, 170, 220, 0.2); }
-.radial-option.lower { border-color: rgba(220, 170, 150, 0.4); color: rgba(225, 180, 165, 0.85); }
-.radial-option.lower:hover:not(.disabled) { background: rgba(60, 42, 38, 0.88); border-color: rgba(230, 185, 165, 0.6); box-shadow: 0 0 14px rgba(220, 170, 150, 0.2); }
-.radial-option.disabled { opacity: 0.2; cursor: default; pointer-events: none; }
-.radial-enter-active { transition: opacity 0.15s ease, transform 0.15s ease; }
-.radial-leave-active { transition: opacity 0.1s ease, transform 0.1s ease; }
-.radial-enter-from, .radial-leave-to { opacity: 0; transform: scale(0.7); }
+
+.radial-ring {
+  position: absolute;
+  width: 136px;
+  height: 136px;
+  border-radius: 50%;
+  transform: translate(-68px, -68px);
+  border: 1px solid rgba(255, 255, 255, 0.035);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.015) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.radial-center {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-4px, -4px);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.radial-btn {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(18, 20, 28, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: rgba(220, 225, 235, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  padding: 0;
+  gap: 2px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease,
+    border-color 0.25s ease,
+    background 0.25s ease;
+  animation: radial-pop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 0.055s);
+}
+
+.radial-btn svg {
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+.radial-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  opacity: 0.55;
+  white-space: nowrap;
+  text-transform: uppercase;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.radial-btn.move {
+  background: linear-gradient(145deg, rgba(99, 102, 241, 0.2), rgba(67, 56, 202, 0.08));
+  border-color: rgba(129, 140, 248, 0.22);
+  color: rgba(165, 180, 252, 0.95);
+}
+.radial-btn.move:hover:not(.disabled) {
+  background: linear-gradient(145deg, rgba(99, 102, 241, 0.35), rgba(67, 56, 202, 0.15));
+  border-color: rgba(165, 180, 252, 0.45);
+  transform: scale(1.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 0 24px rgba(99, 102, 241, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.radial-btn.raise {
+  background: linear-gradient(145deg, rgba(52, 211, 153, 0.2), rgba(16, 185, 129, 0.08));
+  border-color: rgba(110, 231, 183, 0.22);
+  color: rgba(167, 243, 208, 0.95);
+}
+.radial-btn.raise:hover:not(.disabled) {
+  background: linear-gradient(145deg, rgba(52, 211, 153, 0.35), rgba(16, 185, 129, 0.15));
+  border-color: rgba(110, 231, 183, 0.45);
+  transform: scale(1.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 0 24px rgba(52, 211, 153, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.radial-btn.lower {
+  background: linear-gradient(145deg, rgba(251, 146, 60, 0.2), rgba(234, 88, 12, 0.08));
+  border-color: rgba(253, 186, 116, 0.22);
+  color: rgba(254, 215, 170, 0.95);
+}
+.radial-btn.lower:hover:not(.disabled) {
+  background: linear-gradient(145deg, rgba(251, 146, 60, 0.35), rgba(234, 88, 12, 0.15));
+  border-color: rgba(253, 186, 116, 0.45);
+  transform: scale(1.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 0 24px rgba(251, 146, 60, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.radial-btn.disabled {
+  opacity: 0.15;
+  cursor: default;
+  pointer-events: none;
+}
+
+@keyframes radial-pop {
+  from { opacity: 0; transform: scale(0); }
+}
+
+.radial-enter-active { transition: opacity 0.18s ease; }
+.radial-leave-active { transition: opacity 0.1s ease; }
+.radial-enter-from, .radial-leave-to { opacity: 0; }
 
 /* ── Winner Prediction Popup ── */
 
@@ -1228,4 +1390,16 @@ onUnmounted(() => {
 .od-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
 .od-enter-from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
 .od-leave-to { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+
+/* ── Mobile ── */
+
+@media (max-width: 640px) {
+  .radial-btn { width: 56px; height: 56px; }
+  .radial-label { font-size: 10px; }
+  .reconnect-card { padding: 24px 32px; }
+  .reconnect-text { font-size: 12px; }
+  .opponent-dc-banner { font-size: 11px; padding: 8px 14px; }
+  .wp-card { padding: 20px 32px; }
+  .wp-points { font-size: 28px; }
+}
 </style>

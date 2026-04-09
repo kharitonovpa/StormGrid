@@ -283,4 +283,12 @@ onUnmounted(() => {
 .btn-again:hover svg {
   transform: rotate(-45deg);
 }
+
+/* ── Mobile ── */
+
+@media (max-width: 640px) {
+  .gameover-card { padding: 32px 28px; }
+  .result-title { font-size: 32px; }
+  .result-sub { margin: 0 0 20px; font-size: 12px; }
+}
 </style>

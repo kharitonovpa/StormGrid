@@ -28,7 +28,7 @@ export class ConnectionLimiter {
   }
 
   checkSize(raw: string): boolean {
-    return raw.length <= MAX_MESSAGE_BYTES
+    return new TextEncoder().encode(raw).byteLength <= MAX_MESSAGE_BYTES
   }
 
   trackInvalid(): boolean {

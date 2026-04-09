@@ -56,7 +56,7 @@ onMounted(() => {
 
   renderer = new THREE.WebGLRenderer({ canvas: el, alpha: true, antialias: true })
   renderer.setPixelRatio(dpr)
-  renderer.setSize(size, size)
+  renderer.setSize(size, size, false)
   renderer.setClearColor(0x000000, 0)
 
   scene = new THREE.Scene()
@@ -125,8 +125,8 @@ onUnmounted(() => {
 
 <style scoped>
 .char-preview-canvas {
-  width: 120px;
-  height: 120px;
+  width: 100%;
+  height: 100%;
   display: block;
   pointer-events: none;
 }

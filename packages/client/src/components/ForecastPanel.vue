@@ -474,4 +474,13 @@ onUnmounted(() => {
   40%  { opacity: 0.8; transform: scale(1.06); }
   100% { opacity: 0; transform: scale(1); }
 }
+
+/* ── Mobile ── */
+
+@media (max-width: 640px) {
+  .forecast-panel { top: 10px; right: 10px; }
+  .compass-svg { width: 120px; height: 120px; }
+  .cardinal { font-size: 10px; }
+  .cardinal-n { font-size: 11px; }
+}
 </style>

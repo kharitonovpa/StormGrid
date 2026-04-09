@@ -412,4 +412,17 @@ const isUrgent = computed(() => remaining.value <= 2 && remaining.value > 0)
   opacity: 0;
   transform: scale(0.9);
 }
+
+/* ── Mobile ── */
+
+@media (max-width: 640px) {
+  .hud { padding: 10px; }
+  .hud-strip { gap: 10px; padding: 8px 14px 8px 10px; }
+  .timer-ring, .ring-svg { width: 40px; height: 40px; }
+  .ring-num { font-size: 14px; }
+  .phase-title { font-size: 12px; }
+  .phase-sub, .round-pill { font-size: 10px; }
+  .cataclysm-banner { padding: 10px 24px; }
+  .cataclysm-text { font-size: 16px; letter-spacing: 2px; }
+}
 </style>

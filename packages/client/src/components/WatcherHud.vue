@@ -447,4 +447,16 @@ const recentPredictions = computed(() =>
 .wh-hist-row.correct .wh-hist-pts { color: rgba(100, 220, 140, 0.7); }
 .wh-hist-row.wrong .wh-hist-pts { color: rgba(220, 90, 70, 0.4); }
 
+/* ── Mobile ── */
+
+@media (max-width: 640px) {
+  .wh { top: 12px; left: 12px; gap: 10px; }
+  .wh-score-num { font-size: 26px; }
+  .wh-pick { min-height: 44px; padding: 8px 14px; }
+  .wh-pick-label { font-size: 9px; }
+  .wh-brk { min-height: 44px; padding: 10px 12px 6px; }
+  .wh-brk-icon { width: 36px; height: 36px; }
+  .wh-brk-text { font-size: 9px; }
+  .wh-history { max-height: 80px; }
+}
 </style>

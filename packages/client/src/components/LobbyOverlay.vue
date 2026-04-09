@@ -421,4 +421,37 @@ const selected = ref<CharacterType>('wheat')
   50% { width: 1em; }
   75% { width: 1.5em; }
 }
+
+/* ── Mobile ── */
+
+@media (max-width: 640px) {
+  .lobby-title-area { padding: 24px 24px; }
+  .lobby-title { font-size: 28px; letter-spacing: 2px; }
+  .lobby-tagline { font-size: 11px; }
+
+  .panel-content {
+    flex-direction: column;
+    padding: 20px 24px 28px;
+    gap: 20px;
+    align-items: center;
+  }
+
+  .panel-divider { display: none; }
+
+  .char-select { gap: 8px; justify-content: center; }
+  .char-btn { font-size: 10px; padding: 6px 8px 8px; }
+  .char-preview-wrap { width: 80px; height: 80px; }
+
+  .actions-section { min-width: auto; align-items: center; }
+  .actions-primary { justify-content: center; }
+  .actions-secondary { justify-content: center; }
+
+  .btn-role {
+    padding: 8px 12px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .online-badge { justify-content: center; }
+}
 </style>

@@ -19,6 +19,7 @@ export function createInteractionSystem(
   onCellClick: (e: CellClickEvent) => void,
   onHoverChange: (cell: { cx: number; cz: number; isBottom: boolean } | null) => void,
   extraMeshes: THREE.Mesh[] = [],
+  onEmptyClick?: () => void,
 ) {
   const raycaster = new THREE.Raycaster()
   const mouse = new THREE.Vector2()
@@ -141,6 +142,18 @@ export function createInteractionSystem(
   function onPointerDown(e: PointerEvent) {
     mouseDownPos = { x: e.clientX, y: e.clientY }
     isDown = true
+    if (e.pointerType === 'touch') {
+      const cell = raycastCell(e.clientX, e.clientY)
+      if (cell) setHover(cell.cx, cell.cz, cell.isBottom)
+    }
+  }
+
+  function suppressSyntheticClick() {
+    const stop = (ev: Event) => {
+      if (ev.target === domElement) { ev.stopPropagation(); ev.preventDefault() }
+    }
+    document.addEventListener('click', stop, { capture: true, once: true })
+    setTimeout(() => document.removeEventListener('click', stop, true), 300)
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -153,8 +166,11 @@ export function createInteractionSystem(
 
     const cell = raycastCell(e.clientX, e.clientY)
     if (cell) {
+      if (e.pointerType === 'touch') suppressSyntheticClick()
       const screen = projectCellCenter(cell.cx, cell.cz, cell.isBottom)
       onCellClick({ cx: cell.cx, cz: cell.cz, screenX: screen.x, screenY: screen.y, isBottom: cell.isBottom })
+    } else {
+      onEmptyClick?.()
     }
   }
 
