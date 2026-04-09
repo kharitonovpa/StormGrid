@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch, provide } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
@@ -16,6 +16,7 @@ import { createPreviewSystem } from './lib/preview'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
+import { createAudioSystem, type AudioSystem } from './lib/audio'
 import { useGameSocket } from './composables/useGameSocket'
 import { useGameState } from './composables/useGameState'
 import LobbyOverlay from './components/LobbyOverlay.vue'
@@ -24,6 +25,7 @@ import GameOverOverlay from './components/GameOverOverlay.vue'
 import ForecastPanel from './components/ForecastPanel.vue'
 import WatcherHud from './components/WatcherHud.vue'
 import ArchitectHud from './components/ArchitectHud.vue'
+import VolumeControl from './components/VolumeControl.vue'
 
 const container = ref<HTMLElement | null>(null)
 let renderer: THREE.WebGLRenderer
@@ -36,6 +38,9 @@ const game = useGameState()
 
 const modelsReady = preloadModels()
 socket.connect()
+
+const audio = createAudioSystem()
+provide<AudioSystem>('audio', audio)
 
 function worldToScreen(wx: number, wy: number, wz: number): { x: number; y: number } {
   const v = new THREE.Vector3(wx, wy, wz)
@@ -96,6 +101,8 @@ unsubMessage1 = socket.onMessage((msg) => {
   }
   if (msg.type === 'game:start') {
     socket.setReconnectToken(msg.reconnectToken)
+    audio.enterMatch()
+    audio.play('match-found')
   }
   if (msg.type === 'reconnect:fail') {
     socket.setReconnectToken(null)
@@ -106,9 +113,20 @@ unsubMessage1 = socket.onMessage((msg) => {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
       return
     }
+    audio.enterFinished()
+    const w = (msg as { winner: 'A' | 'B' | 'draw' }).winner
+    const myId = game.myPlayerId.value
+    if (w === 'draw') audio.play('draw-end')
+    else if (myId && w === myId) audio.play('victory')
+    else if (myId) audio.play('defeat')
   }
-  if (msg.type === 'watcher:score' && msg.prediction.correct) {
-    triggerCelebration(msg.prediction)
+  if (msg.type === 'watcher:score') {
+    if (msg.prediction.correct) {
+      triggerCelebration(msg.prediction)
+      audio.play('predict-correct')
+    } else if (msg.prediction.correct === false) {
+      audio.play('predict-wrong')
+    }
   }
   game.handleMessage(msg)
 })
@@ -162,14 +180,17 @@ watch(() => socket.connected.value, (connected) => {
 
 function onPlay(character: CharacterType) {
   game.selectedCharacter.value = character
+  audio.play('queue-enter')
   ensureConnected(() => socket.joinQueue(character))
 }
 
 function onWatch() {
+  audio.play('queue-enter')
   ensureConnected(() => socket.joinWatch())
 }
 
 function onArchitect() {
+  audio.play('queue-enter')
   ensureConnected(() => socket.joinArchitect())
 }
 
@@ -179,6 +200,7 @@ const architectHudRef = ref<InstanceType<typeof ArchitectHud> | null>(null)
 function onSetWeather(weatherType: import('@stormgrid/shared').WeatherType, dir: import('@stormgrid/shared').WindDir) {
   socket.setWeather(weatherType, dir)
   game.weatherSubmitted.value = true
+  audio.play('weather-confirm')
 }
 
 function onStartBonusPlace(bonusType: import('@stormgrid/shared').BonusType) {
@@ -191,6 +213,7 @@ function onPlayAgain() {
   const lastCharacter = game.selectedCharacter.value ?? 'wheat'
   game.reset()
   game.selectedCharacter.value = lastCharacter
+  audio.enterLobby()
   ensureConnected(() => socket.joinQueue(lastCharacter))
 }
 
@@ -209,6 +232,7 @@ function onPredictMove(target: 'A' | 'B', action: Action) {
 function onBreakInstrument(instrument: 'vane' | 'barometer') {
   socket.breakInstrument(instrument)
   game.breakUsed.value = true
+  audio.play('instrument-break')
 }
 
 function switchToTrackball() {
@@ -396,12 +420,14 @@ unsubMessage2 = socket.onMessage((msg) => {
       resetVisuals()
       switchToOrbit()
       startAnimating()
+      audio.enterMatch()
       break
     }
     case 'reconnect:fail': {
       terrainState.resetFlat()
       resetVisuals()
       startAnimating()
+      audio.enterLobby()
       break
     }
     case 'watch:assigned': {
@@ -415,6 +441,8 @@ unsubMessage2 = socket.onMessage((msg) => {
       switchToTrackball()
       applyGameState(msg.state)
       startAnimating()
+      audio.enterMatch()
+      audio.play('match-found')
       break
     }
     case 'architect:assigned': {
@@ -428,6 +456,8 @@ unsubMessage2 = socket.onMessage((msg) => {
       switchToTrackball()
       applyGameState(msg.state)
       startAnimating()
+      audio.enterMatch()
+      audio.play('match-found')
       break
     }
     case 'architect:prompt': {
@@ -436,6 +466,7 @@ unsubMessage2 = socket.onMessage((msg) => {
     }
     case 'watcher:redirect': {
       resetVisuals()
+      audio.stopWeather()
       socket.joinWatch()
       break
     }
@@ -458,22 +489,38 @@ unsubMessage2 = socket.onMessage((msg) => {
       if (weather) {
         windSystem?.setDirection(weather.dir)
         windSystem?.setVisible(true)
+        audio.startWind()
       }
-      if (weather?.type === 'wind_rain') rainSystem?.setVisible(true)
+      if (weather?.type === 'wind_rain') {
+        rainSystem?.setVisible(true)
+        audio.startRain()
+      }
       if (msg.result.floodedCells.length > 0) shouldBuildWater = true
       startAnimating()
 
       if (playersSystem) {
         const paths = msg.result.windPath as Record<'A' | 'B', { x: number; y: number }[]>
         const deaths = msg.result.deaths as ('A' | 'B')[]
+        if (paths.A.length > 1 || paths.B.length > 1) audio.play('wind-push')
         playersSystem.animateWindPaths(paths, deaths).then(() => {
           if (!playersSystem) return
           playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B)
+          audio.stopWeather()
+          if (deaths.length > 0) audio.play('death')
+          if (shouldBuildWater && deaths.length === 0) audio.play('water-rise')
           if (pendingGameEnd) {
+            audio.enterFinished()
+            const w = pendingGameEnd.winner
+            const myId = game.myPlayerId.value
+            if (w === 'draw') audio.play('draw-end')
+            else if (myId && w === myId) audio.play('victory')
+            else if (myId) audio.play('defeat')
             game.handleMessage(pendingGameEnd)
             pendingGameEnd = null
           }
         })
+      } else {
+        audio.stopWeather()
       }
       break
     }
@@ -481,6 +528,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       resetVisuals()
       applyGameState(msg.state)
       startAnimating()
+      audio.stopWeather()
       break
     }
     case 'forecast:update': {
@@ -704,6 +752,7 @@ onMounted(() => {
           if (dir) {
             socket.submitAction({ kind: 'move', dir })
             game.actionSubmitted.value = true
+            audio.play('action-submit')
             const s2 = game.myPlayerId.value === 'A' ? players.playerA.state : players.playerB.state
             preview.showMove(s2.cx, s2.cz, e.cx, e.cz)
           }
@@ -781,6 +830,7 @@ onMounted(() => {
     const serverAction: Action = { kind: action, x: cx, y: cz }
     socket.submitAction(serverAction)
     game.actionSubmitted.value = true
+    audio.play('action-submit')
     if (action === 'raise') preview.showRaise(cx, cz)
     else if (action === 'lower') preview.showLower(cx, cz)
   }
@@ -799,6 +849,7 @@ onMounted(() => {
   rebuildGrid()
 
   sceneReady = true
+  audio.enterLobby()
 
   // --- Lobby demo: cinematic showcase ---
   lobbyDemo = createLobbyDemo(terrainState, wind, rain, water, {
@@ -879,6 +930,7 @@ onMounted(() => {
     players.update(dt)
     interaction.update(dt)
     preview.update(dt)
+    audio.update(dt)
     renderer.render(scene, camera)
   }
 
@@ -912,6 +964,7 @@ onMounted(() => {
     lobbyDemo = null
     lobbyDemoActive = false
     sceneReady = false
+    audio.dispose()
     socket.disconnect()
   }
 })
@@ -1011,6 +1064,8 @@ onUnmounted(() => {
     :my-player-id="game.myPlayerId.value"
     @play-again="onPlayAgain"
   />
+
+  <VolumeControl />
 
   <!-- Winner Prediction Popup -->
   <Teleport to="body">

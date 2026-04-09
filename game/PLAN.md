@@ -132,7 +132,7 @@
 | # | Задача | Детали |
 |---|--------|--------|
 | 7.1 | ✅ Character visuals | GLB-модели (Meshy AI) для Wheat, Rice, Corn. Матовые PBR-материалы (roughness 0.92, metalness 0), пастельные цвета, per-character масштаб. 3D-превью с вращением и покачиванием в лобби |
-| 7.2 | Sound design | Ambient, wind, rain, tick countdown, death, victory |
+| 7.2 | ✅ Sound design | Howler.js audio system: ambient pads, music loops, weather loops (wind/rain), 19 SFX (terrain, move, wind push, death, tick countdown, UI clicks, match found, victory/defeat/draw, watcher predictions, instrument break, architect confirm). VolumeControl component with mute + Music/SFX sliders. localStorage persistence |
 | 7.3 | ✅ Mobile-friendly | Touch input (pointerdown/up, synthetic click suppression, touch hover highlight), responsive HUD/Lobby/Overlays (media queries 640px), viewport clamping для radial menu, CharacterPreview fluid sizing, bugfix: flood BFS bounds check |
 | 7.4 | ✅ Reconnect handling | Переподключение при потере WS, восстановление state |
 | 7.5 | Replay system | Сохранение match log → просмотр повтора |
@@ -167,4 +167,4 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
 - ✅ **Reconnect handling** — восстановление при потере WS
 - ✅ **Rate limiting & anti-cheat** — token bucket, message size, invalid flood
 - ✅ **Mobile-friendly** — touch events, responsive UI, viewport clamping, flood BFS bugfix
-- **Sound design** — ambient, wind, rain, tick countdown, death, victory
+- ✅ **Sound design** — Howler.js audio system, 25 placeholder sounds, VolumeControl UI, all trigger points wired

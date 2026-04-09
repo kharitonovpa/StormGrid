@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed } from 'vue'
+import { onMounted, onUnmounted, computed, inject } from 'vue'
 import type { PlayerId } from '@stormgrid/shared'
+import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
 
 const props = defineProps<{
@@ -11,6 +12,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   playAgain: []
 }>()
+
+const audio = inject<AudioSystem>('audio')
 
 const isWin = computed(() => props.myPlayerId && props.winner === props.myPlayerId)
 const isDraw = computed(() => props.winner === 'draw')
@@ -87,7 +90,7 @@ onUnmounted(() => {
       <h1 class="result-title">{{ title }}</h1>
       <p class="result-sub">{{ subtitle }}</p>
 
-      <button class="btn-again" :class="resultClass" @click="emit('playAgain')">
+      <button class="btn-again" :class="resultClass" @click="audio?.play('ui-click'); emit('playAgain')">
         <span>Play Again</span>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M23 4v6h-6M1 20v-6h6" />

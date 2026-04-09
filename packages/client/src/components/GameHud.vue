@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, inject } from 'vue'
 import type { PlayerId } from '@stormgrid/shared'
 import { TICK_DURATION_MS, TICKS_PER_ROUND } from '@stormgrid/shared'
+import type { AudioSystem } from '../lib/audio'
 
 const TICK_SECONDS = TICK_DURATION_MS / 1000
 
@@ -14,8 +15,11 @@ const props = defineProps<{
   myPlayerId: PlayerId
 }>()
 
+const audio = inject<AudioSystem>('audio')
+
 const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | null = null
+let lastTickSoundSec = -1
 
 onMounted(() => {
   if (timer) clearInterval(timer)
@@ -50,6 +54,15 @@ const arcPath = computed(() => {
 })
 
 const isUrgent = computed(() => remaining.value <= 2 && remaining.value > 0)
+
+watch(remainingInt, (sec) => {
+  if (props.phase !== 'ticking' || sec <= 0 || sec === lastTickSoundSec) return
+  lastTickSoundSec = sec
+  if (sec <= 2) audio?.play('tick-urgent')
+  else audio?.play('tick-clock')
+})
+
+watch(() => props.tick, () => { lastTickSoundSec = -1 })
 </script>
 
 <template>

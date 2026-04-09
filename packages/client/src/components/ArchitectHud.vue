@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, inject } from 'vue'
 import type { GamePhase, WeatherType, WindDir, BonusType } from '@stormgrid/shared'
+import type { AudioSystem } from '../lib/audio'
 
 const props = defineProps<{
   phase: GamePhase | 'watching'
@@ -13,6 +14,7 @@ const emit = defineEmits<{
   startBonusPlace: [bonusType: BonusType]
 }>()
 
+const audio = inject<AudioSystem>('audio')
 const weatherType = ref<WeatherType>('wind')
 const windDir = ref<WindDir>('N')
 const bonusPlacing = ref(false)
@@ -52,6 +54,7 @@ function confirmWeather() {
 
 function selectBonus(type: BonusType) {
   bonusPlacing.value = true
+  audio?.play('ui-click')
   emit('startBonusPlace', type)
 }
 

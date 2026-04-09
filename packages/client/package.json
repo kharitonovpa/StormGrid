@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@stormgrid/shared": "workspace:*",
+    "howler": "^2.2.4",
     "three": "^0.183.2",
     "vue": "^3.5.30"
   },
   "devDependencies": {
+    "@types/howler": "^2.2.12",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-vue": "^6.0.5",
     "@vue/tsconfig": "^0.9.0",

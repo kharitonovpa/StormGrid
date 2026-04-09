@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import type { CharacterType } from '@stormgrid/shared'
 import { GAME_TITLE } from '@stormgrid/shared'
+import type { AudioSystem } from '../lib/audio'
 import CharacterPreview from './CharacterPreview.vue'
 
 defineProps<{
@@ -15,6 +16,8 @@ const emit = defineEmits<{
   architect: []
 }>()
 
+const audio = inject<AudioSystem>('audio')
+
 const characters: { id: CharacterType; name: string; color: string; glow: string }[] = [
   { id: 'wheat', name: 'Wheat', color: '#e8c547', glow: 'rgba(232, 197, 71, 0.35)' },
   { id: 'rice', name: 'Rice', color: '#7bc47f', glow: 'rgba(123, 196, 127, 0.35)' },
@@ -22,6 +25,11 @@ const characters: { id: CharacterType; name: string; color: string; glow: string
 ]
 
 const selected = ref<CharacterType>('wheat')
+
+function selectChar(id: CharacterType) {
+  selected.value = id
+  audio?.play('ui-click')
+}
 </script>
 
 <template>
@@ -45,7 +53,7 @@ const selected = ref<CharacterType>('wheat')
               class="char-btn"
               :class="{ active: selected === ch.id }"
               :style="{ '--accent': ch.color, '--glow': ch.glow }"
-              @click="selected = ch.id"
+              @click="selectChar(ch.id)"
             >
               <div class="char-preview-wrap">
                 <CharacterPreview :character="ch.id" :active="selected === ch.id" />

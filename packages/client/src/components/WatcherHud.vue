@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, inject } from 'vue'
 import type { PlayerId, WatcherPrediction, GamePhase } from '@stormgrid/shared'
+import type { AudioSystem } from '../lib/audio'
 
 const props = defineProps<{
   phase: GamePhase | 'watching'
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   breakInstrument: [instrument: 'vane' | 'barometer']
 }>()
 
+const audio = inject<AudioSystem>('audio')
 const winnerPick = ref<PlayerId | null>(null)
 const brokenInstrument = ref<'vane' | 'barometer' | null>(null)
 
@@ -26,6 +28,7 @@ watch(() => props.winnerPredicted, (v) => {
 function pickWinner(id: PlayerId) {
   if (props.winnerPredicted) return
   winnerPick.value = id
+  audio?.play('ui-click')
   emit('predictWinner', id)
 }
 
