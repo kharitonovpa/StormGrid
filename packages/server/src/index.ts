@@ -5,7 +5,8 @@ import { parseClientMessage, send } from './protocol.js'
 import type { WsData } from './protocol.js'
 
 const app = new Hono()
-const roomManager = new RoomManager()
+const gracePeriodMs = process.env.RECONNECT_GRACE_MS ? Number(process.env.RECONNECT_GRACE_MS) : undefined
+const roomManager = new RoomManager({ gracePeriodMs })
 const matchmaking = new Matchmaking(roomManager)
 
 const allClients = new Set<ServerWebSocket<WsData>>()
@@ -33,7 +34,7 @@ app.get('/', (c) =>
   }),
 )
 
-const PORT = Number(process.env.PORT) || 3000
+const PORT = Number(process.env.PORT) || 3001
 
 const server = Bun.serve<WsData>({
   port: PORT,
@@ -72,7 +73,7 @@ const server = Bun.serve<WsData>({
             send(ws, { type: 'error', message: 'Already in a game' })
             return
           }
-          matchmaking.enqueue(ws)
+          matchmaking.enqueue(ws, msg.character)
           break
         }
 
@@ -184,6 +185,21 @@ const server = Bun.serve<WsData>({
         case 'architect:place_bonus': {
           const room = getArchitectRoom(ws)
           if (room) room.architectPlaceBonus(ws, msg.x, msg.y, msg.bonusType)
+          break
+        }
+
+        /* ── Reconnect ── */
+
+        case 'reconnect': {
+          const result = roomManager.findByToken(msg.token)
+          if (!result) {
+            send(ws, { type: 'reconnect:fail' })
+            return
+          }
+          const ok = result.room.reconnectPlayer(result.playerId, ws)
+          if (!ok) {
+            send(ws, { type: 'reconnect:fail' })
+          }
           break
         }
       }

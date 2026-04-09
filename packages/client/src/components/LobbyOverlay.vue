@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import type { CharacterType } from '@stormgrid/shared'
 import { GAME_TITLE } from '@stormgrid/shared'
+import CharacterPreview from './CharacterPreview.vue'
 
 defineProps<{
   phase: string
@@ -37,7 +38,6 @@ const selected = ref<CharacterType>('wheat')
       <div class="panel-content">
         <!-- Crop selector -->
         <div class="panel-section crops-section">
-          <div class="section-label">Choose your crop</div>
           <div class="char-select">
             <button
               v-for="ch in characters"
@@ -47,9 +47,8 @@ const selected = ref<CharacterType>('wheat')
               :style="{ '--accent': ch.color, '--glow': ch.glow }"
               @click="selected = ch.id"
             >
-              <div class="char-flame">
-                <div class="flame-core" />
-                <div class="flame-outer" />
+              <div class="char-preview-wrap">
+                <CharacterPreview :character="ch.id" :active="selected === ch.id" />
               </div>
               <span class="char-name">{{ ch.name }}</span>
             </button>
@@ -206,14 +205,14 @@ const selected = ref<CharacterType>('wheat')
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 14px 18px 10px;
-  border-radius: 14px;
+  gap: 4px;
+  padding: 8px 10px 10px;
+  border-radius: 16px;
   border: 1.5px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.03);
   color: rgba(200, 210, 225, 0.5);
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: inherit;
   font-size: 11px;
   letter-spacing: 0.5px;
@@ -223,47 +222,27 @@ const selected = ref<CharacterType>('wheat')
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.06);
   color: rgba(220, 225, 235, 0.75);
+  transform: translateY(-2px);
 }
 
 .char-btn.active {
   border-color: var(--accent);
   background: rgba(255, 255, 255, 0.05);
   color: #fff;
-  box-shadow: 0 0 24px var(--glow), inset 0 0 20px rgba(255, 255, 255, 0.02);
+  box-shadow: 0 0 28px var(--glow), inset 0 0 20px rgba(255, 255, 255, 0.02);
+  transform: translateY(-4px);
 }
 
-.char-flame {
+.char-preview-wrap {
+  width: 120px;
+  height: 120px;
   position: relative;
-  width: 36px;
-  height: 36px;
+  overflow: hidden;
+  border-radius: 12px;
 }
 
-.flame-core {
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  opacity: 0.35;
-  transition: all 0.25s;
-}
-
-.flame-outer {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 2px solid var(--accent);
-  opacity: 0.2;
-  transition: all 0.25s;
-}
-
-.char-btn.active .flame-core {
-  opacity: 0.9;
-  box-shadow: 0 0 16px var(--glow);
-}
-
-.char-btn.active .flame-outer {
-  opacity: 0.6;
-  box-shadow: 0 0 12px var(--glow);
+.char-btn.active .char-preview-wrap {
+  filter: drop-shadow(0 0 8px var(--glow));
 }
 
 .char-name {

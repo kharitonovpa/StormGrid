@@ -78,8 +78,8 @@ async function setupMatchWithArchitect() {
   const p1 = await connectClient()
   const p2 = await connectClient()
 
-  send(p1.ws, { type: 'queue:join' })
-  send(p2.ws, { type: 'queue:join' })
+  send(p1.ws, { type: 'queue:join', character: 'wheat' })
+  send(p2.ws, { type: 'queue:join', character: 'rice' })
 
   const start1 = await waitForMessage(p1.messages, 'game:start') as { type: 'game:start'; playerId: string }
   await waitForMessage(p2.messages, 'game:start')
@@ -232,10 +232,10 @@ describe('architect — game:end', () => {
 
     p1.ws.close()
 
-    const endMsg = await waitForMessageFrom(arch.messages, 'game:end', beforeLen, 10_000)
+    const endMsg = await waitForMessageFrom(arch.messages, 'game:end', beforeLen, 15_000)
     expect(endMsg.type).toBe('game:end')
 
     p2.ws.close()
     arch.ws.close()
-  }, 20_000)
+  }, 25_000)
 })

@@ -30,6 +30,8 @@ export const SPAWN_PAIRS: { A: { x: number; y: number }; B: { x: number; y: numb
   { A: { x: 4, y: 4 }, B: { x: 2, y: 2 } },
 ]
 
+export const RECONNECT_GRACE_MS = 30_000
+
 export const MOVE_DIRS: Record<MoveDir, { dx: number; dy: number }> = {
   N:  { dx: 0,  dy: -1 },
   S:  { dx: 0,  dy: 1 },

@@ -1,5 +1,5 @@
 import { ref, shallowRef } from 'vue'
-import type { Action, BonusType, PlayerId, WeatherType, WindDir, ClientMessage, ServerMessage } from '@stormgrid/shared'
+import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, ClientMessage, ServerMessage } from '@stormgrid/shared'
 
 export type MessageHandler = (msg: ServerMessage) => void
 
@@ -14,6 +14,7 @@ const BASE_RECONNECT_DELAY = 500
 export function useGameSocket() {
   const connected = ref(false)
   const reconnecting = ref(false)
+  const reconnectToken = ref<string | null>(null)
   const ws = shallowRef<WebSocket | null>(null)
   const handlers = new Set<MessageHandler>()
   let reconnectAttempts = 0
@@ -34,6 +35,9 @@ export function useGameSocket() {
       connected.value = true
       reconnecting.value = false
       reconnectAttempts = 0
+      if (reconnectToken.value) {
+        send({ type: 'reconnect', token: reconnectToken.value })
+      }
     }
 
     socket.onmessage = (e) => {
@@ -75,8 +79,8 @@ export function useGameSocket() {
     return false
   }
 
-  function joinQueue() {
-    send({ type: 'queue:join' })
+  function joinQueue(character: CharacterType = 'wheat') {
+    send({ type: 'queue:join', character })
   }
 
   function leaveQueue() {
@@ -128,8 +132,13 @@ export function useGameSocket() {
     return () => handlers.delete(handler)
   }
 
+  function setReconnectToken(token: string | null) {
+    reconnectToken.value = token
+  }
+
   function disconnect() {
     intentionalClose = true
+    reconnectToken.value = null
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
     ws.value?.close()
     ws.value = null
@@ -140,8 +149,10 @@ export function useGameSocket() {
   return {
     connected,
     reconnecting,
+    reconnectToken,
     connect,
     disconnect,
+    setReconnectToken,
     joinQueue,
     leaveQueue,
     submitAction,

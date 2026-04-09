@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun'
 import type { PlayerId, Role } from '@stormgrid/shared'
-import { BOARD_SIZE, WIND_DIRS, WEATHER_TYPES, MOVE_DIRS } from '@stormgrid/shared'
+import { BOARD_SIZE, CHARACTERS, WIND_DIRS, WEATHER_TYPES, MOVE_DIRS } from '@stormgrid/shared'
 
 export type {
   ClientMessage,
@@ -34,6 +34,11 @@ export type {
   ArchitectPromptMsg,
   ForecastUpdateMsg,
   LobbyStatusMsg,
+  ReconnectMsg,
+  ReconnectOkMsg,
+  ReconnectFailMsg,
+  OpponentDisconnectedMsg,
+  OpponentReconnectedMsg,
 } from '@stormgrid/shared'
 
 import type { ClientMessage, ServerMessage } from '@stormgrid/shared'
@@ -45,6 +50,7 @@ const VALID_ACTION_KINDS = new Set(['move', 'raise', 'lower'])
 const VALID_PLAYER_IDS = new Set(['A', 'B'])
 const VALID_INSTRUMENTS = new Set(['vane', 'barometer'])
 const VALID_BONUS_TYPES = new Set(['time_extend', 'intel', 'clear_sky'])
+const VALID_CHARACTERS = new Set(CHARACTERS)
 
 function isValidAction(a: unknown): boolean {
   if (typeof a !== 'object' || a === null) return false
@@ -67,6 +73,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
     switch (msg.type) {
       case 'queue:join':
+        if (!VALID_CHARACTERS.has(msg.character)) return null
+        return msg
       case 'queue:leave':
       case 'watch:join':
       case 'watch:leave':
@@ -93,6 +101,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       case 'architect:place_bonus':
         if (!isValidCoord(msg.x) || !isValidCoord(msg.y)) return null
         if (!VALID_BONUS_TYPES.has(msg.bonusType)) return null
+        return msg
+      case 'reconnect':
+        if (typeof msg.token !== 'string' || !msg.token) return null
         return msg
       default:
         return null

@@ -78,8 +78,8 @@ async function setupMatchWithWatcher() {
   const p1 = await connectClient()
   const p2 = await connectClient()
 
-  send(p1.ws, { type: 'queue:join' })
-  send(p2.ws, { type: 'queue:join' })
+  send(p1.ws, { type: 'queue:join', character: 'wheat' })
+  send(p2.ws, { type: 'queue:join', character: 'rice' })
 
   const start1 = await waitForMessage(p1.messages, 'game:start') as { type: 'game:start'; playerId: string }
   await waitForMessage(p2.messages, 'game:start')
@@ -177,9 +177,9 @@ describe('watcher — break instrument', () => {
       instrument: 'vane',
     })
 
-    const roundStart = await waitForMessageFrom(p1.messages, 'round:start', beforeLen, 5_000)
-    if (roundStart.type === 'round:start') {
-      expect(roundStart.state.forecast.instrumentsBroken[p1PlayerId].vane).toBe(true)
+    const update = await waitForMessageFrom(p1.messages, 'forecast:update', beforeLen, 5_000)
+    if (update.type === 'forecast:update') {
+      expect(update.state.forecast.instrumentsBroken[p1PlayerId].vane).toBe(true)
     }
 
     p1.ws.close()
@@ -197,10 +197,10 @@ describe('watcher — game:end', () => {
 
     p1.ws.close()
 
-    const endMsg = await waitForMessageFrom(watcher.messages, 'game:end', beforeLen, 10_000)
+    const endMsg = await waitForMessageFrom(watcher.messages, 'game:end', beforeLen, 15_000)
     expect(endMsg.type).toBe('game:end')
 
     p2.ws.close()
     watcher.ws.close()
-  }, 20_000)
+  }, 25_000)
 })

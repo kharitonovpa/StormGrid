@@ -1,8 +1,8 @@
-import type { Action, BonusType, GameState, PlayerId, WeatherResult, WeatherType, WindDir, WatcherPrediction, WatcherState } from './types.js'
+import type { Action, BonusType, CharacterType, GameState, PlayerId, WeatherResult, WeatherType, WindDir, WatcherPrediction, WatcherState } from './types.js'
 
 /* ── Client → Server ── */
 
-export type QueueJoinMsg = { type: 'queue:join' }
+export type QueueJoinMsg = { type: 'queue:join'; character: CharacterType }
 export type QueueLeaveMsg = { type: 'queue:leave' }
 export type ActionSubmitMsg = { type: 'action:submit'; action: Action }
 
@@ -17,6 +17,8 @@ export type ArchitectLeaveMsg = { type: 'architect:leave' }
 export type ArchitectSetWeatherMsg = { type: 'architect:set_weather'; weatherType: WeatherType; dir: WindDir }
 export type ArchitectPlaceBonusMsg = { type: 'architect:place_bonus'; x: number; y: number; bonusType: BonusType }
 
+export type ReconnectMsg = { type: 'reconnect'; token: string }
+
 export type ClientMessage =
   | QueueJoinMsg
   | QueueLeaveMsg
@@ -30,11 +32,12 @@ export type ClientMessage =
   | ArchitectLeaveMsg
   | ArchitectSetWeatherMsg
   | ArchitectPlaceBonusMsg
+  | ReconnectMsg
 
 /* ── Server → Client ── */
 
 export type QueueWaitingMsg = { type: 'queue:waiting' }
-export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState }
+export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string }
 export type RoundStartMsg = { type: 'round:start'; state: GameState }
 export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number }
 export type TickResolveMsg = { type: 'tick:resolve'; state: GameState }
@@ -55,6 +58,11 @@ export type ForecastUpdateMsg = { type: 'forecast:update'; state: GameState }
 
 export type LobbyStatusMsg = { type: 'lobby:status'; online: number }
 
+export type ReconnectOkMsg = { type: 'reconnect:ok'; playerId: PlayerId; state: GameState; tick: number; deadline: number }
+export type ReconnectFailMsg = { type: 'reconnect:fail' }
+export type OpponentDisconnectedMsg = { type: 'opponent:disconnected' }
+export type OpponentReconnectedMsg = { type: 'opponent:reconnected' }
+
 export type ServerMessage =
   | QueueWaitingMsg
   | GameStartMsg
@@ -73,3 +81,7 @@ export type ServerMessage =
   | ArchitectPromptMsg
   | ForecastUpdateMsg
   | LobbyStatusMsg
+  | ReconnectOkMsg
+  | ReconnectFailMsg
+  | OpponentDisconnectedMsg
+  | OpponentReconnectedMsg

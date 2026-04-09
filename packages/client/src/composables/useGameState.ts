@@ -35,6 +35,9 @@ export function useGameState() {
   const isWatcher = ref(false)
   const watcherScore = ref(0)
 
+  /* ── Opponent connection state ── */
+  const opponentDisconnected = ref(false)
+
   /* ── Architect state ── */
   const isArchitect = ref(false)
   const architectDeadline = ref(0)
@@ -156,6 +159,35 @@ export function useGameState() {
       case 'architect:prompt':
         architectDeadline.value = msg.deadline
         break
+
+      /* ── Reconnect messages ── */
+
+      case 'reconnect:ok':
+        myPlayerId.value = msg.playerId
+        gameState.value = msg.state
+        tickDeadline.value = msg.deadline
+        currentTick.value = msg.tick
+        actionSubmitted.value = false
+        opponentDisconnected.value = false
+        isWatcher.value = false
+        isArchitect.value = false
+        phase.value = msg.state.phase === 'ticking' ? 'ticking'
+          : msg.state.phase === 'forecast' ? 'forecast'
+          : msg.state.phase === 'weather' ? 'weather'
+          : 'ticking'
+        break
+
+      case 'reconnect:fail':
+        reset()
+        break
+
+      case 'opponent:disconnected':
+        opponentDisconnected.value = true
+        break
+
+      case 'opponent:reconnected':
+        opponentDisconnected.value = false
+        break
     }
   }
 
@@ -174,6 +206,7 @@ export function useGameState() {
     breakUsed.value = false
     winnerPredicted.value = false
     movePredicted.value = {}
+    opponentDisconnected.value = false
     isArchitect.value = false
     architectDeadline.value = 0
     weatherSubmitted.value = false
@@ -201,6 +234,7 @@ export function useGameState() {
     movePredicted,
     isArchitect,
     architectDeadline,
+    opponentDisconnected,
     weatherSubmitted,
     handleMessage,
     reset,

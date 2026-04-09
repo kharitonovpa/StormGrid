@@ -36,6 +36,7 @@ export {
   DIRECTIONS,
   MOVE_DIRS,
   SPAWN_PAIRS,
+  RECONNECT_GRACE_MS,
 } from './constants.js'
 
 export type {
@@ -53,6 +54,7 @@ export type {
   ArchitectLeaveMsg,
   ArchitectSetWeatherMsg,
   ArchitectPlaceBonusMsg,
+  ReconnectMsg,
   QueueWaitingMsg,
   GameStartMsg,
   RoundStartMsg,
@@ -70,4 +72,8 @@ export type {
   ArchitectPromptMsg,
   ForecastUpdateMsg,
   LobbyStatusMsg,
+  ReconnectOkMsg,
+  ReconnectFailMsg,
+  OpponentDisconnectedMsg,
+  OpponentReconnectedMsg,
 } from './protocol.js'

@@ -47,8 +47,8 @@ describe('integration — full match via WebSocket', () => {
     const p1 = await connectPlayer()
     const p2 = await connectPlayer()
 
-    p1.ws.send(JSON.stringify({ type: 'queue:join' }))
-    p2.ws.send(JSON.stringify({ type: 'queue:join' }))
+    p1.ws.send(JSON.stringify({ type: 'queue:join', character: 'wheat' }))
+    p2.ws.send(JSON.stringify({ type: 'queue:join', character: 'rice' }))
 
     const start1 = await waitForMessage(p1.messages, 'game:start')
     const start2 = await waitForMessage(p2.messages, 'game:start')

@@ -15,6 +15,7 @@ import { createPlayerSystem } from './lib/player'
 import { createPreviewSystem } from './lib/preview'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
+import { preloadModels } from './lib/models'
 import { useGameSocket } from './composables/useGameSocket'
 import { useGameState } from './composables/useGameState'
 import LobbyOverlay from './components/LobbyOverlay.vue'
@@ -33,6 +34,7 @@ let sceneCamera: THREE.PerspectiveCamera
 const socket = useGameSocket()
 const game = useGameState()
 
+const modelsReady = preloadModels()
 socket.connect()
 
 function worldToScreen(wx: number, wy: number, wz: number): { x: number; y: number } {
@@ -92,9 +94,18 @@ unsubMessage1 = socket.onMessage((msg) => {
     onlineCount.value = msg.online
     return
   }
-  if (msg.type === 'game:end' && pendingGameEnd === null && game.phase.value === 'weather') {
-    pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
-    return
+  if (msg.type === 'game:start') {
+    socket.setReconnectToken(msg.reconnectToken)
+  }
+  if (msg.type === 'reconnect:fail') {
+    socket.setReconnectToken(null)
+  }
+  if (msg.type === 'game:end') {
+    socket.setReconnectToken(null)
+    if (pendingGameEnd === null && game.phase.value === 'weather') {
+      pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
+      return
+    }
   }
   if (msg.type === 'watcher:score' && msg.prediction.correct) {
     triggerCelebration(msg.prediction)
@@ -116,6 +127,18 @@ const showHud = computed(() =>
 const showGameOver = computed(() => game.phase.value === 'finished')
 const showWatcher = computed(() => game.isWatcher.value && game.gameState.value !== null)
 const showArchitect = computed(() => game.isArchitect.value && game.gameState.value !== null)
+
+const isInGame = computed(() =>
+  game.phase.value === 'forecast' ||
+  game.phase.value === 'ticking' ||
+  game.phase.value === 'weather',
+)
+const showReconnecting = computed(() =>
+  !socket.connected.value && isInGame.value,
+)
+const showOpponentDisconnected = computed(() =>
+  game.opponentDisconnected.value && isInGame.value,
+)
 
 const onlineCount = ref(0)
 let pendingAction: (() => void) | null = null
@@ -139,7 +162,7 @@ watch(() => socket.connected.value, (connected) => {
 
 function onPlay(character: CharacterType) {
   game.selectedCharacter.value = character
-  ensureConnected(() => socket.joinQueue())
+  ensureConnected(() => socket.joinQueue(character))
 }
 
 function onWatch() {
@@ -164,8 +187,11 @@ function onStartBonusPlace(bonusType: import('@stormgrid/shared').BonusType) {
 
 function onPlayAgain() {
   pendingGameEnd = null
+  socket.setReconnectToken(null)
+  const lastCharacter = game.selectedCharacter.value ?? 'wheat'
   game.reset()
-  ensureConnected(() => socket.joinQueue())
+  game.selectedCharacter.value = lastCharacter
+  ensureConnected(() => socket.joinQueue(lastCharacter))
 }
 
 function onPredictWinner(playerId: 'A' | 'B') {
@@ -320,6 +346,25 @@ unsubMessage2 = socket.onMessage((msg) => {
       }
       resetVisuals()
       switchToOrbit()
+      startAnimating()
+      break
+    }
+    case 'reconnect:ok': {
+      stopLobbyDemo()
+      pendingGameEnd = null
+      if (playersSystem) {
+        playersSystem.setActivePlayer(msg.playerId)
+        playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
+      }
+      applyGameState(msg.state)
+      resetVisuals()
+      switchToOrbit()
+      startAnimating()
+      break
+    }
+    case 'reconnect:fail': {
+      terrainState.resetFlat()
+      resetVisuals()
       startAnimating()
       break
     }
@@ -718,9 +763,23 @@ onMounted(() => {
   lobbyDemo = createLobbyDemo(terrainState, wind, rain, water, {
     onTerrainChanged() { animating = true },
     onRequestFlood() { shouldBuildWater = true },
+    onRepositionPlayers(posA, posB) {
+      players.applyPositions(
+        { ...posA, alive: true, character: 'wheat' },
+        { ...posB, alive: true, character: 'rice' },
+      )
+    },
   })
   lobbyDemo.start()
   lobbyDemoActive = true
+
+  modelsReady.then(() => {
+    if (!lobbyDemoActive) return
+    players.applyPositions(
+      { x: 2, y: 2, alive: true, character: 'wheat' },
+      { x: 4, y: 4, alive: true, character: 'rice' },
+    )
+  })
   if (controls instanceof OrbitControls) {
     controls.autoRotate = true
     controls.autoRotateSpeed = 0.4
@@ -836,6 +895,24 @@ onUnmounted(() => {
 
 <template>
   <div ref="container" class="canvas-root" />
+
+  <!-- Reconnecting overlay -->
+  <Transition name="rc">
+    <div v-if="showReconnecting" class="reconnect-overlay">
+      <div class="reconnect-card">
+        <div class="reconnect-spinner" />
+        <div class="reconnect-text">Reconnecting...</div>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- Opponent disconnected banner -->
+  <Transition name="od">
+    <div v-if="showOpponentDisconnected" class="opponent-dc-banner">
+      <div class="opponent-dc-dot" />
+      Opponent disconnected — waiting for reconnect...
+    </div>
+  </Transition>
 
   <LobbyOverlay
     v-if="showLobby"
@@ -1054,4 +1131,99 @@ onUnmounted(() => {
 .wp-leave-active { transition: opacity 0.5s ease; }
 .wp-enter-from { opacity: 0; }
 .wp-leave-to { opacity: 0; }
+
+/* ── Reconnecting overlay ── */
+
+.reconnect-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 8, 14, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.reconnect-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 48px;
+  border-radius: 18px;
+  background: rgba(18, 22, 30, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+}
+
+.reconnect-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid rgba(255, 255, 255, 0.1);
+  border-top-color: rgba(200, 210, 230, 0.7);
+  border-radius: 50%;
+  animation: rc-spin 0.8s linear infinite;
+}
+
+.reconnect-text {
+  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: rgba(200, 210, 230, 0.7);
+}
+
+@keyframes rc-spin {
+  to { transform: rotate(360deg); }
+}
+
+.rc-enter-active { transition: opacity 0.3s ease; }
+.rc-leave-active { transition: opacity 0.25s ease; }
+.rc-enter-from, .rc-leave-to { opacity: 0; }
+
+/* ── Opponent disconnected banner ── */
+
+.opponent-dc-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  background: rgba(24, 20, 16, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(230, 160, 80, 0.2);
+  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  color: rgba(230, 180, 100, 0.85);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+.opponent-dc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(230, 160, 80, 0.7);
+  animation: od-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes od-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.od-enter-active { transition: opacity 0.3s ease, transform 0.3s ease; }
+.od-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+.od-enter-from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+.od-leave-to { opacity: 0; transform: translateX(-50%) translateY(-12px); }
 </style>

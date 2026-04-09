@@ -9,6 +9,7 @@ type WaterSystem = { buildTop(): void; buildBot(): void; dispose(): void }
 interface DemoCallbacks {
   onTerrainChanged(): void
   onRequestFlood(): void
+  onRepositionPlayers?(posA: { x: number; y: number }, posB: { x: number; y: number }): void
 }
 
 interface DemoPhase {
@@ -92,6 +93,20 @@ export function createLobbyDemo(
   let phaseTime = 0
   let windDirIndex = 0
 
+  const DEMO_POSITIONS: { a: { x: number; y: number }; b: { x: number; y: number } }[] = [
+    { a: { x: 2, y: 2 }, b: { x: 4, y: 4 } },
+    { a: { x: 1, y: 3 }, b: { x: 5, y: 3 } },
+    { a: { x: 0, y: 0 }, b: { x: BOARD_SIZE - 1, y: BOARD_SIZE - 1 } },
+    { a: { x: 3, y: 1 }, b: { x: 3, y: 5 } },
+    { a: { x: 1, y: 5 }, b: { x: 5, y: 1 } },
+    { a: { x: 2, y: 3 }, b: { x: 4, y: 3 } },
+  ]
+
+  function reposition(i: number) {
+    const pos = DEMO_POSITIONS[i % DEMO_POSITIONS.length]
+    callbacks.onRepositionPlayers?.(pos.a, pos.b)
+  }
+
   const phases: DemoPhase[] = [
     {
       name: 'sculpt',
@@ -99,6 +114,7 @@ export function createLobbyDemo(
       enter() {
         terrain.applyBoardState(sculptedBoard())
         callbacks.onTerrainChanged()
+        reposition(0)
       },
       exit() {},
     },
@@ -109,6 +125,7 @@ export function createLobbyDemo(
         wind.setDirection(WIND_CYCLE[windDirIndex % WIND_CYCLE.length])
         windDirIndex++
         wind.setVisible(true)
+        reposition(1)
       },
       exit() {
         wind.setVisible(false)
@@ -122,6 +139,7 @@ export function createLobbyDemo(
         callbacks.onTerrainChanged()
         callbacks.onRequestFlood()
         rain.setVisible(true)
+        reposition(2)
       },
       exit() {
         rain.setVisible(false)
@@ -134,6 +152,7 @@ export function createLobbyDemo(
       enter() {
         terrain.applyBoardState(randomBoard())
         callbacks.onTerrainChanged()
+        reposition(3)
       },
       exit() {},
     },
@@ -145,6 +164,7 @@ export function createLobbyDemo(
         wind.setDirection(WIND_CYCLE[windDirIndex % WIND_CYCLE.length])
         windDirIndex++
         wind.setVisible(true)
+        reposition(4)
       },
       exit() {
         rain.setVisible(false)
@@ -157,6 +177,7 @@ export function createLobbyDemo(
       enter() {
         terrain.applyBoardState(flatBoard())
         callbacks.onTerrainChanged()
+        reposition(5)
       },
       exit() {},
     },

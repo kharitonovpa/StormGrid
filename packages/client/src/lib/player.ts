@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { CELLS, HALF, CELL_SIZE, SEGMENTS, THICKNESS } from './constants'
-import { createFlame } from '../flame'
+import { getModel, modelsLoaded } from './models'
+import type { CharacterType } from '@stormgrid/shared'
 import type { TerrainState } from './terrain'
 
 export interface PlayerState {
@@ -239,11 +240,12 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   }
 
   function makePlayer(id: 'A' | 'B', startCx: number, startCz: number) {
-    const mesh = createFlame()
-    mesh.scale.set(2, 2, 2)
+    let mesh = new THREE.Group() as THREE.Group
     scene.add(mesh)
     const state: PlayerState = { id, cx: startCx, cz: startCz }
     let surface: 'top' | 'bottom' = 'top'
+    let currentCharacter: CharacterType | null = null
+    const baseScale = 1.0
 
     let jumping = false
     let jumpT = 0
@@ -269,7 +271,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
 
     function applySurface(s: 'top' | 'bottom') {
       surface = s
-      mesh.scale.set(2, s === 'top' ? 2 : -2, 2)
+      mesh.scale.set(baseScale, s === 'top' ? baseScale : -baseScale, baseScale)
     }
 
     const p = cellWorldPos()
@@ -277,11 +279,23 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
 
     return {
       state,
-      mesh,
+      get mesh() { return mesh },
       get surface() { return surface },
       setSurface: applySurface,
       get isJumping() { return jumping },
       get isWindSliding() { return windSliding },
+      setCharacter(type: CharacterType) {
+        if (currentCharacter === type && modelsLoaded()) return
+        const pos = mesh.position.clone()
+        const vis = mesh.visible
+        scene.remove(mesh)
+        mesh = getModel(type)
+        mesh.position.copy(pos)
+        mesh.visible = vis
+        mesh.scale.set(baseScale, surface === 'top' ? baseScale : -baseScale, baseScale)
+        scene.add(mesh)
+        currentCharacter = modelsLoaded() ? type : null
+      },
       moveTo(cx: number, cz: number) {
         jumpFrom.x = mesh.position.x
         jumpFrom.y = mesh.position.y
@@ -449,9 +463,12 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   }
 
   function applyPositions(
-    a: { x: number; y: number; alive: boolean },
-    b: { x: number; y: number; alive: boolean },
+    a: { x: number; y: number; alive: boolean; character?: CharacterType },
+    b: { x: number; y: number; alive: boolean; character?: CharacterType },
   ) {
+    if (a.character) playerA.setCharacter(a.character)
+    if (b.character) playerB.setCharacter(b.character)
+
     if (a.alive && (a.x !== playerA.state.cx || a.y !== playerA.state.cz)) {
       playerA.moveTo(a.x, a.y)
     }

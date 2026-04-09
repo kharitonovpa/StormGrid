@@ -1,10 +1,13 @@
 import type { ServerWebSocket } from 'bun'
+import type { CharacterType } from '@stormgrid/shared'
 import type { WsData } from './protocol.js'
 import { send } from './protocol.js'
 import { RoomManager } from './RoomManager.js'
 
+type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType }
+
 export class Matchmaking {
-  private queue: ServerWebSocket<WsData>[] = []
+  private queue: QueueEntry[] = []
   private queueSet = new Set<ServerWebSocket<WsData>>()
   private roomManager: RoomManager
 
@@ -12,10 +15,10 @@ export class Matchmaking {
     this.roomManager = roomManager
   }
 
-  enqueue(ws: ServerWebSocket<WsData>): void {
+  enqueue(ws: ServerWebSocket<WsData>, character: CharacterType): void {
     if (this.queueSet.has(ws)) return
 
-    this.queue.push(ws)
+    this.queue.push({ ws, character })
     this.queueSet.add(ws)
     send(ws, { type: 'queue:waiting' })
 
@@ -24,7 +27,7 @@ export class Matchmaking {
 
   dequeue(ws: ServerWebSocket<WsData>): void {
     if (!this.queueSet.delete(ws)) return
-    const idx = this.queue.indexOf(ws)
+    const idx = this.queue.findIndex(e => e.ws === ws)
     if (idx !== -1) this.queue.splice(idx, 1)
   }
 
@@ -34,14 +37,14 @@ export class Matchmaking {
 
   private tryMatch(): void {
     while (this.queue.length >= 2) {
-      const wsA = this.queue.shift()!
-      const wsB = this.queue.shift()!
-      this.queueSet.delete(wsA)
-      this.queueSet.delete(wsB)
+      const entryA = this.queue.shift()!
+      const entryB = this.queue.shift()!
+      this.queueSet.delete(entryA.ws)
+      this.queueSet.delete(entryB.ws)
 
       const room = this.roomManager.createRoom()
-      room.join(wsA)
-      room.join(wsB)
+      room.join(entryA.ws, entryA.character)
+      room.join(entryB.ws, entryB.character)
     }
   }
 }

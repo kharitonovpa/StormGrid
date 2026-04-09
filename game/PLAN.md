@@ -134,7 +134,7 @@
 | 7.1 | Character visuals | 3 уникальных пламени / маркера для Wheat, Rice, Corn |
 | 7.2 | Sound design | Ambient, wind, rain, tick countdown, death, victory |
 | 7.3 | Mobile-friendly | Touch input, responsive HUD |
-| 7.4 | Reconnect handling | Переподключение при потере WS, восстановление state |
+| 7.4 | ✅ Reconnect handling | Переподключение при потере WS, восстановление state |
 | 7.5 | Replay system | Сохранение match log → просмотр повтора |
 | 7.6 | Leaderboard | Рейтинг игроков и наблюдателей (по очкам предсказаний) |
 | 7.7 | Deploy | Docker compose: server + Postgres + Redis. Фронт на CDN (Vercel / Cloudflare Pages) |

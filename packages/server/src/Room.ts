@@ -1,14 +1,17 @@
 import type { ServerWebSocket } from 'bun'
-import type { Action, BonusType, PlayerId, GameState, WeatherType, WindDir, WatcherState, WatcherPrediction } from '@stormgrid/shared'
-import { TICK_DURATION_MS } from '@stormgrid/shared'
+import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, WatcherState, WatcherPrediction } from '@stormgrid/shared'
+import { TICK_DURATION_MS, RECONNECT_GRACE_MS } from '@stormgrid/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer } from './engine/board.js'
 import type { ServerMessage, WsData } from './protocol.js'
 import { send } from './protocol.js'
 
 type PlayerSlot = {
-  ws: ServerWebSocket<WsData>
+  ws: ServerWebSocket<WsData> | null
+  reconnectToken: string
+  character: CharacterType
   action: Action | null
+  disconnectedAt: number | null
 }
 
 type WatcherSlot = {
@@ -16,6 +19,11 @@ type WatcherSlot = {
   state: WatcherState
   pendingWinner: PlayerId | null
   pendingMoves: Partial<Record<PlayerId, Action>>
+}
+
+type PausedTimer = {
+  remaining: number
+  callback: () => void
 }
 
 const FORECAST_DISPLAY_MS = 3_000
@@ -29,6 +37,9 @@ const POINTS_MOVE = 5
 export type RoomCallbacks = {
   onDispose: (id: string) => void
   findNextRoom?: (excludeId: string) => string | null
+  registerToken?: (token: string, pid: PlayerId) => void
+  unregisterToken?: (token: string) => void
+  gracePeriodMs?: number
 }
 
 export class Room {
@@ -46,6 +57,17 @@ export class Room {
   private ended = false
   private disposed = false
 
+  private tickTimerStartedAt = 0
+  private tickTimerDurationMs = 0
+  private tickTimerCallback: (() => void) | null = null
+  private architectTimerStartedAt = 0
+  private architectTimerDurationMs = 0
+  private architectTimerCallback: (() => void) | null = null
+
+  private pausedTick: PausedTimer | null = null
+  private pausedArchitect: PausedTimer | null = null
+  private disconnectTimers: Partial<Record<PlayerId, ReturnType<typeof setTimeout>>> = {}
+
   constructor(id: string, callbacks: RoomCallbacks) {
     this.id = id
     this.engine = new GameEngine()
@@ -62,21 +84,37 @@ export class Room {
 
   get isActive(): boolean {
     const phase = this.engine.getState().phase
-    return this.isFull && phase !== 'finished' && phase !== 'waiting'
+    if (!this.isFull || phase === 'finished' || phase === 'waiting') return false
+    for (const pid of ['A', 'B'] as PlayerId[]) {
+      const slot = this.players[pid]
+      if (slot?.ws) return true
+    }
+    return false
+  }
+
+  private get isAnyPlayerDisconnected(): boolean {
+    for (const pid of ['A', 'B'] as PlayerId[]) {
+      const slot = this.players[pid]
+      if (slot && slot.disconnectedAt !== null) return true
+    }
+    return false
   }
 
   /* ── Player management ── */
 
-  join(ws: ServerWebSocket<WsData>): PlayerId | null {
+  join(ws: ServerWebSocket<WsData>, character: CharacterType = 'wheat'): PlayerId | null {
     let pid: PlayerId
     if (!this.players.A) pid = 'A'
     else if (!this.players.B) pid = 'B'
     else return null
 
-    this.players[pid] = { ws, action: null }
+    const reconnectToken = crypto.randomUUID()
+    this.players[pid] = { ws, reconnectToken, character, action: null, disconnectedAt: null }
     ws.data.roomId = this.id
     ws.data.playerId = pid
     ws.data.role = 'player'
+
+    this.callbacks.registerToken?.(reconnectToken, pid)
 
     if (this.isFull) {
       this.startGame()
@@ -88,7 +126,7 @@ export class Room {
   submitAction(pid: PlayerId, action: Action): void {
     if (this.ended) return
     const slot = this.players[pid]
-    if (!slot) return
+    if (!slot || !slot.ws) return
 
     const state = this.engine.getState()
     if (state.phase !== 'ticking') return
@@ -105,18 +143,106 @@ export class Room {
   }
 
   removePlayer(pid: PlayerId): void {
+    const slot = this.players[pid]
+    if (!slot) return
+
+    const gameStarted = this.engine.getState().phase !== 'waiting'
+
+    if (gameStarted && !this.ended) {
+      this.handleDisconnect(pid)
+    } else {
+      this.callbacks.unregisterToken?.(slot.reconnectToken)
+      delete this.players[pid]
+    }
+  }
+
+  handleDisconnect(pid: PlayerId): void {
+    const slot = this.players[pid]
+    if (!slot || this.ended) return
+
+    slot.ws = null
+    slot.disconnectedAt = Date.now()
+
+    this.pauseTickTimer()
+    this.pauseArchitectTimer()
+
+    const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
+    const oppSlot = this.players[opponent]
+    if (oppSlot?.ws) {
+      send(oppSlot.ws, { type: 'opponent:disconnected' })
+    }
+
+    const graceMs = this.callbacks.gracePeriodMs ?? RECONNECT_GRACE_MS
+    this.disconnectTimers[pid] = setTimeout(() => {
+      delete this.disconnectTimers[pid]
+      this.forfeitPlayer(pid)
+    }, graceMs)
+  }
+
+  reconnectPlayer(pid: PlayerId, ws: ServerWebSocket<WsData>): boolean {
+    const slot = this.players[pid]
+    if (!slot || this.ended || this.disposed || slot.disconnectedAt === null) return false
+
+    slot.ws = ws
+    slot.disconnectedAt = null
+    ws.data.roomId = this.id
+    ws.data.playerId = pid
+    ws.data.role = 'player'
+
+    const timer = this.disconnectTimers[pid]
+    if (timer) { clearTimeout(timer); delete this.disconnectTimers[pid] }
+
+    const remaining = this.pausedTick?.remaining ?? 0
+    const deadline = Date.now() + remaining
+    const state = this.engine.getState()
+
+    send(ws, {
+      type: 'reconnect:ok',
+      playerId: pid,
+      state: stateForPlayer(state, pid),
+      tick: state.tick,
+      deadline,
+    })
+
+    const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
+    const oppSlot = this.players[opponent]
+    if (oppSlot?.ws) {
+      send(oppSlot.ws, { type: 'opponent:reconnected' })
+      if (state.phase === 'ticking') {
+        send(oppSlot.ws, { type: 'tick:start', tick: state.tick, deadline })
+      }
+    }
+
+    if (!this.isAnyPlayerDisconnected) {
+      this.resumeTimers()
+    }
+
+    return true
+  }
+
+  private forfeitPlayer(pid: PlayerId): void {
+    const slot = this.players[pid]
+    if (slot) {
+      this.callbacks.unregisterToken?.(slot.reconnectToken)
+    }
+
     delete this.players[pid]
     this.ended = true
     this.clearTimer()
     this.clearArchitectTimer()
+    this.clearPausedTimers()
+    this.clearDisconnectTimers()
 
     const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
     const oppSlot = this.players[opponent]
-    if (oppSlot) {
+    if (oppSlot?.ws) {
       send(oppSlot.ws, { type: 'game:end', winner: opponent })
       oppSlot.ws.data.roomId = null
       oppSlot.ws.data.playerId = null
       oppSlot.ws.data.role = null
+    }
+    if (oppSlot) {
+      this.callbacks.unregisterToken?.(oppSlot.reconnectToken)
     }
     this.broadcastSpectators({ type: 'game:end', winner: opponent })
     this.scheduleCleanup()
@@ -209,10 +335,7 @@ export class Room {
     this.architect = null
     ws.data.roomId = null
     ws.data.role = null
-    if (this.architectTimer) {
-      clearTimeout(this.architectTimer)
-      this.architectTimer = null
-    }
+    this.clearArchitectTimer()
   }
 
   architectSetWeather(ws: ServerWebSocket<WsData>, type: WeatherType, dir: WindDir): void {
@@ -228,11 +351,8 @@ export class Room {
     this.sendEach((pid) => ({ type: 'round:start', state: stateForPlayer(updated, pid) }))
     this.broadcastWatchers({ type: 'round:start', state: updated })
 
-    if (this.architectTimer) {
-      clearTimeout(this.architectTimer)
-      this.architectTimer = null
-    }
-    this.tickTimer = setTimeout(() => this.proceedToTicking(), FORECAST_DISPLAY_MS)
+    this.clearArchitectTimer()
+    this.setTickTimer(FORECAST_DISPLAY_MS, () => this.proceedToTicking())
   }
 
   architectPlaceBonus(ws: ServerWebSocket<WsData>, x: number, y: number, bonusType: BonusType): void {
@@ -251,8 +371,16 @@ export class Room {
     this.disposed = true
     this.ended = true
     this.clearTimer()
+    this.clearPausedTimers()
     if (this.cleanupTimer) { clearTimeout(this.cleanupTimer); this.cleanupTimer = null }
     this.clearArchitectTimer()
+    this.clearDisconnectTimers()
+
+    for (const pid of ['A', 'B'] as PlayerId[]) {
+      const slot = this.players[pid]
+      if (slot) this.callbacks.unregisterToken?.(slot.reconnectToken)
+    }
+
     this.redirectWatchers()
     this.players = {}
     this.watchers.clear()
@@ -263,9 +391,22 @@ export class Room {
   /* ── Private: game flow ── */
 
   private startGame(): void {
+    this.engine.setCharacters(this.players.A!.character, this.players.B!.character)
     const state = this.engine.getState()
-    send(this.players.A!.ws, { type: 'game:start', playerId: 'A', state: stateForPlayer(state, 'A') })
-    send(this.players.B!.ws, { type: 'game:start', playerId: 'B', state: stateForPlayer(state, 'B') })
+    const slotA = this.players.A!
+    const slotB = this.players.B!
+    send(slotA.ws!, {
+      type: 'game:start',
+      playerId: 'A',
+      state: stateForPlayer(state, 'A'),
+      reconnectToken: slotA.reconnectToken,
+    })
+    send(slotB.ws!, {
+      type: 'game:start',
+      playerId: 'B',
+      state: stateForPlayer(state, 'B'),
+      reconnectToken: slotB.reconnectToken,
+    })
 
     this.beginRound()
   }
@@ -280,12 +421,12 @@ export class Room {
 
     if (this.architect) {
       this.sendArchitectPrompt()
-      this.architectTimer = setTimeout(() => {
+      this.setArchitectTimerTracked(ARCHITECT_DECISION_MS, () => {
         this.architectTimer = null
         this.proceedToTicking()
-      }, ARCHITECT_DECISION_MS)
+      })
     } else {
-      this.tickTimer = setTimeout(() => this.proceedToTicking(), FORECAST_DISPLAY_MS)
+      this.setTickTimer(FORECAST_DISPLAY_MS, () => this.proceedToTicking())
     }
   }
 
@@ -318,9 +459,9 @@ export class Room {
     this.broadcast(msg)
     this.broadcastSpectators(msg)
 
-    this.tickTimer = setTimeout(() => {
+    this.setTickTimer(TICK_DURATION_MS, () => {
       this.resolveTick()
-    }, TICK_DURATION_MS)
+    })
   }
 
   private resolveTick(): void {
@@ -337,9 +478,9 @@ export class Room {
     this.resolveMovePredictions(actions)
 
     if (result.state.phase === 'weather') {
-      this.tickTimer = setTimeout(() => this.executeWeather(), 500)
+      this.setTickTimer(500, () => this.executeWeather())
     } else {
-      this.tickTimer = setTimeout(() => this.beginTick(), 300)
+      this.setTickTimer(300, () => this.beginTick())
     }
   }
 
@@ -357,7 +498,7 @@ export class Room {
       this.releasePlayerSlots()
       this.scheduleCleanup()
     } else {
-      this.tickTimer = setTimeout(() => this.beginRound(), WEATHER_DISPLAY_MS)
+      this.setTickTimer(WEATHER_DISPLAY_MS, () => this.beginRound())
     }
   }
 
@@ -434,20 +575,120 @@ export class Room {
   }
 
   private releasePlayerSlots(): void {
+    this.ended = true
+    this.clearDisconnectTimers()
+    this.clearPausedTimers()
     for (const pid of ['A', 'B'] as PlayerId[]) {
       const slot = this.players[pid]
       if (slot) {
-        slot.ws.data.roomId = null
-        slot.ws.data.playerId = null
-        slot.ws.data.role = null
+        this.callbacks.unregisterToken?.(slot.reconnectToken)
+        if (slot.ws) {
+          slot.ws.data.roomId = null
+          slot.ws.data.playerId = null
+          slot.ws.data.role = null
+        }
       }
     }
   }
 
   private scheduleCleanup(): void {
     this.clearTimer()
+    this.clearPausedTimers()
     if (this.cleanupTimer) { clearTimeout(this.cleanupTimer); this.cleanupTimer = null }
     this.cleanupTimer = setTimeout(() => this.dispose(), CLEANUP_DELAY_MS)
+  }
+
+  /* ── Timer management ── */
+
+  private setTickTimer(durationMs: number, callback: () => void): void {
+    this.clearTimer()
+    this.pausedTick = null
+
+    if (this.isAnyPlayerDisconnected) {
+      this.pausedTick = { remaining: durationMs, callback }
+      return
+    }
+
+    this.tickTimerStartedAt = Date.now()
+    this.tickTimerDurationMs = durationMs
+    this.tickTimerCallback = callback
+    this.tickTimer = setTimeout(callback, durationMs)
+  }
+
+  private setArchitectTimerTracked(durationMs: number, callback: () => void): void {
+    this.clearArchitectTimer()
+    this.pausedArchitect = null
+
+    if (this.isAnyPlayerDisconnected) {
+      this.pausedArchitect = { remaining: durationMs, callback }
+      return
+    }
+
+    this.architectTimerStartedAt = Date.now()
+    this.architectTimerDurationMs = durationMs
+    this.architectTimerCallback = callback
+    this.architectTimer = setTimeout(callback, durationMs)
+  }
+
+  private pauseTickTimer(): void {
+    if (this.tickTimer === null) return
+    const elapsed = Date.now() - this.tickTimerStartedAt
+    const remaining = Math.max(0, this.tickTimerDurationMs - elapsed)
+    this.pausedTick = { remaining, callback: this.tickTimerCallback! }
+    clearTimeout(this.tickTimer)
+    this.tickTimer = null
+    this.tickTimerCallback = null
+  }
+
+  private pauseArchitectTimer(): void {
+    if (this.architectTimer === null) return
+    const elapsed = Date.now() - this.architectTimerStartedAt
+    const remaining = Math.max(0, this.architectTimerDurationMs - elapsed)
+    this.pausedArchitect = { remaining, callback: this.architectTimerCallback! }
+    clearTimeout(this.architectTimer)
+    this.architectTimer = null
+    this.architectTimerCallback = null
+  }
+
+  private resumeTimers(): void {
+    if (this.pausedTick) {
+      const { remaining, callback } = this.pausedTick
+      this.pausedTick = null
+      this.setTickTimer(remaining, callback)
+    }
+    if (this.pausedArchitect) {
+      const { remaining, callback } = this.pausedArchitect
+      this.pausedArchitect = null
+      this.setArchitectTimerTracked(remaining, callback)
+    }
+  }
+
+  private clearTimer(): void {
+    if (this.tickTimer !== null) {
+      clearTimeout(this.tickTimer)
+      this.tickTimer = null
+    }
+    this.tickTimerCallback = null
+  }
+
+  private clearArchitectTimer(): void {
+    if (this.architectTimer !== null) {
+      clearTimeout(this.architectTimer)
+      this.architectTimer = null
+    }
+    this.architectTimerCallback = null
+  }
+
+  private clearPausedTimers(): void {
+    this.pausedTick = null
+    this.pausedArchitect = null
+  }
+
+  private clearDisconnectTimers(): void {
+    for (const pid of ['A', 'B'] as PlayerId[]) {
+      const t = this.disconnectTimers[pid]
+      if (t) { clearTimeout(t); delete this.disconnectTimers[pid] }
+    }
   }
 
   /* ── Helpers ── */
@@ -455,7 +696,7 @@ export class Room {
   private broadcast(msg: ServerMessage): void {
     for (const pid of ['A', 'B'] as PlayerId[]) {
       const slot = this.players[pid]
-      if (slot) send(slot.ws, msg)
+      if (slot?.ws) send(slot.ws, msg)
     }
   }
 
@@ -477,21 +718,7 @@ export class Room {
   private sendEach(msgFn: (pid: PlayerId) => ServerMessage): void {
     for (const pid of ['A', 'B'] as PlayerId[]) {
       const slot = this.players[pid]
-      if (slot) send(slot.ws, msgFn(pid))
-    }
-  }
-
-  private clearTimer(): void {
-    if (this.tickTimer !== null) {
-      clearTimeout(this.tickTimer)
-      this.tickTimer = null
-    }
-  }
-
-  private clearArchitectTimer(): void {
-    if (this.architectTimer !== null) {
-      clearTimeout(this.architectTimer)
-      this.architectTimer = null
+      if (slot?.ws) send(slot.ws, msgFn(pid))
     }
   }
 }
