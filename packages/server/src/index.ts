@@ -3,6 +3,7 @@ import { RoomManager } from './RoomManager.js'
 import { Matchmaking } from './matchmaking.js'
 import { parseClientMessage, send } from './protocol.js'
 import type { WsData } from './protocol.js'
+import { ConnectionLimiter } from './ratelimit.js'
 
 const app = new Hono()
 const gracePeriodMs = process.env.RECONNECT_GRACE_MS ? Number(process.env.RECONNECT_GRACE_MS) : undefined
@@ -44,7 +45,7 @@ const server = Bun.serve<WsData>({
     if (url.pathname === '/ws') {
       const sessionId = crypto.randomUUID()
       const ok = server.upgrade(req, {
-        data: { sessionId, roomId: null, playerId: null, role: null },
+        data: { sessionId, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter() },
       })
       if (ok) return undefined
       return new Response('WebSocket upgrade failed', { status: 400 })
@@ -61,11 +62,29 @@ const server = Bun.serve<WsData>({
     },
 
     message(ws, raw) {
-      const msg = parseClientMessage(String(raw))
+      const str = String(raw)
+      const { limiter } = ws.data
+
+      if (!limiter.checkSize(str)) {
+        send(ws, { type: 'error', message: 'Message too large' })
+        return
+      }
+
+      if (!limiter.consume()) {
+        send(ws, { type: 'error', message: 'Rate limited' })
+        return
+      }
+
+      const msg = parseClientMessage(str)
       if (!msg) {
+        if (limiter.trackInvalid()) {
+          ws.close(4400, 'Too many invalid messages')
+          return
+        }
         send(ws, { type: 'error', message: 'Invalid message' })
         return
       }
+      limiter.resetInvalid()
 
       switch (msg.type) {
         case 'queue:join': {

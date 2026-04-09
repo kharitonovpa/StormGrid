@@ -138,7 +138,7 @@
 | 7.5 | Replay system | Сохранение match log → просмотр повтора |
 | 7.6 | Leaderboard | Рейтинг игроков и наблюдателей (по очкам предсказаний) |
 | 7.7 | Deploy | Docker compose: server + Postgres + Redis. Фронт на CDN (Vercel / Cloudflare Pages) |
-| 7.8 | Rate limiting & anti-cheat | Throttle actions, validate timing, server-side only |
+| 7.8 | ✅ Rate limiting & anti-cheat | Token bucket per connection (25 burst / 15/sec), message size limit (1KB), invalid message flood disconnect (5 streak), server-side validation |
 
 ---
 
@@ -165,5 +165,6 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
 Фазы 0–6 завершены. Полировка в процессе:
 - ✅ **Character visuals** — GLB-модели, матовые материалы, 3D-превью в лобби
 - ✅ **Reconnect handling** — восстановление при потере WS
+- ✅ **Rate limiting & anti-cheat** — token bucket, message size, invalid flood
 - **Sound design** — ambient, wind, rain, tick countdown, death, victory
 - **Mobile-friendly** — touch input, responsive HUD

@@ -117,9 +117,12 @@ export function send(ws: ServerWebSocket<WsData>, msg: ServerMessage): void {
   try { ws.send(JSON.stringify(msg)) } catch { /* socket already closed */ }
 }
 
+import type { ConnectionLimiter } from './ratelimit.js'
+
 export type WsData = {
   sessionId: string
   roomId: string | null
   playerId: PlayerId | null
   role: Exclude<Role, 'guest'> | null
+  limiter: ConnectionLimiter
 }
