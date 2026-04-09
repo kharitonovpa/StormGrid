@@ -131,7 +131,7 @@
 
 | # | Задача | Детали |
 |---|--------|--------|
-| 7.1 | Character visuals | 3 уникальных пламени / маркера для Wheat, Rice, Corn |
+| 7.1 | ✅ Character visuals | GLB-модели (Meshy AI) для Wheat, Rice, Corn. Матовые PBR-материалы (roughness 0.92, metalness 0), пастельные цвета, per-character масштаб. 3D-превью с вращением и покачиванием в лобби |
 | 7.2 | Sound design | Ambient, wind, rain, tick countdown, death, victory |
 | 7.3 | Mobile-friendly | Touch input, responsive HUD |
 | 7.4 | ✅ Reconnect handling | Переподключение при потере WS, восстановление state |
@@ -162,8 +162,8 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
 
 ## Immediate Next Step → Phase 7: Polish & Production
 
-Фазы 0–6 завершены. Следующий шаг — финальная полировка:
-1. **Character visuals** — уникальные маркеры для Wheat, Rice, Corn
-2. **Sound design** — ambient, wind, rain, tick countdown, death, victory
-3. **Mobile-friendly** — touch input, responsive HUD
-4. **Reconnect handling** — восстановление при потере WS
+Фазы 0–6 завершены. Полировка в процессе:
+- ✅ **Character visuals** — GLB-модели, матовые материалы, 3D-превью в лобби
+- ✅ **Reconnect handling** — восстановление при потере WS
+- **Sound design** — ambient, wind, rain, tick countdown, death, victory
+- **Mobile-friendly** — touch input, responsive HUD

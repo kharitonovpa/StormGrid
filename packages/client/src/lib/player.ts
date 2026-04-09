@@ -234,9 +234,21 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   const JUMP_HEIGHT = CELL_SIZE * 0.6
   const WIND_SLIDE_DURATION = 1.5
   const WIND_DEATH_OVERSHOOT = CELL_SIZE * 5
+  const TURN_SPEED = 10
 
   function easeInOut(t: number): number {
     return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
+  }
+
+  function shortAngleDist(from: number, to: number): number {
+    const d = ((to - from) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI
+    return d
+  }
+
+  function angleTo(fromCx: number, fromCz: number, toCx: number, toCz: number): number {
+    const dx = (-HALF + (toCx + 0.5) * CELL_SIZE) - (-HALF + (fromCx + 0.5) * CELL_SIZE)
+    const dz = (-HALF + (toCz + 0.5) * CELL_SIZE) - (-HALF + (fromCz + 0.5) * CELL_SIZE)
+    return Math.atan2(dx, dz)
   }
 
   function makePlayer(id: 'A' | 'B', startCx: number, startCz: number) {
@@ -246,6 +258,9 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     let surface: 'top' | 'bottom' = 'top'
     let currentCharacter: CharacterType | null = null
     const baseScale = 1.0
+
+    let facingY = 0
+    let targetFacingY = 0
 
     let jumping = false
     let jumpT = 0
@@ -284,19 +299,26 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
       setSurface: applySurface,
       get isJumping() { return jumping },
       get isWindSliding() { return windSliding },
+      lookAtCell(cx: number, cz: number) {
+        if (cx === state.cx && cz === state.cz) return
+        targetFacingY = angleTo(state.cx, state.cz, cx, cz)
+      },
       setCharacter(type: CharacterType) {
         if (currentCharacter === type && modelsLoaded()) return
         const pos = mesh.position.clone()
+        const rot = mesh.rotation.y
         const vis = mesh.visible
         scene.remove(mesh)
         mesh = getModel(type)
         mesh.position.copy(pos)
+        mesh.rotation.y = rot
         mesh.visible = vis
         mesh.scale.set(baseScale, surface === 'top' ? baseScale : -baseScale, baseScale)
         scene.add(mesh)
         currentCharacter = modelsLoaded() ? type : null
       },
       moveTo(cx: number, cz: number) {
+        targetFacingY = angleTo(state.cx, state.cz, cx, cz)
         jumpFrom.x = mesh.position.x
         jumpFrom.y = mesh.position.y
         jumpFrom.z = mesh.position.z
@@ -332,6 +354,11 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
             wy: only.wy + CELL_SIZE * 2,
             wz: only.wz,
           })
+        }
+
+        if (windPoints.length >= 2) {
+          const a = windPoints[0], b = windPoints[1]
+          targetFacingY = Math.atan2(b.wx - a.wx, b.wz - a.wz)
         }
 
         windSliding = true
@@ -405,6 +432,14 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
             mesh.position.y = t.wy
           }
         }
+
+        const angleDiff = shortAngleDist(facingY, targetFacingY)
+        if (Math.abs(angleDiff) > 0.01) {
+          facingY += angleDiff * Math.min(dt * TURN_SPEED, 1)
+        } else {
+          facingY = targetFacingY
+        }
+        mesh.rotation.y = facingY
       },
     }
   }
@@ -536,6 +571,11 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     hideMoveOptions,
     isValidMove,
     setHovered(val: boolean) { isPlayerHovered = val },
+    setHoverCell(cx: number | null, cz: number | null) {
+      if (!inMoveMode || cx === null || cz === null) return
+      const player = moveModePlayerId === 'A' ? playerA : playerB
+      player.lookAtCell(cx, cz)
+    },
     update(dt: number) {
       playerA.update(dt)
       playerB.update(dt)

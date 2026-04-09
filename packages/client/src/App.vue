@@ -692,6 +692,7 @@ onMounted(() => {
           canvas.style.cursor = 'pointer'
         } else if (cell && players.moveMode && players.isValidMove(cell.cx, cell.cz)) {
           players.setHovered(false)
+          players.setHoverCell(cell.cx, cell.cz)
           canvas.style.cursor = 'pointer'
         } else if (cell) {
           players.setHovered(false)
@@ -708,6 +709,7 @@ onMounted(() => {
         canvas.style.cursor = 'pointer'
       } else if (cell && players.moveMode && players.isValidMove(cell.cx, cell.cz)) {
         players.setHovered(false)
+        players.setHoverCell(cell.cx, cell.cz)
         canvas.style.cursor = 'pointer'
       } else {
         players.setHovered(false)

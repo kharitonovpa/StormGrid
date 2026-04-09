@@ -186,14 +186,6 @@ const selected = ref<CharacterType>('wheat')
   margin: 4px 8px;
 }
 
-.section-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1.8px;
-  text-transform: uppercase;
-  color: rgba(200, 210, 225, 0.35);
-}
-
 /* ── Character select ── */
 
 .char-select {

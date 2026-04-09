@@ -15,6 +15,7 @@ let renderer: THREE.WebGLRenderer | null = null
 let scene: THREE.Scene
 let camera: THREE.PerspectiveCamera
 let model: THREE.Group | null = null
+let modelBaseY = 0
 let animId = 0
 let elapsed = 0
 let disposed = false
@@ -44,6 +45,7 @@ function loadModel() {
   }
   model = getModel(props.character)
   fitModel(model)
+  modelBaseY = model.position.y
   scene.add(model)
 }
 
@@ -89,9 +91,9 @@ onMounted(() => {
 
     if (model) {
       model.rotation.y = elapsed * 0.8
-      const bobAmp = props.active ? 0.06 : 0.02
+      const bobAmp = props.active ? 0.08 : 0.03
       const bobSpeed = props.active ? 2.5 : 1.5
-      model.position.y += Math.sin(elapsed * bobSpeed) * bobAmp * dt * 4
+      model.position.y = modelBaseY + Math.sin(elapsed * bobSpeed) * bobAmp
     }
 
     renderer!.render(scene, camera)
