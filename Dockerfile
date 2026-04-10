@@ -21,7 +21,7 @@ RUN cd packages/client && bunx vite build
 # ── Stage 2: nginx with client static files ──────────────────
 FROM nginx:alpine AS nginx
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/packages/client/dist /var/www/stormgrid
+COPY --from=build /app/packages/client/dist /var/www/wheee
 
 # ── Stage 3: server runtime ──────────────────────────────────
 FROM oven/bun:1-slim AS server
