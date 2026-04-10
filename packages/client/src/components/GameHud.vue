@@ -11,8 +11,14 @@ const props = defineProps<{
   round: number
   tick: number
   tickDeadline: number
+  forecastDeadline: number
   actionSubmitted: boolean
   myPlayerId: PlayerId
+  bounceFlip: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'flip'): void
 }>()
 
 const audio = inject<AudioSystem>('audio')
@@ -25,7 +31,10 @@ onMounted(() => {
   if (timer) clearInterval(timer)
   timer = setInterval(() => { now.value = Date.now() }, 50)
 })
-onUnmounted(() => { if (timer) { clearInterval(timer); timer = null } })
+onUnmounted(() => {
+  if (timer) { clearInterval(timer); timer = null }
+  if (chooseFlashTimer) clearTimeout(chooseFlashTimer)
+})
 
 const remaining = computed(() => {
   if (props.phase !== 'ticking' || !props.tickDeadline) return 0
@@ -55,6 +64,19 @@ const arcPath = computed(() => {
 
 const isUrgent = computed(() => remaining.value <= 2 && remaining.value > 0)
 
+const forecastStartedAt = ref(0)
+
+watch(() => props.forecastDeadline, (dl) => {
+  if (dl > 0) forecastStartedAt.value = Date.now()
+}, { immediate: true })
+
+const forecastProgress = computed(() => {
+  if (props.phase !== 'forecast' || !props.forecastDeadline || !forecastStartedAt.value) return 1
+  const total = props.forecastDeadline - forecastStartedAt.value
+  if (total <= 0) return 1
+  return Math.max(0, Math.min(1, (props.forecastDeadline - now.value) / total))
+})
+
 watch(remainingInt, (sec) => {
   if (props.phase !== 'ticking' || sec <= 0 || sec === lastTickSoundSec) return
   lastTickSoundSec = sec
@@ -63,6 +85,20 @@ watch(remainingInt, (sec) => {
 })
 
 watch(() => props.tick, () => { lastTickSoundSec = -1 })
+
+const showChooseFlash = ref(false)
+let chooseFlashTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(() => props.phase, (newPhase, oldPhase) => {
+  if (newPhase === 'ticking' && oldPhase === 'forecast') {
+    showChooseFlash.value = true
+    if (chooseFlashTimer) clearTimeout(chooseFlashTimer)
+    chooseFlashTimer = setTimeout(() => { showChooseFlash.value = false }, 1800)
+  } else {
+    showChooseFlash.value = false
+  }
+})
+
 </script>
 
 <template>
@@ -115,17 +151,29 @@ watch(() => props.tick, () => { lastTickSoundSec = -1 })
 
     <!-- Forecast phase -->
     <Transition name="hud-fade">
-      <div v-if="phase === 'forecast'" class="hud-strip forecast-strip" key="forecast">
-        <div class="phase-icon forecast-icon">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-          </svg>
+      <div v-if="phase === 'forecast'" class="forecast-wrapper" key="forecast">
+        <div class="hud-strip forecast-strip">
+          <div class="phase-icon forecast-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+          </div>
+          <div class="phase-text">
+            <span class="phase-title">Forecast</span>
+            <span class="phase-sub">Your turn is coming...</span>
+          </div>
+          <div class="round-pill">R{{ round }}</div>
+          <div class="forecast-progress-track">
+            <div class="forecast-progress-bar" :style="{ transform: `scaleX(${forecastProgress})` }" />
+          </div>
         </div>
-        <div class="phase-text">
-          <span class="phase-title">Forecast</span>
-          <span class="phase-sub">Reading the skies</span>
-        </div>
-        <div class="round-pill">R{{ round }}</div>
+      </div>
+    </Transition>
+
+    <!-- Choose your move flash -->
+    <Transition name="choose-flash">
+      <div v-if="showChooseFlash" class="choose-banner" key="choose">
+        <span class="choose-text">Choose your move!</span>
       </div>
     </Transition>
 
@@ -144,6 +192,15 @@ watch(() => props.tick, () => { lastTickSoundSec = -1 })
         </div>
       </div>
     </Transition>
+    <!-- Flip view button -->
+    <button type="button" class="flip-btn" :class="{ 'flip-bounce': bounceFlip }" @click="emit('flip')" title="Peek at opponent's side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="17,1 21,5 17,9" />
+        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+        <polyline points="7,23 3,19 7,15" />
+        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+      </svg>
+    </button>
   </div>
 </template>
 
@@ -335,6 +392,81 @@ watch(() => props.tick, () => { lastTickSoundSec = -1 })
   letter-spacing: 0.5px;
 }
 
+/* ── Forecast progress ── */
+
+.forecast-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.forecast-strip {
+  position: relative;
+  overflow: hidden;
+}
+
+.forecast-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 0 0 16px 16px;
+  overflow: hidden;
+}
+
+.forecast-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 180, 60, 0.6), rgba(255, 220, 100, 0.8));
+  transform-origin: left;
+  transition: transform 0.1s linear;
+  border-radius: 0 0 16px 16px;
+}
+
+/* ── Choose your move flash ── */
+
+.choose-banner {
+  position: absolute;
+  top: 72px;
+  padding: 8px 24px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(129, 140, 248, 0.25);
+  animation: choose-glow 1s ease-in-out infinite alternate;
+}
+
+.choose-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(165, 180, 252, 0.9);
+  text-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+}
+
+@keyframes choose-glow {
+  from { box-shadow: 0 0 16px rgba(99, 102, 241, 0.1); }
+  to { box-shadow: 0 0 28px rgba(99, 102, 241, 0.2); }
+}
+
+.choose-flash-enter-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.choose-flash-leave-active {
+  transition: all 0.6s ease;
+}
+.choose-flash-enter-from {
+  opacity: 0;
+  transform: scale(0.85) translateY(-6px);
+}
+.choose-flash-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
 /* ── Cataclysm banner ── */
 
 .cataclysm-banner {
@@ -426,6 +558,59 @@ watch(() => props.tick, () => { lastTickSoundSec = -1 })
   transform: scale(0.9);
 }
 
+/* ── Flip view button (matches VolumeControl style) ── */
+
+.flip-btn {
+  position: fixed;
+  bottom: 18px;
+  right: 66px;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 16, 24, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: rgba(200, 210, 225, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  padding: 0;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flip-btn:hover {
+  background: rgba(20, 24, 36, 0.7);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(220, 225, 235, 0.8);
+  transform: scale(1.08);
+}
+
+.flip-btn:active {
+  transform: scale(0.92);
+}
+
+.flip-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.flip-btn.flip-bounce {
+  animation: flip-nudge 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  color: rgba(220, 225, 235, 0.85);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 12px rgba(165, 180, 252, 0.2);
+}
+
+@keyframes flip-nudge {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-6px); }
+  60% { transform: translateY(-2px); }
+}
+
 /* ── Mobile ── */
 
 @media (max-width: 640px) {
@@ -433,9 +618,17 @@ watch(() => props.tick, () => { lastTickSoundSec = -1 })
   .hud-strip { gap: 10px; padding: 8px 14px 8px 10px; }
   .timer-ring, .ring-svg { width: 40px; height: 40px; }
   .ring-num { font-size: 14px; }
-  .phase-title { font-size: 12px; }
-  .phase-sub, .round-pill { font-size: 10px; }
+  .phase-icon { width: 30px; height: 30px; border-radius: 8px; }
+  .phase-icon svg { width: 14px; height: 14px; }
+  .phase-title { font-size: 11px; }
+  .phase-sub { font-size: 9px; }
+  .round-pill { font-size: 9px; padding: 2px 6px; }
+  .forecast-strip { gap: 8px; }
   .cataclysm-banner { padding: 10px 24px; }
   .cataclysm-text { font-size: 16px; letter-spacing: 2px; }
+  .flip-btn { bottom: 12px; right: 60px; width: 44px; height: 44px; }
+  .flip-btn svg { width: 18px; height: 18px; }
+  .choose-banner { top: 56px; padding: 6px 16px; }
+  .choose-text { font-size: 10px; letter-spacing: 0.8px; }
 }
 </style>

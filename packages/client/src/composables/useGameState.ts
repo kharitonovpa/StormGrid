@@ -28,6 +28,7 @@ export function useGameState() {
   const winner = ref<PlayerId | 'draw' | null>(null)
   const selectedCharacter = ref<CharacterType>('wheat')
   const tickDeadline = ref(0)
+  const forecastDeadline = ref(0)
   const currentTick = ref(0)
   const actionSubmitted = ref(false)
 
@@ -80,6 +81,7 @@ export function useGameState() {
 
       case 'round:start':
         gameState.value = msg.state
+        forecastDeadline.value = msg.forecastDeadline ?? 0
         phase.value = (isWatcher.value || isArchitect.value) ? 'watching' : 'forecast'
         weatherResult.value = null
         winnerPredicted.value = false
@@ -166,6 +168,7 @@ export function useGameState() {
         myPlayerId.value = msg.playerId
         gameState.value = msg.state
         tickDeadline.value = msg.deadline
+        forecastDeadline.value = msg.forecastDeadline ?? 0
         currentTick.value = msg.tick
         actionSubmitted.value = false
         opponentDisconnected.value = false
@@ -202,6 +205,7 @@ export function useGameState() {
     weatherResult.value = null
     winner.value = null
     tickDeadline.value = 0
+    forecastDeadline.value = 0
     currentTick.value = 0
     actionSubmitted.value = false
     isWatcher.value = false
@@ -224,6 +228,7 @@ export function useGameState() {
     winner,
     selectedCharacter,
     tickDeadline,
+    forecastDeadline,
     currentTick,
     actionSubmitted,
     myPlayer,

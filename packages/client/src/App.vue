@@ -337,6 +337,139 @@ function animateCameraToSide(side: 'top' | 'bottom') {
   cameraAnimProgress = 0
 }
 
+function onFlipView() {
+  if (!sceneCamera || introActive.value || demoOrbitActive) return
+  const side = sceneCamera.position.y >= 0 ? 'bottom' : 'top'
+  animateCameraToSide(side)
+}
+
+/* ── Demo orbit: dip below the board to show both sides ── */
+let demoOrbitActive = false
+let demoOrbitElapsed = 0
+let demoOrbitBasePos: THREE.Vector3 | null = null
+
+const DEMO_DIP_DUR = 2.0
+const DEMO_HOLD_DUR = 2.5
+const DEMO_RISE_DUR = 2.0
+const DEMO_ORBIT_TOTAL = DEMO_DIP_DUR + DEMO_HOLD_DUR + DEMO_RISE_DUR
+
+function updateDemoOrbit(dt: number) {
+  if (!demoOrbitActive || !demoOrbitBasePos) return
+  demoOrbitElapsed += dt
+  const cam = sceneCamera
+  const base = demoOrbitBasePos
+  const dist = base.length()
+  const pullback = dist * 1.3
+  const sideDir = new THREE.Vector3(base.x, 0, base.z).normalize()
+  const lowPos = sideDir.clone().multiplyScalar(pullback).setY(-dist * 0.12)
+
+  if (controls instanceof OrbitControls) controls.autoRotate = false
+
+  if (demoOrbitElapsed < DEMO_DIP_DUR) {
+    const t = smoothstep(demoOrbitElapsed / DEMO_DIP_DUR)
+    cam.position.lerpVectors(base, lowPos, t)
+    cam.lookAt(0, -0.5, 0)
+  } else if (demoOrbitElapsed < DEMO_DIP_DUR + DEMO_HOLD_DUR) {
+    cam.position.copy(lowPos)
+    cam.lookAt(0, -0.5, 0)
+  } else if (demoOrbitElapsed < DEMO_ORBIT_TOTAL) {
+    const t = smoothstep((demoOrbitElapsed - DEMO_DIP_DUR - DEMO_HOLD_DUR) / DEMO_RISE_DUR)
+    cam.position.lerpVectors(lowPos, base, t)
+    cam.lookAt(0, 0, 0)
+  } else {
+    demoOrbitActive = false
+    demoOrbitBasePos = null
+    cam.position.copy(base)
+    cam.lookAt(0, 0, 0)
+    if (lobbyDemoActive && controls instanceof OrbitControls) {
+      controls.autoRotate = true
+    }
+  }
+}
+
+/* ── Intro fly-around (first game only) ── */
+const INTRO_STORAGE_KEY = 'wheee:intro_seen'
+const introActive = ref(false)
+const introYouPos = ref({ x: 0, y: 0 })
+const introOpponentPos = ref({ x: 0, y: 0 })
+const introShowLabels = ref(false)
+const introBounceFlip = ref(false)
+
+let introElapsed = 0
+let introBasePos: THREE.Vector3 | null = null
+
+const INTRO_HOLD = 0.3
+const INTRO_ORBIT_DUR = 1.4
+const INTRO_LABEL_HOLD = 2.0
+const INTRO_RETURN_DUR = 1.0
+const INTRO_TOTAL = INTRO_HOLD + INTRO_ORBIT_DUR + INTRO_LABEL_HOLD + INTRO_RETURN_DUR
+
+function smoothstep(t: number): number {
+  const c = Math.max(0, Math.min(1, t))
+  return c * c * (3 - 2 * c)
+}
+
+function storageGet(key: string): string | null {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+function storageSet(key: string, val: string) {
+  try { localStorage.setItem(key, val) } catch { /* private mode */ }
+}
+
+function startIntroAnimation() {
+  if (storageGet(INTRO_STORAGE_KEY)) return
+  introActive.value = true
+  introElapsed = 0
+  introShowLabels.value = false
+  introBasePos = sceneCamera.position.clone()
+}
+
+function updateIntro(dt: number) {
+  if (!introActive.value || !introBasePos) return
+  introElapsed += dt
+  const cam = sceneCamera
+
+  const base = introBasePos
+  const dist = base.length()
+  const pullback = dist * 1.35
+  const sideDir = new THREE.Vector3(base.x, 0, base.z).normalize()
+  const sidePos = sideDir.clone().multiplyScalar(pullback).setY(-dist * 0.15)
+
+  if (introElapsed < INTRO_HOLD) {
+    // hold at start
+  } else if (introElapsed < INTRO_HOLD + INTRO_ORBIT_DUR) {
+    const t = smoothstep((introElapsed - INTRO_HOLD) / INTRO_ORBIT_DUR)
+    cam.position.lerpVectors(base, sidePos, t)
+    cam.lookAt(0, -0.5, 0)
+  } else if (introElapsed < INTRO_HOLD + INTRO_ORBIT_DUR + INTRO_LABEL_HOLD) {
+    cam.position.copy(sidePos)
+    cam.lookAt(0, -0.5, 0)
+    if (!introShowLabels.value) {
+      introShowLabels.value = true
+      introBounceFlip.value = true
+    }
+
+    const topY = 1.5
+    const botY = -2.5
+    introYouPos.value = worldToScreen(0, topY, 0)
+    introOpponentPos.value = worldToScreen(0, botY, 0)
+  } else if (introElapsed < INTRO_TOTAL) {
+    introShowLabels.value = false
+    introBounceFlip.value = false
+    const t = smoothstep((introElapsed - INTRO_HOLD - INTRO_ORBIT_DUR - INTRO_LABEL_HOLD) / INTRO_RETURN_DUR)
+    cam.position.lerpVectors(sidePos, base, t)
+    cam.lookAt(0, 0, 0)
+  } else {
+    introActive.value = false
+    introShowLabels.value = false
+    introBounceFlip.value = false
+    cam.position.copy(base)
+    cam.lookAt(0, 0, 0)
+    introBasePos = null
+    storageSet(INTRO_STORAGE_KEY, '1')
+  }
+}
+
 // --- Radial menu state ---
 const MENU_MARGIN = 96
 function clampMenuPos(x: number, y: number) {
@@ -457,6 +590,8 @@ function stopLobbyDemo() {
   if (!lobbyDemoActive) return
   lobbyDemoActive = false
   lobbyDemo?.stop()
+  demoOrbitActive = false
+  demoOrbitBasePos = null
   if (controls instanceof OrbitControls) {
     controls.autoRotate = false
   }
@@ -477,11 +612,16 @@ unsubMessage2 = socket.onMessage((msg) => {
       resetVisuals()
       switchToOrbit()
       startAnimating()
+      startIntroAnimation()
       break
     }
     case 'reconnect:ok': {
       stopLobbyDemo()
       pendingGameEnd = null
+      introActive.value = false
+      introShowLabels.value = false
+      introBounceFlip.value = false
+      introBasePos = null
       if (playersSystem) {
         playersSystem.setActivePlayer(msg.playerId)
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
@@ -922,14 +1062,21 @@ onMounted(() => {
   audio.enterLobby()
 
   // --- Lobby demo: cinematic showcase ---
+  players.setActivePlayer(null)
   lobbyDemo = createLobbyDemo(terrainState, wind, rain, water, {
     onTerrainChanged() { animating = true },
     onRequestFlood() { shouldBuildWater = true },
     onRepositionPlayers(posA, posB) {
       players.applyPositions(
         { ...posA, alive: true, character: 'wheat' },
-        { ...posB, alive: true, character: 'rice' },
+        { ...posB, alive: true, character: 'corn' },
       )
+    },
+    onRequestCameraDip() {
+      if (!lobbyDemoActive) return
+      demoOrbitActive = true
+      demoOrbitElapsed = 0
+      demoOrbitBasePos = camera.position.clone()
     },
   })
   lobbyDemo.start()
@@ -939,7 +1086,7 @@ onMounted(() => {
     if (!lobbyDemoActive) return
     players.applyPositions(
       { x: 2, y: 2, alive: true, character: 'wheat' },
-      { x: 4, y: 4, alive: true, character: 'rice' },
+      { x: 4, y: 4, alive: true, character: 'corn' },
     )
   })
   if (controls instanceof OrbitControls) {
@@ -960,7 +1107,11 @@ onMounted(() => {
       lobbyDemo.update(dt)
     }
 
-    if (cameraAnimTarget && cameraAnimFrom) {
+    if (demoOrbitActive) {
+      updateDemoOrbit(dt)
+    } else if (introActive.value) {
+      updateIntro(dt)
+    } else if (cameraAnimTarget && cameraAnimFrom) {
       cameraAnimProgress = Math.min(cameraAnimProgress + dt * 2.5, 1)
       const t = cameraAnimProgress * cameraAnimProgress * (3 - 2 * cameraAnimProgress)
       camera.position.lerpVectors(cameraAnimFrom, cameraAnimTarget, t)
@@ -1096,8 +1247,11 @@ onUnmounted(() => {
     :round="game.gameState.value?.round ?? 1"
     :tick="game.currentTick.value"
     :tick-deadline="game.tickDeadline.value"
+    :forecast-deadline="game.forecastDeadline.value"
     :action-submitted="game.actionSubmitted.value"
     :my-player-id="game.myPlayerId.value ?? 'A'"
+    :bounce-flip="introBounceFlip"
+    @flip="onFlipView"
   />
 
   <ForecastPanel
@@ -1146,6 +1300,20 @@ onUnmounted(() => {
   />
 
   <VolumeControl />
+
+  <!-- Intro labels -->
+  <Transition name="intro-label">
+    <div v-if="introShowLabels" class="intro-labels">
+      <div class="intro-label intro-you" :style="{ left: introYouPos.x + 'px', top: introYouPos.y + 'px' }">
+        <div class="intro-label-dot" />
+        <span>You</span>
+      </div>
+      <div class="intro-label intro-opp" :style="{ left: introOpponentPos.x + 'px', top: introOpponentPos.y + 'px' }">
+        <div class="intro-label-dot" />
+        <span>Opponent</span>
+      </div>
+    </div>
+  </Transition>
 
   <!-- Winner Prediction Popup -->
   <Teleport to="body">
@@ -1214,6 +1382,71 @@ onUnmounted(() => {
 </style>
 
 <style>
+/* ── Intro labels ── */
+
+.intro-labels {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.intro-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  animation: intro-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.intro-label-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: intro-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.intro-you {
+  color: rgba(74, 222, 128, 0.9);
+  text-shadow: 0 0 16px rgba(74, 222, 128, 0.4);
+}
+
+.intro-you .intro-label-dot {
+  background: rgba(74, 222, 128, 0.8);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+}
+
+.intro-opp {
+  color: rgba(251, 146, 60, 0.9);
+  text-shadow: 0 0 16px rgba(251, 146, 60, 0.4);
+}
+
+.intro-opp .intro-label-dot {
+  background: rgba(251, 146, 60, 0.8);
+  box-shadow: 0 0 10px rgba(251, 146, 60, 0.5);
+}
+
+@keyframes intro-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes intro-dot-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.intro-label-enter-active { transition: opacity 0.4s ease; }
+.intro-label-leave-active { transition: opacity 0.3s ease; }
+.intro-label-enter-from, .intro-label-leave-to { opacity: 0; }
+
 /* ── Radial Menu ── */
 
 .radial-menu {

@@ -200,12 +200,19 @@ export class Room {
     const deadline = Date.now() + remaining
     const state = this.engine.getState()
 
+    let forecastDeadline = 0
+    if (state.phase === 'forecast') {
+      const archRemaining = this.pausedArchitect?.remaining ?? 0
+      forecastDeadline = Date.now() + Math.max(remaining, archRemaining)
+    }
+
     send(ws, {
       type: 'reconnect:ok',
       playerId: pid,
       state: stateForPlayer(state, pid),
       tick: state.tick,
       deadline,
+      forecastDeadline,
     })
 
     const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
@@ -367,8 +374,9 @@ export class Room {
     this.architectDecisionReceived = true
 
     const updated = this.engine.getState()
-    this.sendEach((pid) => ({ type: 'round:start', state: stateForPlayer(updated, pid) }))
-    this.broadcastWatchers({ type: 'round:start', state: updated })
+    const forecastDeadline = Date.now() + FORECAST_DISPLAY_MS
+    this.sendEach((pid) => ({ type: 'round:start', state: stateForPlayer(updated, pid), forecastDeadline }))
+    this.broadcastWatchers({ type: 'round:start', state: updated, forecastDeadline })
 
     this.clearArchitectTimer()
     this.setTickTimer(FORECAST_DISPLAY_MS, () => this.proceedToTicking())
@@ -439,9 +447,11 @@ export class Room {
     this.architectDecisionReceived = false
     this.architectBonusPlaced = false
     const state = this.engine.startRound()
-    this.sendEach((pid) => ({ type: 'round:start', state: stateForPlayer(state, pid) }))
-    this.broadcastWatchers({ type: 'round:start', state })
-    this.broadcastArchitect({ type: 'round:start', state })
+    const waitMs = this.architect ? ARCHITECT_DECISION_MS : FORECAST_DISPLAY_MS
+    const forecastDeadline = Date.now() + waitMs
+    this.sendEach((pid) => ({ type: 'round:start', state: stateForPlayer(state, pid), forecastDeadline }))
+    this.broadcastWatchers({ type: 'round:start', state, forecastDeadline })
+    this.broadcastArchitect({ type: 'round:start', state, forecastDeadline })
 
     if (this.architect) {
       this.sendArchitectPrompt()

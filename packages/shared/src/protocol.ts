@@ -38,7 +38,7 @@ export type ClientMessage =
 
 export type QueueWaitingMsg = { type: 'queue:waiting' }
 export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string; roomId: string }
-export type RoundStartMsg = { type: 'round:start'; state: GameState }
+export type RoundStartMsg = { type: 'round:start'; state: GameState; forecastDeadline: number }
 export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number }
 export type TickResolveMsg = { type: 'tick:resolve'; state: GameState }
 export type WeatherResultMsg = { type: 'weather:result'; result: WeatherResult }
@@ -58,7 +58,7 @@ export type ForecastUpdateMsg = { type: 'forecast:update'; state: GameState }
 
 export type LobbyStatusMsg = { type: 'lobby:status'; online: number }
 
-export type ReconnectOkMsg = { type: 'reconnect:ok'; playerId: PlayerId; state: GameState; tick: number; deadline: number }
+export type ReconnectOkMsg = { type: 'reconnect:ok'; playerId: PlayerId; state: GameState; tick: number; deadline: number; forecastDeadline: number }
 export type ReconnectFailMsg = { type: 'reconnect:fail' }
 export type OpponentDisconnectedMsg = { type: 'opponent:disconnected' }
 export type OpponentReconnectedMsg = { type: 'opponent:reconnected' }

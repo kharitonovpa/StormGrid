@@ -10,6 +10,7 @@ interface DemoCallbacks {
   onTerrainChanged(): void
   onRequestFlood(): void
   onRepositionPlayers?(posA: { x: number; y: number }, posB: { x: number; y: number }): void
+  onRequestCameraDip?(): void
 }
 
 interface DemoPhase {
@@ -119,13 +120,22 @@ export function createLobbyDemo(
       exit() {},
     },
     {
+      name: 'flip',
+      duration: 7,
+      enter() {
+        callbacks.onRequestCameraDip?.()
+        reposition(1)
+      },
+      exit() {},
+    },
+    {
       name: 'wind',
       duration: 5,
       enter() {
         wind.setDirection(WIND_CYCLE[windDirIndex % WIND_CYCLE.length])
         windDirIndex++
         wind.setVisible(true)
-        reposition(1)
+        reposition(2)
       },
       exit() {
         wind.setVisible(false)
@@ -139,7 +149,7 @@ export function createLobbyDemo(
         callbacks.onTerrainChanged()
         callbacks.onRequestFlood()
         rain.setVisible(true)
-        reposition(2)
+        reposition(3)
       },
       exit() {
         rain.setVisible(false)
@@ -152,7 +162,7 @@ export function createLobbyDemo(
       enter() {
         terrain.applyBoardState(randomBoard())
         callbacks.onTerrainChanged()
-        reposition(3)
+        reposition(4)
       },
       exit() {},
     },
@@ -164,7 +174,7 @@ export function createLobbyDemo(
         wind.setDirection(WIND_CYCLE[windDirIndex % WIND_CYCLE.length])
         windDirIndex++
         wind.setVisible(true)
-        reposition(4)
+        reposition(5)
       },
       exit() {
         rain.setVisible(false)
@@ -177,7 +187,7 @@ export function createLobbyDemo(
       enter() {
         terrain.applyBoardState(flatBoard())
         callbacks.onTerrainChanged()
-        reposition(5)
+        reposition(0)
       },
       exit() {},
     },
