@@ -409,6 +409,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
             windT = 1
             windSliding = false
             if (windDied) mesh.visible = false
+            windDied = false
             if (windResolve) { windResolve(); windResolve = null }
           }
 

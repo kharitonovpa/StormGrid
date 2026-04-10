@@ -345,8 +345,8 @@ const server = Bun.serve<WsData>({
     close(ws) {
       console.log(`[ws] disconnect ${ws.data.sessionId}`)
       allClients.delete(ws)
-      broadcastLobbyStatus()
       matchmaking.dequeue(ws)
+      broadcastLobbyStatus()
 
       const { roomId, role } = ws.data
       if (roomId) {
