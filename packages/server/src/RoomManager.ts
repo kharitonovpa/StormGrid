@@ -1,5 +1,6 @@
 import type { PlayerId } from '@stormgrid/shared'
 import { Room } from './Room.js'
+import type { ReplayStore } from './ReplayStore.js'
 
 let nextId = 1
 
@@ -8,9 +9,11 @@ export class RoomManager {
   private tokenMap = new Map<string, { roomId: string; playerId: PlayerId }>()
 
   private gracePeriodMs?: number
+  replayStore?: ReplayStore
 
-  constructor(opts?: { gracePeriodMs?: number }) {
+  constructor(opts?: { gracePeriodMs?: number; replayStore?: ReplayStore }) {
     this.gracePeriodMs = opts?.gracePeriodMs
+    this.replayStore = opts?.replayStore
   }
 
   createRoom(): Room {
@@ -21,6 +24,7 @@ export class RoomManager {
       registerToken: (token, pid) => this.registerToken(token, id, pid),
       unregisterToken: (token) => this.unregisterToken(token),
       gracePeriodMs: this.gracePeriodMs,
+      replayStore: this.replayStore,
     })
     this.rooms.set(id, room)
     return room

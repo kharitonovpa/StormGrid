@@ -37,7 +37,7 @@ export type ClientMessage =
 /* ── Server → Client ── */
 
 export type QueueWaitingMsg = { type: 'queue:waiting' }
-export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string }
+export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string; roomId: string }
 export type RoundStartMsg = { type: 'round:start'; state: GameState }
 export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number }
 export type TickResolveMsg = { type: 'tick:resolve'; state: GameState }
@@ -62,6 +62,27 @@ export type ReconnectOkMsg = { type: 'reconnect:ok'; playerId: PlayerId; state: 
 export type ReconnectFailMsg = { type: 'reconnect:fail' }
 export type OpponentDisconnectedMsg = { type: 'opponent:disconnected' }
 export type OpponentReconnectedMsg = { type: 'opponent:reconnected' }
+
+/* ── Replay ── */
+
+export type ReplayFrame = {
+  state: GameState
+  weather?: {
+    deaths: PlayerId[]
+    windPath: Record<PlayerId, { x: number; y: number }[]>
+    floodedCells: { x: number; y: number }[]
+  }
+}
+
+export type ReplaySummary = {
+  id: string
+  charA: CharacterType
+  charB: CharacterType
+  winner: PlayerId | 'draw' | null
+  frameCount: number
+}
+
+export type ReplayData = ReplaySummary & { frames: ReplayFrame[] }
 
 export type ServerMessage =
   | QueueWaitingMsg

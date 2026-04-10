@@ -1,10 +1,11 @@
 import type { ServerWebSocket } from 'bun'
-import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, WatcherState, WatcherPrediction } from '@stormgrid/shared'
+import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, WatcherState, WatcherPrediction, ReplayFrame, ReplayData } from '@stormgrid/shared'
 import { TICK_DURATION_MS, RECONNECT_GRACE_MS } from '@stormgrid/shared'
 import { GameEngine } from './engine/GameEngine.js'
-import { stateForPlayer, resultForPlayer } from './engine/board.js'
+import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
 import type { ServerMessage, WsData } from './protocol.js'
 import { send } from './protocol.js'
+import type { ReplayStore } from './ReplayStore.js'
 
 type PlayerSlot = {
   ws: ServerWebSocket<WsData> | null
@@ -40,6 +41,7 @@ export type RoomCallbacks = {
   registerToken?: (token: string, pid: PlayerId) => void
   unregisterToken?: (token: string) => void
   gracePeriodMs?: number
+  replayStore?: ReplayStore
 }
 
 export class Room {
@@ -67,6 +69,8 @@ export class Room {
   private pausedTick: PausedTimer | null = null
   private pausedArchitect: PausedTimer | null = null
   private disconnectTimers: Partial<Record<PlayerId, ReturnType<typeof setTimeout>>> = {}
+
+  private replayFrames: ReplayFrame[] = []
 
   constructor(id: string, callbacks: RoomCallbacks) {
     this.id = id
@@ -234,6 +238,7 @@ export class Room {
     this.clearDisconnectTimers()
 
     const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
+    this.saveReplay(opponent)
     const oppSlot = this.players[opponent]
     if (oppSlot?.ws) {
       send(oppSlot.ws, { type: 'game:end', winner: opponent })
@@ -400,12 +405,14 @@ export class Room {
       playerId: 'A',
       state: stateForPlayer(state, 'A'),
       reconnectToken: slotA.reconnectToken,
+      roomId: this.id,
     })
     send(slotB.ws!, {
       type: 'game:start',
       playerId: 'B',
       state: stateForPlayer(state, 'B'),
       reconnectToken: slotB.reconnectToken,
+      roomId: this.id,
     })
 
     this.beginRound()
@@ -472,6 +479,7 @@ export class Room {
     if (this.players.B?.action) actions.B = this.players.B.action
 
     const result = this.engine.submitTick(actions)
+    this.replayFrames.push({ state: cloneState(result.state) })
     this.sendEach((pid) => ({ type: 'tick:resolve', state: stateForPlayer(result.state, pid) }))
     this.broadcastSpectators({ type: 'tick:resolve', state: result.state })
 
@@ -486,12 +494,21 @@ export class Room {
 
   private executeWeather(): void {
     const result = this.engine.executeWeather()
+    this.replayFrames.push({
+      state: cloneState(result.state),
+      weather: {
+        deaths: result.deaths,
+        windPath: result.windPath as Record<PlayerId, { x: number; y: number }[]>,
+        floodedCells: [...result.floodedCells, ...result.floodedCellsB],
+      },
+    })
     this.sendEach((pid) => ({ type: 'weather:result', result: resultForPlayer(result, pid) }))
     this.broadcastSpectators({ type: 'weather:result', result })
 
     this.resolveWinnerPredictions()
 
     if (result.state.winner !== null) {
+      this.saveReplay(result.state.winner)
       const endMsg: ServerMessage = { type: 'game:end', winner: result.state.winner }
       this.broadcast(endMsg)
       this.broadcastSpectators(endMsg)
@@ -500,6 +517,21 @@ export class Room {
     } else {
       this.setTickTimer(WEATHER_DISPLAY_MS, () => this.beginRound())
     }
+  }
+
+  private saveReplay(winner: PlayerId | 'draw'): void {
+    const store = this.callbacks.replayStore
+    if (!store) return
+    const charA = this.players.A?.character ?? this.engine.getState().players.A.character
+    const charB = this.players.B?.character ?? this.engine.getState().players.B.character
+    store.save({
+      id: this.id,
+      charA,
+      charB,
+      winner,
+      frameCount: this.replayFrames.length,
+      frames: this.replayFrames,
+    })
   }
 
   /* ── Prediction resolution ── */

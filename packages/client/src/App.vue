@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, watch, provide } from 'vue'
+import { onMounted, onUnmounted, ref, shallowRef, computed, watch, provide } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
@@ -17,6 +17,7 @@ import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
 import { createAudioSystem, type AudioSystem } from './lib/audio'
+import { createReplayPlayer, fetchReplayData, type ReplayPlayer } from './lib/replayPlayer'
 import { useGameSocket } from './composables/useGameSocket'
 import { useGameState } from './composables/useGameState'
 import LobbyOverlay from './components/LobbyOverlay.vue'
@@ -25,6 +26,7 @@ import GameOverOverlay from './components/GameOverOverlay.vue'
 import ForecastPanel from './components/ForecastPanel.vue'
 import WatcherHud from './components/WatcherHud.vue'
 import ArchitectHud from './components/ArchitectHud.vue'
+import ReplayOverlay from './components/ReplayOverlay.vue'
 import VolumeControl from './components/VolumeControl.vue'
 
 const container = ref<HTMLElement | null>(null)
@@ -100,6 +102,7 @@ unsubMessage1 = socket.onMessage((msg) => {
     return
   }
   if (msg.type === 'game:start') {
+    lastRoomId = msg.roomId
     socket.setReconnectToken(msg.reconnectToken)
     audio.enterMatch()
     audio.play('match-found')
@@ -215,6 +218,64 @@ function onPlayAgain() {
   game.selectedCharacter.value = lastCharacter
   audio.enterLobby()
   ensureConnected(() => socket.joinQueue(lastCharacter))
+}
+
+async function startReplay(roomId: string) {
+  const data = await fetchReplayData(roomId)
+  if (!data || data.frames.length === 0) return
+
+  game.reset()
+  stopLobbyDemo()
+  resetVisuals()
+  terrainState.resetFlat()
+  if (playersSystem) {
+    playersSystem.setActivePlayer(null)
+    playersSystem.playerA.resetAppearance()
+    playersSystem.playerB.resetAppearance()
+  }
+  switchToTrackball()
+  startAnimating()
+
+  replayMode.value = true
+  replayPlayer.value = createReplayPlayer(data.frames, (frame, _index, animate) => {
+    terrainState.applyBoardState(frame.state.board)
+    startAnimating()
+
+    if (animate && frame.weather && playersSystem) {
+      const weather = frame.state.weather
+      if (weather) {
+        windSystem?.setDirection(weather.dir)
+        windSystem?.setVisible(true)
+      }
+      const paths = frame.weather.windPath as Record<'A' | 'B', { x: number; y: number }[]>
+      const deaths = frame.weather.deaths as ('A' | 'B')[]
+      playersSystem.animateWindPaths(paths, deaths).then(() => {
+        if (!playersSystem) return
+        playersSystem.applyPositions(frame.state.players.A, frame.state.players.B)
+        windSystem?.setVisible(false)
+      })
+    } else {
+      windSystem?.setVisible(false)
+      if (playersSystem) {
+        playersSystem.applyPositionsImmediate(frame.state.players.A, frame.state.players.B)
+      }
+    }
+  })
+}
+
+function exitReplay() {
+  replayPlayer.value?.dispose()
+  replayPlayer.value = null
+  replayMode.value = false
+
+  if (playersSystem) {
+    playersSystem.playerA.resetAppearance()
+    playersSystem.playerB.resetAppearance()
+  }
+  terrainState.resetFlat()
+  resetVisuals()
+  switchToOrbit()
+  audio.enterLobby()
 }
 
 function onPredictWinner(playerId: 'A' | 'B') {
@@ -335,6 +396,10 @@ watch(menuVisible, (open) => {
 let handleAction: ((action: MenuAction) => void) | null = null
 let playersSystem: ReturnType<typeof createPlayerSystem> | null = null
 let sceneCleanup: (() => void) | null = null
+
+const replayMode = ref(false)
+const replayPlayer = shallowRef<ReplayPlayer | null>(null)
+let lastRoomId: string | null = null
 
 function selectOption(action: MenuAction) {
   handleAction?.(action)
@@ -1010,12 +1075,13 @@ onUnmounted(() => {
   </Transition>
 
   <LobbyOverlay
-    v-if="showLobby"
+    v-if="showLobby && !replayMode"
     :phase="game.phase.value"
     :online-count="onlineCount"
     @play="onPlay"
     @watch="onWatch"
     @architect="onArchitect"
+    @watch-replay="startReplay"
   />
 
   <GameHud
@@ -1062,7 +1128,15 @@ onUnmounted(() => {
     v-if="showGameOver"
     :winner="game.winner.value"
     :my-player-id="game.myPlayerId.value"
+    :room-id="lastRoomId"
     @play-again="onPlayAgain"
+    @watch-replay="startReplay"
+  />
+
+  <ReplayOverlay
+    v-if="replayMode && replayPlayer"
+    :player="replayPlayer"
+    @exit="exitReplay"
   />
 
   <VolumeControl />

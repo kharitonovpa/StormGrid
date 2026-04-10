@@ -331,6 +331,26 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         state.cx = cx
         state.cz = cz
       },
+      teleportTo(cx: number, cz: number) {
+        jumping = false
+        windSliding = false
+        state.cx = cx
+        state.cz = cz
+        const p = cellWorldPos(cx, cz)
+        mesh.position.set(p.wx, p.wy, p.wz)
+      },
+      resetAppearance() {
+        jumping = false
+        windSliding = false
+        windDied = false
+        if (windResolve) { windResolve(); windResolve = null }
+        mesh.visible = true
+        mesh.traverse(child => {
+          const m = (child as THREE.Mesh).material as THREE.Material | undefined
+          if (m) { m.opacity = 1; m.transparent = false }
+        })
+        cachedMaterials = null
+      },
       startWindSlide(path: { x: number; y: number }[], died: boolean): Promise<void> {
         windPoints = path.map(p => cellWorldPos(p.x, p.y))
 
@@ -541,10 +561,25 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     return promises.length > 0 ? Promise.all(promises).then(() => {}) : Promise.resolve()
   }
 
+  function applyPositionsImmediate(
+    a: { x: number; y: number; alive: boolean; character?: CharacterType },
+    b: { x: number; y: number; alive: boolean; character?: CharacterType },
+  ) {
+    if (a.character) playerA.setCharacter(a.character)
+    if (b.character) playerB.setCharacter(b.character)
+    playerA.resetAppearance()
+    playerB.resetAppearance()
+    playerA.teleportTo(a.x, a.y)
+    playerB.teleportTo(b.x, b.y)
+    playerA.mesh.visible = a.alive
+    playerB.mesh.visible = b.alive
+  }
+
   return {
     playerA,
     playerB,
     applyPositions,
+    applyPositionsImmediate,
     animateWindPaths,
     setActivePlayer,
     isOccupied(cx: number, cz: number) {

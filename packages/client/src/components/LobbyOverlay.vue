@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, inject } from 'vue'
-import type { CharacterType } from '@stormgrid/shared'
+import { ref, inject, onMounted } from 'vue'
+import type { CharacterType, ReplaySummary } from '@stormgrid/shared'
 import { GAME_TITLE } from '@stormgrid/shared'
 import type { AudioSystem } from '../lib/audio'
+import { fetchReplayList } from '../lib/replayPlayer'
 import CharacterPreview from './CharacterPreview.vue'
 
 defineProps<{
@@ -14,6 +15,7 @@ const emit = defineEmits<{
   play: [character: CharacterType]
   watch: []
   architect: []
+  watchReplay: [roomId: string]
 }>()
 
 const audio = inject<AudioSystem>('audio')
@@ -25,11 +27,18 @@ const characters: { id: CharacterType; name: string; color: string; glow: string
 ]
 
 const selected = ref<CharacterType>('wheat')
+const replays = ref<ReplaySummary[]>([])
 
 function selectChar(id: CharacterType) {
   selected.value = id
   audio?.play('ui-click')
 }
+
+const charLabel: Record<string, string> = { wheat: 'Wheat', rice: 'Rice', corn: 'Corn' }
+
+onMounted(async () => {
+  replays.value = (await fetchReplayList()).slice(0, 5)
+})
 </script>
 
 <template>
@@ -107,6 +116,23 @@ function selectChar(id: CharacterType) {
           <div class="online-dot" />
           <span>{{ onlineCount }} online</span>
         </div>
+
+        <!-- Recent Matches -->
+        <template v-if="replays.length > 0">
+          <div class="panel-divider" />
+          <div class="recent-matches">
+            <span class="recent-label">Recent</span>
+            <button
+              v-for="r in replays"
+              :key="r.id"
+              class="replay-item"
+              @click="audio?.play('ui-click'); emit('watchReplay', r.id)"
+            >
+              <span class="ri-chars">{{ charLabel[r.charA] || r.charA }} vs {{ charLabel[r.charB] || r.charB }}</span>
+              <span class="ri-result">{{ r.winner === 'draw' ? 'Draw' : `${r.winner} won` }}</span>
+            </button>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -371,6 +397,54 @@ function selectChar(id: CharacterType) {
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* ── Recent Matches ── */
+
+.recent-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.recent-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(200, 210, 225, 0.35);
+  margin-bottom: 4px;
+}
+
+.replay-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(200, 210, 225, 0.55);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.replay-item:hover {
+  background: rgba(139, 180, 255, 0.08);
+  color: rgba(200, 210, 225, 0.85);
+}
+
+.ri-chars {
+  font-weight: 600;
+}
+
+.ri-result {
+  font-size: 10px;
+  color: rgba(139, 180, 255, 0.6);
 }
 
 /* ── Queue ── */

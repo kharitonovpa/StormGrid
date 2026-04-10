@@ -76,4 +76,7 @@ export type {
   ReconnectFailMsg,
   OpponentDisconnectedMsg,
   OpponentReconnectedMsg,
+  ReplayFrame,
+  ReplaySummary,
+  ReplayData,
 } from './protocol.js'

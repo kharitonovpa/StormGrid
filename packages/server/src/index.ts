@@ -1,13 +1,16 @@
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { RoomManager } from './RoomManager.js'
 import { Matchmaking } from './matchmaking.js'
+import { ReplayStore } from './ReplayStore.js'
 import { parseClientMessage, send } from './protocol.js'
 import type { WsData } from './protocol.js'
 import { ConnectionLimiter } from './ratelimit.js'
 
 const app = new Hono()
 const gracePeriodMs = process.env.RECONNECT_GRACE_MS ? Number(process.env.RECONNECT_GRACE_MS) : undefined
-const roomManager = new RoomManager({ gracePeriodMs })
+const replayStore = new ReplayStore()
+const roomManager = new RoomManager({ gracePeriodMs, replayStore })
 const matchmaking = new Matchmaking(roomManager)
 
 const allClients = new Set<ServerWebSocket<WsData>>()
@@ -24,6 +27,16 @@ function broadcastLobbyStatus() {
     }
   }, 500)
 }
+
+app.use('/api/*', cors())
+
+app.get('/api/replays', (c) => c.json(replayStore.list()))
+
+app.get('/api/replay/:id', (c) => {
+  const data = replayStore.get(c.req.param('id'))
+  if (!data) return c.json({ error: 'Not found' }, 404)
+  return c.json(data)
+})
 
 app.get('/health', (c) => c.json({ ok: true }))
 

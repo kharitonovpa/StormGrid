@@ -7,10 +7,12 @@ import { celebrate, disposeCelebrate } from '../lib/celebrate'
 const props = defineProps<{
   winner: PlayerId | 'draw' | null
   myPlayerId: PlayerId | null
+  roomId: string | null
 }>()
 
 const emit = defineEmits<{
   playAgain: []
+  watchReplay: [roomId: string]
 }>()
 
 const audio = inject<AudioSystem>('audio')
@@ -90,13 +92,22 @@ onUnmounted(() => {
       <h1 class="result-title">{{ title }}</h1>
       <p class="result-sub">{{ subtitle }}</p>
 
-      <button class="btn-again" :class="resultClass" @click="audio?.play('ui-click'); emit('playAgain')">
-        <span>Play Again</span>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M23 4v6h-6M1 20v-6h6" />
-          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-        </svg>
-      </button>
+      <div class="btn-row">
+        <button class="btn-again" :class="resultClass" @click="audio?.play('ui-click'); emit('playAgain')">
+          <span>Play Again</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+          </svg>
+        </button>
+
+        <button v-if="roomId" class="btn-replay" @click="audio?.play('ui-click'); emit('watchReplay', roomId!)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span>Replay</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -248,7 +259,6 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  animation: fadeUp 0.5s 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .btn-again:hover {
@@ -287,11 +297,41 @@ onUnmounted(() => {
   transform: rotate(-45deg);
 }
 
+.btn-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  animation: fadeUp 0.5s 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.btn-replay {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(139, 180, 255, 0.2);
+  background: rgba(139, 180, 255, 0.06);
+  color: rgba(139, 180, 255, 0.8);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.btn-replay:hover {
+  background: rgba(139, 180, 255, 0.1);
+  border-color: rgba(139, 180, 255, 0.35);
+  transform: translateY(-2px);
+}
+
 /* ── Mobile ── */
 
 @media (max-width: 640px) {
   .gameover-card { padding: 32px 28px; }
   .result-title { font-size: 32px; }
   .result-sub { margin: 0 0 20px; font-size: 12px; }
+  .btn-row { flex-direction: column; align-items: center; }
 }
 </style>
