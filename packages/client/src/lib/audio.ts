@@ -33,7 +33,7 @@ interface AudioSettings {
   muted: boolean
 }
 
-const STORAGE_KEY = 'stormgrid-audio-v5'
+const STORAGE_KEY = 'wheee-audio-v1'
 
 const DEFAULTS: AudioSettings = {
   master: 0.8,

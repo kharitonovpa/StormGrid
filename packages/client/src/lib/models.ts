@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import type { CharacterType } from '@stormgrid/shared'
+import type { CharacterType } from '@wheee/shared'
 import { CELL_SIZE } from './constants'
 
 const MODEL_PATHS: Record<CharacterType, string> = {

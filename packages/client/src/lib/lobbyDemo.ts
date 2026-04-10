@@ -1,5 +1,5 @@
-import type { WindDir } from '@stormgrid/shared'
-import { BOARD_SIZE } from '@stormgrid/shared'
+import type { WindDir } from '@wheee/shared'
+import { BOARD_SIZE } from '@wheee/shared'
 import type { TerrainState } from './terrain'
 
 type WindSystem = { setDirection(dir: WindDir): void; setVisible(v: boolean): void }

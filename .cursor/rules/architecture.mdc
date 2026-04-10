@@ -1,16 +1,16 @@
 ---
-description: StormGrid module architecture conventions
+description: wheee module architecture conventions
 globs: "**/*.ts, **/*.vue"
 alwaysApply: true
 ---
 
-# StormGrid Architecture
+# wheee Architecture
 
 ## Monorepo layout
 
-- `packages/shared/` — `@stormgrid/shared`: game types (`GameState`, `Action`, `Player`, etc.) and constants (`BOARD_SIZE`, `DIRECTIONS`, etc.)
-- `packages/server/` — `@stormgrid/server`: game engine, (future) HTTP + WebSocket server
-- `packages/client/` — `@stormgrid/client`: Vue 3 + Three.js frontend
+- `packages/shared/` — `@wheee/shared`: game types (`GameState`, `Action`, `Player`, etc.) and constants (`BOARD_SIZE`, `DIRECTIONS`, etc.)
+- `packages/server/` — `@wheee/server`: game engine, (future) HTTP + WebSocket server
+- `packages/client/` — `@wheee/client`: Vue 3 + Three.js frontend
 - `game/` — design docs: `GAME_DESIGN.md`, `PLAN.md`, `TERRA.md`
 
 ## Server: engine modules
@@ -53,7 +53,7 @@ alwaysApply: true
 
 ## Rules
 
-1. **Types and constants shared between client/server live in `@stormgrid/shared`.** Never duplicate game types.
+1. **Types and constants shared between client/server live in `@wheee/shared`.** Never duplicate game types.
 2. **Game logic lives in `packages/server/src/engine/`.** The client NEVER computes game rules — it only renders state received from server.
 3. **GameEngine is pure logic.** No I/O, no Three.js, no side effects. Fully testable.
 4. **Each visual system lives in its own `packages/client/src/lib/*.ts` module.** Do not add system logic directly to App.vue.

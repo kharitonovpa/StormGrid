@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { CELLS, HALF, CELL_SIZE, SEGMENTS, THICKNESS } from './constants'
 import { getModel, modelsLoaded } from './models'
-import type { CharacterType } from '@stormgrid/shared'
+import type { CharacterType } from '@wheee/shared'
 import type { TerrainState } from './terrain'
 
 export interface PlayerState {
@@ -20,6 +20,18 @@ const DIRS_8: [number, number][] = [
   [1, 1],    // SE
   [-1, 1],   // SW
 ]
+
+function disposeGroup(g: THREE.Object3D) {
+  g.traverse(child => {
+    const m = child as THREE.Mesh
+    if (m.geometry) m.geometry.dispose()
+    if (m.material) {
+      const mat = m.material
+      if (Array.isArray(mat)) mat.forEach(x => x.dispose())
+      else (mat as THREE.Material).dispose()
+    }
+  })
+}
 
 export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
 
@@ -308,7 +320,9 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         const pos = mesh.position.clone()
         const rot = mesh.rotation.y
         const vis = mesh.visible
-        scene.remove(mesh)
+        const oldMesh = mesh
+        scene.remove(oldMesh)
+        disposeGroup(oldMesh)
         mesh = getModel(type)
         mesh.position.copy(pos)
         mesh.rotation.y = rot
@@ -642,17 +656,6 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
       if (ring.visible) updateRingVertices()
     },
     dispose() {
-      function disposeGroup(g: THREE.Object3D) {
-        g.traverse(child => {
-          const m = child as THREE.Mesh
-          if (m.geometry) m.geometry.dispose()
-          if (m.material) {
-            const mat = m.material
-            if (Array.isArray(mat)) mat.forEach(x => x.dispose())
-            else (mat as THREE.Material).dispose()
-          }
-        })
-      }
       scene.remove(playerA.mesh); disposeGroup(playerA.mesh)
       scene.remove(playerB.mesh); disposeGroup(playerB.mesh)
       for (const hl of moveHighlights) { scene.remove(hl); hl.geometry.dispose() }

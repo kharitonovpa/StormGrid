@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test'
 import { GameEngine } from '../GameEngine.js'
 import { stateForPlayer } from '../board.js'
-import { BOARD_SIZE, TICKS_PER_ROUND, SPAWN_PAIRS } from '@stormgrid/shared'
+import { BOARD_SIZE, TICKS_PER_ROUND, SPAWN_PAIRS } from '@wheee/shared'
 
 const FIXED_SPAWN = SPAWN_PAIRS[0]
 

@@ -8,8 +8,8 @@ import type {
   TickResult,
   WeatherResult,
   CharacterType,
-} from '@stormgrid/shared'
-import { BOARD_SIZE, TICKS_PER_ROUND, SPAWN_PAIRS } from '@stormgrid/shared'
+} from '@wheee/shared'
+import { BOARD_SIZE, TICKS_PER_ROUND, SPAWN_PAIRS } from '@wheee/shared'
 import { createInitialState, cloneState } from './board.js'
 import { applyTick } from './tick.js'
 import { resolveWind } from './wind.js'

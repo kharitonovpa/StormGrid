@@ -1,5 +1,5 @@
 {
-  "name": "@stormgrid/client",
+  "name": "@wheee/client",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@stormgrid/shared": "workspace:*",
+    "@wheee/shared": "workspace:*",
     "howler": "^2.2.4",
     "three": "^0.183.2",
     "vue": "^3.5.30"

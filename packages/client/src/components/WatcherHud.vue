@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, inject } from 'vue'
-import type { PlayerId, WatcherPrediction, GamePhase } from '@stormgrid/shared'
+import type { PlayerId, WatcherPrediction, GamePhase } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 
 const props = defineProps<{
@@ -23,6 +23,10 @@ const brokenInstrument = ref<'vane' | 'barometer' | null>(null)
 
 watch(() => props.winnerPredicted, (v) => {
   if (!v) winnerPick.value = null
+})
+
+watch(() => props.breakUsed, (v) => {
+  if (!v) brokenInstrument.value = null
 })
 
 function pickWinner(id: PlayerId) {

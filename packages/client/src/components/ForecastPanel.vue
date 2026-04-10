@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { WindDir } from '@stormgrid/shared'
+import type { WindDir } from '@wheee/shared'
 
 const props = defineProps<{
   windCandidates: WindDir[]

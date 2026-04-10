@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun'
-import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, WatcherState, WatcherPrediction, ReplayFrame, ReplayData } from '@stormgrid/shared'
-import { TICK_DURATION_MS, RECONNECT_GRACE_MS } from '@stormgrid/shared'
+import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, WatcherState, WatcherPrediction, ReplayFrame, ReplayData } from '@wheee/shared'
+import { TICK_DURATION_MS, RECONNECT_GRACE_MS } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
 import type { ServerMessage, WsData } from './protocol.js'
@@ -329,8 +329,13 @@ export class Room {
     send(ws, { type: 'architect:assigned', roomId: this.id, state: this.engine.getState() })
 
     const state = this.engine.getState()
-    if (state.phase === 'forecast') {
+    if (state.phase === 'forecast' && !this.architectDecisionReceived) {
+      this.clearTimer()
       this.sendArchitectPrompt()
+      this.setArchitectTimerTracked(ARCHITECT_DECISION_MS, () => {
+        this.architectTimer = null
+        this.proceedToTicking()
+      })
     }
     return true
   }
@@ -340,7 +345,16 @@ export class Room {
     this.architect = null
     ws.data.roomId = null
     ws.data.role = null
+
+    const hadTimer = this.architectTimer !== null || this.pausedArchitect !== null
     this.clearArchitectTimer()
+
+    if (hadTimer && !this.ended && !this.architectDecisionReceived) {
+      const state = this.engine.getState()
+      if (state.phase === 'forecast') {
+        this.setTickTimer(FORECAST_DISPLAY_MS, () => this.proceedToTicking())
+      }
+    }
   }
 
   architectSetWeather(ws: ServerWebSocket<WsData>, type: WeatherType, dir: WindDir): void {
@@ -368,6 +382,9 @@ export class Room {
 
     if (this.engine.placeBonus(x, y, bonusType)) {
       this.architectBonusPlaced = true
+      const updated = this.engine.getState()
+      this.sendEach((pid) => ({ type: 'forecast:update', state: stateForPlayer(updated, pid) }))
+      this.broadcastWatchers({ type: 'forecast:update', state: updated })
     }
   }
 

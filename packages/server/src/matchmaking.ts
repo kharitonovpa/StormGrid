@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun'
-import type { CharacterType } from '@stormgrid/shared'
+import type { CharacterType } from '@wheee/shared'
 import type { WsData } from './protocol.js'
 import { send } from './protocol.js'
 import { RoomManager } from './RoomManager.js'

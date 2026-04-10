@@ -1,5 +1,5 @@
-import type { Cell, GameState, Height, Player, PlayerId, ForecastData, BonusCell, WeatherResult } from '@stormgrid/shared'
-import { BOARD_SIZE, SPAWN_PAIRS } from '@stormgrid/shared'
+import type { Cell, GameState, Height, Player, PlayerId, ForecastData, BonusCell, WeatherResult } from '@wheee/shared'
+import { BOARD_SIZE, SPAWN_PAIRS } from '@wheee/shared'
 
 export function createEmptyBoard(): Cell[][] {
   const board: Cell[][] = []
@@ -88,8 +88,8 @@ function negateBoard(board: Cell[][]): Cell[][] {
 }
 
 export function stateForPlayer(state: GameState, pid: PlayerId): GameState {
-  if (pid === 'A') return { ...state }
-  return { ...state, board: negateBoard(state.board) }
+  if (pid === 'A') return { ...state, forecast: cloneForecast(state.forecast) }
+  return { ...state, board: negateBoard(state.board), forecast: cloneForecast(state.forecast) }
 }
 
 export function resultForPlayer(

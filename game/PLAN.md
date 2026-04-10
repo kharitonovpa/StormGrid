@@ -1,4 +1,4 @@
-# StormGrid — Development Plan
+# wheee — Development Plan
 
 ---
 
@@ -7,7 +7,7 @@
 > Монорепо (Bun workspaces), общие типы, dev-инфраструктура
 
 - ✅ Monorepo: `packages/shared`, `packages/server`, `packages/client`
-- ✅ Shared types: `@stormgrid/shared` — `GameState`, `Action`, `Player`, `ForecastData`, `BonusType`, `WatcherState`, etc.
+- ✅ Shared types: `@wheee/shared` — `GameState`, `Action`, `Player`, `ForecastData`, `BonusType`, `WatcherState`, etc.
 - ✅ Dev scripts: `bun test`, `bun run dev:client`, `bun run dev:server`
 - ✅ Runtime: Bun (package manager + test runner + server runtime)
 
@@ -58,7 +58,7 @@
 
 > Фронтенд подключен к серверу, играбельный 1v1 с двухсторонней картой
 
-- ✅ WS protocol types moved to `@stormgrid/shared`
+- ✅ WS protocol types moved to `@wheee/shared`
 - ✅ `useGameSocket` composable — typed WS connection + action submission
 - ✅ `useGameState` composable — reactive store (phase, tick, players, board)
 - ✅ `terrain.ts` — `applyBoardState()` + `resetFlat()` for server state sync
@@ -135,9 +135,9 @@
 | 7.2 | ✅ Sound design | Howler.js audio system: ambient pads, music loops, weather loops (wind/rain), 19 SFX (terrain, move, wind push, death, tick countdown, UI clicks, match found, victory/defeat/draw, watcher predictions, instrument break, architect confirm). VolumeControl component with mute + Music/SFX sliders. localStorage persistence |
 | 7.3 | ✅ Mobile-friendly | Touch input (pointerdown/up, synthetic click suppression, touch hover highlight), responsive HUD/Lobby/Overlays (media queries 640px), viewport clamping для radial menu, CharacterPreview fluid sizing, bugfix: flood BFS bounds check |
 | 7.4 | ✅ Reconnect handling | Переподключение при потере WS, восстановление state |
-| 7.5 | Replay system | Сохранение match log → просмотр повтора |
+| 7.5 | ✅ Replay system | Snapshot-based replay: сервер записывает кадры (GameState + weather), HTTP API для списка/загрузки, клиент с step/play/pause, анимация катаклизмов |
 | 7.6 | Leaderboard | Рейтинг игроков и наблюдателей (по очкам предсказаний) |
-| 7.7 | Deploy | Docker compose: server + Postgres + Redis. Фронт на CDN (Vercel / Cloudflare Pages) |
+| 7.7 | ✅ Deploy | Docker compose (Bun + nginx), Dockerfile multi-stage build, Cloudflare Pages (global) + direct nginx (RU), api.wheee.io direct to origin Warsaw |
 | 7.8 | ✅ Rate limiting & anti-cheat | Token bucket per connection (25 burst / 15/sec), message size limit (1KB), invalid message flood disconnect (5 streak), server-side validation |
 
 ---
@@ -168,3 +168,5 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
 - ✅ **Rate limiting & anti-cheat** — token bucket, message size, invalid flood
 - ✅ **Mobile-friendly** — touch events, responsive UI, viewport clamping, flood BFS bugfix
 - ✅ **Sound design** — Howler.js audio system, 25 placeholder sounds, VolumeControl UI, all trigger points wired
+- ✅ **Replay system** — snapshot-based replay, HTTP API, step/play/pause, cataclysm animation
+- ✅ **Deploy** — Docker compose (Bun + nginx), dual frontend (Cloudflare + direct), api.wheee.io direct to Warsaw

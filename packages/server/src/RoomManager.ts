@@ -1,4 +1,4 @@
-import type { PlayerId } from '@stormgrid/shared'
+import type { PlayerId } from '@wheee/shared'
 import { Room } from './Room.js'
 import type { ReplayStore } from './ReplayStore.js'
 

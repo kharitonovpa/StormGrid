@@ -1,5 +1,5 @@
-import type { ForecastData, WeatherType, WindDir } from '@stormgrid/shared'
-import { WIND_DIRS } from '@stormgrid/shared'
+import type { ForecastData, WeatherType, WindDir } from '@wheee/shared'
+import { WIND_DIRS } from '@wheee/shared'
 
 export type WeatherDecision = {
   type: WeatherType

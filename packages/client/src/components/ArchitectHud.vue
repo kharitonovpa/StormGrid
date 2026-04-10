@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, inject } from 'vue'
-import type { GamePhase, WeatherType, WindDir, BonusType } from '@stormgrid/shared'
+import { ref, computed, onUnmounted, inject, watch } from 'vue'
+import type { GamePhase, WeatherType, WindDir, BonusType } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 
 const props = defineProps<{
@@ -36,6 +36,10 @@ const startCountdown = () => {
 }
 
 startCountdown()
+
+watch(() => props.deadline, (val) => {
+  if (val > 0) startCountdown()
+})
 
 onUnmounted(() => clearTimeout(countdownId))
 

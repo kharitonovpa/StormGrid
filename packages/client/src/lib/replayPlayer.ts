@@ -1,8 +1,6 @@
 import { ref, computed } from 'vue'
-import type { ReplayFrame, ReplayData, ReplaySummary } from '@stormgrid/shared'
-
-const API_PORT = location.port === '5173' ? '3001' : location.port
-const API_BASE = `${location.protocol}//${location.hostname}:${API_PORT}`
+import type { ReplayFrame, ReplayData, ReplaySummary } from '@wheee/shared'
+import { API_BASE } from './config'
 
 export async function fetchReplayList(): Promise<ReplaySummary[]> {
   const res = await fetch(`${API_BASE}/api/replays`)

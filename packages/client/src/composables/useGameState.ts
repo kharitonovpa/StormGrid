@@ -7,7 +7,7 @@ import type {
   ForecastData,
   ServerMessage,
   WatcherPrediction,
-} from '@stormgrid/shared'
+} from '@wheee/shared'
 
 export type ClientPhase =
   | 'lobby'
@@ -171,10 +171,14 @@ export function useGameState() {
         opponentDisconnected.value = false
         isWatcher.value = false
         isArchitect.value = false
-        phase.value = msg.state.phase === 'ticking' ? 'ticking'
-          : msg.state.phase === 'forecast' ? 'forecast'
-          : msg.state.phase === 'weather' ? 'weather'
-          : 'ticking'
+        {
+          const sp = msg.state.phase
+          phase.value = sp === 'ticking' ? 'ticking'
+            : sp === 'forecast' ? 'forecast'
+            : sp === 'weather' ? 'weather'
+            : sp === 'finished' ? 'finished'
+            : 'ticking'
+        }
         break
 
       case 'reconnect:fail':

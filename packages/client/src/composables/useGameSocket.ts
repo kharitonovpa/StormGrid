@@ -1,12 +1,8 @@
 import { ref, shallowRef } from 'vue'
-import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, ClientMessage, ServerMessage } from '@stormgrid/shared'
+import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, ClientMessage, ServerMessage } from '@wheee/shared'
+import { WS_URL } from '../lib/config'
 
 export type MessageHandler = (msg: ServerMessage) => void
-
-const WS_PROTOCOL = location.protocol === 'https:' ? 'wss' : 'ws'
-const WS_HOST = location.hostname
-const WS_PORT = location.port === '5173' ? '3001' : location.port
-const WS_URL = `${WS_PROTOCOL}://${WS_HOST}:${WS_PORT}/ws`
 
 const MAX_RECONNECT_DELAY = 8_000
 const BASE_RECONNECT_DELAY = 500

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'bun:test'
 import { createInitialState } from '../board.js'
 import { applyTick } from '../tick.js'
-import type { Action, GameState } from '@stormgrid/shared'
-import { BOARD_SIZE } from '@stormgrid/shared'
+import type { Action, GameState } from '@wheee/shared'
+import { BOARD_SIZE } from '@wheee/shared'
 
 const FIXED_SPAWN = { A: { x: 3, y: 5 }, B: { x: 3, y: 1 } }
 

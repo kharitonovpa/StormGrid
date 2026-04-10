@@ -1,5 +1,5 @@
-import type { Action, GameState, PlayerId, TickResult, BonusType, Height } from '@stormgrid/shared'
-import { BOARD_SIZE, MOVE_DIRS } from '@stormgrid/shared'
+import type { Action, GameState, PlayerId, TickResult, BonusType, Height } from '@wheee/shared'
+import { BOARD_SIZE, MOVE_DIRS } from '@wheee/shared'
 import { cloneState, inBounds, clampHeight } from './board.js'
 
 export function applyTick(
@@ -73,12 +73,19 @@ function resolveBonus(state: GameState): { player: PlayerId; bonus: BonusType } 
   const b = state.activeBonus
   if (!b) return null
 
+  const onBonus: PlayerId[] = []
   for (const pid of ['A', 'B'] as PlayerId[]) {
     const p = state.players[pid]
-    if (p.alive && p.x === b.x && p.y === b.y) {
-      state.activeBonus = null
-      return { player: pid, bonus: b.type }
-    }
+    if (p.alive && p.x === b.x && p.y === b.y) onBonus.push(pid)
+  }
+
+  if (onBonus.length === 1) {
+    state.activeBonus = null
+    return { player: onBonus[0], bonus: b.type }
+  }
+  if (onBonus.length === 2) {
+    state.activeBonus = null
+    return null
   }
 
   return null

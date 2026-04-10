@@ -1,4 +1,4 @@
-import { BOARD_SIZE } from '@stormgrid/shared'
+import { BOARD_SIZE } from '@wheee/shared'
 
 export const CELLS = BOARD_SIZE
 export const SIZE = 60

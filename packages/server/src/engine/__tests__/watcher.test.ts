@@ -173,7 +173,6 @@ describe('watcher — break instrument', () => {
 
     send(watcher.ws, {
       type: 'watcher:break_instrument',
-      target: p1PlayerId,
       instrument: 'vane',
     })
 

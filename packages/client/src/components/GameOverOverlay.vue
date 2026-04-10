@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, inject } from 'vue'
-import type { PlayerId } from '@stormgrid/shared'
+import type { PlayerId } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
 
@@ -43,6 +43,7 @@ const resultClass = computed(() => {
 })
 
 let fireworkInterval = 0
+const fireworkTimeouts: number[] = []
 
 function launchFireworks() {
   const w = window.innerWidth
@@ -51,13 +52,13 @@ function launchFireworks() {
   const cy = h / 2
 
   for (let i = 0; i < 5; i++) {
-    setTimeout(() => {
+    fireworkTimeouts.push(window.setTimeout(() => {
       const sx = cx + (Math.random() - 0.5) * w * 0.6
       const sy = cy + (Math.random() - 0.5) * h * 0.4
       const tx = sx + (Math.random() - 0.5) * 100
       const ty = sy - 40 - Math.random() * 60
       celebrate(sx, sy, tx, ty, 0)
-    }, i * 200)
+    }, i * 200))
   }
 
   fireworkInterval = window.setInterval(() => {
@@ -76,6 +77,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  for (const t of fireworkTimeouts) clearTimeout(t)
+  fireworkTimeouts.length = 0
   if (fireworkInterval) {
     clearInterval(fireworkInterval)
     fireworkInterval = 0

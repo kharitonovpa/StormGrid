@@ -171,6 +171,13 @@ export let floodBodies: FloodBody[] = []
 const floodStateBot = Array.from({ length: CELLS }, () => new Array<boolean>(CELLS).fill(false))
 export let floodBodiesBot: FloodBody[] = []
 
+const _floodVisited = Array.from({ length: CELLS }, () => new Array<boolean>(CELLS).fill(false))
+
+function resetFloodVisited() {
+  for (let z = 0; z < CELLS; z++)
+    for (let x = 0; x < CELLS; x++) _floodVisited[z][x] = false
+}
+
 function computeFloodGeneric(
   heightOf: (z: number, x: number) => number,
   peakVal: number,
@@ -181,7 +188,8 @@ function computeFloodGeneric(
     for (let x = 0; x < CELLS; x++) stateOut[z][x] = false
   bodiesOut.length = 0
 
-  const visited = Array.from({ length: CELLS }, () => new Array<boolean>(CELLS).fill(false))
+  resetFloodVisited()
+  const visited = _floodVisited
   const dirs: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]]
 
   for (let sz = 0; sz < CELLS; sz++) {

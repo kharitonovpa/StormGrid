@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, inject } from 'vue'
-import type { PlayerId } from '@stormgrid/shared'
-import { TICK_DURATION_MS, TICKS_PER_ROUND } from '@stormgrid/shared'
+import type { PlayerId } from '@wheee/shared'
+import { TICK_DURATION_MS, TICKS_PER_ROUND } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 
 const TICK_SECONDS = TICK_DURATION_MS / 1000

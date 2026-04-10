@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { ref, inject, onMounted } from 'vue'
-import type { CharacterType, ReplaySummary } from '@stormgrid/shared'
-import { GAME_TITLE } from '@stormgrid/shared'
+import { ref, inject, onMounted, computed } from 'vue'
+import type { CharacterType, ReplaySummary } from '@wheee/shared'
+import { GAME_TITLE } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { fetchReplayList } from '../lib/replayPlayer'
 import CharacterPreview from './CharacterPreview.vue'
+
+const TAGLINES = [
+  'One gust. One grid. No mercy.',
+  'The wind doesn\'t care who built the hill.',
+  'Shape. Stand. Survive.',
+  'Hold your ground — if you can.',
+]
 
 defineProps<{
   phase: string
@@ -35,6 +42,7 @@ function selectChar(id: CharacterType) {
 }
 
 const charLabel: Record<string, string> = { wheat: 'Wheat', rice: 'Rice', corn: 'Corn' }
+const tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)]
 
 onMounted(async () => {
   replays.value = (await fetchReplayList()).slice(0, 5)
@@ -46,7 +54,7 @@ onMounted(async () => {
     <!-- Title -->
     <div class="lobby-title-area">
       <h1 class="lobby-title">{{ GAME_TITLE }}</h1>
-      <p class="lobby-tagline">Reshape the land. Command the storm.</p>
+      <p class="lobby-tagline">{{ tagline }}</p>
     </div>
 
     <!-- Bottom glass panel -->
@@ -158,23 +166,25 @@ onMounted(async () => {
 }
 
 .lobby-title {
-  font-size: 42px;
-  font-weight: 800;
-  letter-spacing: 3px;
-  color: rgba(255, 255, 255, 0.92);
+  font-family: 'Comfortaa', 'Quicksand', sans-serif;
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: rgba(255, 255, 255, 0.95);
   text-shadow:
-    0 0 40px rgba(233, 69, 96, 0.4),
-    0 0 80px rgba(233, 69, 96, 0.15);
+    0 0 50px rgba(200, 220, 255, 0.3),
+    0 0 100px rgba(200, 220, 255, 0.1);
   margin: 0;
   line-height: 1;
 }
 
 .lobby-tagline {
-  margin-top: 10px;
+  font-family: 'Comfortaa', 'Quicksand', sans-serif;
+  margin-top: 14px;
   font-size: 13px;
   font-weight: 400;
-  letter-spacing: 1.5px;
-  color: rgba(200, 210, 225, 0.45);
+  letter-spacing: 2px;
+  color: rgba(200, 210, 225, 0.5);
   text-transform: uppercase;
 }
 
@@ -508,7 +518,7 @@ onMounted(async () => {
 
 @media (max-width: 640px) {
   .lobby-title-area { padding: 24px 24px; }
-  .lobby-title { font-size: 28px; letter-spacing: 2px; }
+  .lobby-title { font-size: 36px; letter-spacing: 4px; }
   .lobby-tagline { font-size: 11px; }
 
   .panel-content {

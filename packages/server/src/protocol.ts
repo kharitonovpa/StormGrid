@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun'
-import type { PlayerId, Role } from '@stormgrid/shared'
-import { BOARD_SIZE, CHARACTERS, WIND_DIRS, WEATHER_TYPES, MOVE_DIRS } from '@stormgrid/shared'
+import type { PlayerId, Role } from '@wheee/shared'
+import { BOARD_SIZE, CHARACTERS, WIND_DIRS, WEATHER_TYPES, MOVE_DIRS } from '@wheee/shared'
 
 export type {
   ClientMessage,
@@ -39,9 +39,9 @@ export type {
   ReconnectFailMsg,
   OpponentDisconnectedMsg,
   OpponentReconnectedMsg,
-} from '@stormgrid/shared'
+} from '@wheee/shared'
 
-import type { ClientMessage, ServerMessage } from '@stormgrid/shared'
+import type { ClientMessage, ServerMessage } from '@wheee/shared'
 
 const VALID_MOVE_DIRS = new Set(Object.keys(MOVE_DIRS))
 const VALID_WIND_DIRS = new Set(WIND_DIRS)

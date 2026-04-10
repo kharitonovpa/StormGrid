@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { HALF, SIZE, THICKNESS } from './constants'
 import { noise2d } from './noise'
 import type { TerrainState } from './terrain'
-import type { WindDir } from '@stormgrid/shared'
+import type { WindDir } from '@wheee/shared'
 
 const WIND_Y_MIN = -4
 const WIND_Y_MAX = 8
@@ -139,8 +139,11 @@ export function createWindSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   let cosR = 1, sinR = 0
 
+  const _wxz: [number, number] = [0, 0]
   function worldXZ(lx: number, lz: number): [number, number] {
-    return [lx * cosR + lz * sinR, -lx * sinR + lz * cosR]
+    _wxz[0] = lx * cosR + lz * sinR
+    _wxz[1] = -lx * sinR + lz * cosR
+    return _wxz
   }
 
   function isBlocked(lx: number, y: number, lz: number): boolean {

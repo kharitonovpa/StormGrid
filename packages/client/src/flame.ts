@@ -96,3 +96,23 @@ export function createFlame(): THREE.Group {
 
   return group
 }
+
+export function disposeFlame(group: THREE.Group): void {
+  const disposed = new Set<THREE.BufferGeometry | THREE.Material>()
+  group.traverse((child) => {
+    const m = child as THREE.Mesh
+    if (m.geometry && !disposed.has(m.geometry)) {
+      disposed.add(m.geometry)
+      m.geometry.dispose()
+    }
+    if (m.material) {
+      const mats = Array.isArray(m.material) ? m.material : [m.material]
+      for (const mat of mats) {
+        if (!disposed.has(mat)) {
+          disposed.add(mat)
+          mat.dispose()
+        }
+      }
+    }
+  })
+}

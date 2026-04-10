@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as THREE from 'three'
-import type { CharacterType } from '@stormgrid/shared'
+import type { CharacterType } from '@wheee/shared'
 import { getModel, whenModelsReady } from '../lib/models'
 
 const props = defineProps<{

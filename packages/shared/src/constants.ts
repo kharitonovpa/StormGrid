@@ -1,6 +1,6 @@
 import type { WindDir, MoveDir, WeatherType, CharacterType } from './types.js'
 
-export const GAME_TITLE = 'StormGrid'
+export const GAME_TITLE = 'wheee'
 
 export const BOARD_SIZE = 7
 

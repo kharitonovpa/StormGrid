@@ -1,5 +1,5 @@
 {
-  "name": "@stormgrid/server",
+  "name": "@wheee/server",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,7 @@
     "test:watch": "bun test --watch"
   },
   "dependencies": {
-    "@stormgrid/shared": "workspace:*",
+    "@wheee/shared": "workspace:*",
     "hono": "^4.12.11"
   },
   "devDependencies": {

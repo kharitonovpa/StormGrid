@@ -1,4 +1,4 @@
-import type { ReplayData, ReplaySummary } from '@stormgrid/shared'
+import type { ReplayData, ReplaySummary } from '@wheee/shared'
 
 const MAX_REPLAYS = 50
 

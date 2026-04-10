@@ -1,5 +1,5 @@
-import type { Cell, GameState, PlayerId, WindDir, Height } from '@stormgrid/shared'
-import { BOARD_SIZE, DIRECTIONS } from '@stormgrid/shared'
+import type { Cell, GameState, PlayerId, WindDir, Height } from '@wheee/shared'
+import { BOARD_SIZE, DIRECTIONS } from '@wheee/shared'
 import { inBounds } from './board.js'
 
 export type WindResult = {

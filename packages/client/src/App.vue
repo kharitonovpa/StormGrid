@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, ref, shallowRef, computed, watch, provide } fro
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
-import type { Action, CharacterType, GameState, MoveDir } from '@stormgrid/shared'
+import type { Action, CharacterType, GameState, MoveDir } from '@wheee/shared'
 import { SIZE, HALF, CELL_SIZE, SEGMENTS } from './lib/constants'
 import { terrainState } from './lib/terrain'
 import { createWaterSystem } from './lib/water'
@@ -59,7 +59,7 @@ let celebrateTimer = 0
 let unsubMessage1: (() => void) | null = null
 let unsubMessage2: (() => void) | null = null
 
-function triggerCelebration(prediction: import('@stormgrid/shared').WatcherPrediction) {
+function triggerCelebration(prediction: import('@wheee/shared').WatcherPrediction) {
   let wx = 0, wy = 2, wz = 0
   const state = game.gameState.value
   if (prediction.type === 'move' && prediction.target && state) {
@@ -197,16 +197,16 @@ function onArchitect() {
   ensureConnected(() => socket.joinArchitect())
 }
 
-const pendingBonusType = ref<import('@stormgrid/shared').BonusType | null>(null)
+const pendingBonusType = ref<import('@wheee/shared').BonusType | null>(null)
 const architectHudRef = ref<InstanceType<typeof ArchitectHud> | null>(null)
 
-function onSetWeather(weatherType: import('@stormgrid/shared').WeatherType, dir: import('@stormgrid/shared').WindDir) {
+function onSetWeather(weatherType: import('@wheee/shared').WeatherType, dir: import('@wheee/shared').WindDir) {
   socket.setWeather(weatherType, dir)
   game.weatherSubmitted.value = true
   audio.play('weather-confirm')
 }
 
-function onStartBonusPlace(bonusType: import('@stormgrid/shared').BonusType) {
+function onStartBonusPlace(bonusType: import('@wheee/shared').BonusType) {
   pendingBonusType.value = bonusType
 }
 
@@ -221,8 +221,9 @@ function onPlayAgain() {
 }
 
 async function startReplay(roomId: string) {
+  const gen = ++replayGeneration
   const data = await fetchReplayData(roomId)
-  if (!data || data.frames.length === 0) return
+  if (!data || data.frames.length === 0 || gen !== replayGeneration) return
 
   game.reset()
   stopLobbyDemo()
@@ -385,10 +386,13 @@ function onDocumentPointerDown(e: PointerEvent) {
   closeMenu()
 }
 
+let menuListenerId = 0
 watch(menuVisible, (open) => {
   if (open) {
-    setTimeout(() => document.addEventListener('pointerdown', onDocumentPointerDown, { capture: true }), 0)
+    clearTimeout(menuListenerId)
+    menuListenerId = window.setTimeout(() => document.addEventListener('pointerdown', onDocumentPointerDown, { capture: true }), 0)
   } else {
+    clearTimeout(menuListenerId)
     document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   }
 })
@@ -400,6 +404,7 @@ let sceneCleanup: (() => void) | null = null
 const replayMode = ref(false)
 const replayPlayer = shallowRef<ReplayPlayer | null>(null)
 let lastRoomId: string | null = null
+let replayGeneration = 0
 
 function selectOption(action: MenuAction) {
   handleAction?.(action)
@@ -1038,6 +1043,7 @@ onUnmounted(() => {
   cancelAnimationFrame(animId)
   clearTimeout(winnerPopupTimer)
   clearTimeout(celebrateTimer)
+  clearTimeout(menuListenerId)
   disposeCelebrate()
   pendingGameEnd = null
   unsubMessage1?.()

@@ -1,4 +1,4 @@
-# StormGrid — Game Design
+# wheee — Game Design
 
 ## 1. Overview
 

@@ -8,7 +8,8 @@ import type { WsData } from './protocol.js'
 import { ConnectionLimiter } from './ratelimit.js'
 
 const app = new Hono()
-const gracePeriodMs = process.env.RECONNECT_GRACE_MS ? Number(process.env.RECONNECT_GRACE_MS) : undefined
+const _rawGrace = process.env.RECONNECT_GRACE_MS ? Number(process.env.RECONNECT_GRACE_MS) : undefined
+const gracePeriodMs = _rawGrace !== undefined && Number.isFinite(_rawGrace) && _rawGrace > 0 ? _rawGrace : undefined
 const replayStore = new ReplayStore()
 const roomManager = new RoomManager({ gracePeriodMs, replayStore })
 const matchmaking = new Matchmaking(roomManager)
@@ -28,7 +29,11 @@ function broadcastLobbyStatus() {
   }, 500)
 }
 
-app.use('/api/*', cors())
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173']
+
+app.use('/api/*', cors({ origin: ALLOWED_ORIGINS }))
 
 app.get('/api/replays', (c) => c.json(replayStore.list()))
 
@@ -42,7 +47,7 @@ app.get('/health', (c) => c.json({ ok: true }))
 
 app.get('/', (c) =>
   c.json({
-    name: 'StormGrid',
+    name: 'wheee',
     rooms: roomManager.roomCount,
     queue: matchmaking.queueSize,
   }),
@@ -284,4 +289,4 @@ function getArchitectRoom(ws: ServerWebSocket<WsData>) {
 
 type ServerWebSocket<T> = import('bun').ServerWebSocket<T>
 
-console.log(`StormGrid server listening on http://localhost:${server.port}`)
+console.log(`wheee server listening on http://localhost:${server.port}`)
