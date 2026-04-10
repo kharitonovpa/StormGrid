@@ -1063,13 +1063,21 @@ onMounted(() => {
 
   // --- Lobby demo: cinematic showcase ---
   players.setActivePlayer(null)
+  const demoPairs: [CharacterType, CharacterType][] = [
+    ['wheat', 'corn'],
+    ['rice', 'wheat'],
+    ['corn', 'rice'],
+  ]
+  let demoPairIdx = 0
   lobbyDemo = createLobbyDemo(terrainState, wind, rain, water, {
     onTerrainChanged() { animating = true },
     onRequestFlood() { shouldBuildWater = true },
     onRepositionPlayers(posA, posB) {
+      const [top, bot] = demoPairs[demoPairIdx % demoPairs.length]
+      demoPairIdx++
       players.applyPositions(
-        { ...posA, alive: true, character: 'wheat' },
-        { ...posB, alive: true, character: 'corn' },
+        { ...posA, alive: true, character: top },
+        { ...posB, alive: true, character: bot },
       )
     },
     onRequestCameraDip() {
