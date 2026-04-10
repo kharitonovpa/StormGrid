@@ -16,7 +16,7 @@ COPY packages/client packages/client
 RUN bun run --cwd packages/server build
 
 ARG VITE_API_URL
-RUN bun run --cwd packages/client build
+RUN cd packages/client && bunx vite build
 
 # ── Stage 2: client static output (for nginx) ────────────────
 FROM scratch AS client
