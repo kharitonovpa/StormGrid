@@ -6,6 +6,7 @@ import type { AudioSystem } from '../lib/audio'
 import { fetchReplayList } from '../lib/replayPlayer'
 import { useAuth } from '../composables/useAuth'
 import CharacterPreview from './CharacterPreview.vue'
+import LeaderboardPanel from './LeaderboardPanel.vue'
 
 const TAGLINES = [
   'One gust. One grid. No mercy.',
@@ -14,9 +15,10 @@ const TAGLINES = [
   'Hold your ground — if you can.',
 ]
 
-defineProps<{
+const props = defineProps<{
   phase: string
   onlineCount: number
+  inQueue: number
 }>()
 
 const emit = defineEmits<{
@@ -123,11 +125,19 @@ onUnmounted(() => {
           </template>
           <template v-else>
             <div class="actions-primary">
-              <button class="btn-play" @click="emit('play', selected)">
+              <button
+                class="btn-play"
+                :class="{ 'btn-play-hot': props.inQueue > 0 }"
+                :aria-label="props.inQueue > 0 ? 'Play — instant match available' : 'Play'"
+                @click="emit('play', selected)"
+              >
                 <span class="btn-play-text">Play</span>
                 <svg class="btn-play-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M5 12h14M13 6l6 6-6 6" />
                 </svg>
+                <Transition name="queue-pip">
+                  <span v-if="props.inQueue > 0" class="queue-pip" aria-hidden="true" />
+                </Transition>
               </button>
               <!-- Auth: logged-in user chip -->
               <div v-if="user" class="user-chip" @click="showAuthMenu = !showAuthMenu">
@@ -174,23 +184,24 @@ onUnmounted(() => {
           <span>{{ onlineCount }} online</span>
         </div>
 
-        <!-- Recent Matches -->
-        <template v-if="replays.length > 0">
-          <div class="panel-divider" />
-          <div class="recent-matches">
-            <span class="recent-label">Recent</span>
-            <button
-              v-for="r in replays"
-              :key="r.id"
-              class="replay-item"
-              @click="audio?.play('ui-click'); emit('watchReplay', r.id)"
-            >
-              <span class="ri-chars">{{ charLabel[r.charA] || r.charA }} vs {{ charLabel[r.charB] || r.charB }}</span>
-              <span class="ri-result">{{ r.winner === 'draw' ? 'Draw' : `${r.winner} won` }}</span>
-            </button>
-          </div>
-        </template>
+        <!-- Leaderboard -->
+        <div class="panel-divider" />
+        <LeaderboardPanel />
       </div>
+    </div>
+
+    <!-- Recent Matches — top-right corner -->
+    <div v-if="replays.length > 0" class="recent-corner">
+      <span class="recent-label">Recent</span>
+      <button
+        v-for="r in replays"
+        :key="r.id"
+        class="replay-item"
+        @click="audio?.play('ui-click'); emit('watchReplay', r.id)"
+      >
+        <span class="ri-chars">{{ charLabel[r.charA] || r.charA }} vs {{ charLabel[r.charB] || r.charB }}</span>
+        <span class="ri-result">{{ r.winner === 'draw' ? 'Draw' : `${r.winner} won` }}</span>
+      </button>
     </div>
   </div>
 </template>
@@ -348,6 +359,7 @@ onUnmounted(() => {
 }
 
 .btn-play {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -371,8 +383,59 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #ed5a73, #d14460);
 }
 
+.btn-play-hot:hover {
+  box-shadow: 0 4px 28px rgba(233, 69, 96, 0.5), 0 0 0 6px rgba(233, 69, 96, 0.08);
+}
+
 .btn-play:active {
   transform: translateY(0);
+}
+
+.btn-play-hot {
+  animation: play-pulse 2.5s ease-in-out infinite;
+}
+
+.queue-pip {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+  border: 2px solid rgba(12, 16, 24, 0.8);
+  animation: pip-breathe 2s ease-in-out infinite;
+}
+
+.queue-pip-enter-active {
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.queue-pip-leave-active {
+  transition: opacity 0.3s;
+}
+.queue-pip-enter-from,
+.queue-pip-leave-to {
+  opacity: 0;
+}
+
+@keyframes pip-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes play-pulse {
+  0%, 100% {
+    box-shadow: 0 4px 20px rgba(233, 69, 96, 0.25);
+  }
+  50% {
+    box-shadow: 0 4px 28px rgba(233, 69, 96, 0.5), 0 0 0 6px rgba(233, 69, 96, 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-play-hot { animation: none; }
+  .queue-pip { animation: none; }
 }
 
 .btn-play-arrow {
@@ -539,13 +602,19 @@ onUnmounted(() => {
   50% { opacity: 0.5; }
 }
 
-/* ── Recent Matches ── */
+/* ── Recent Matches (top-right corner) ── */
 
-.recent-matches {
+.recent-corner {
+  position: fixed;
+  top: 40px;
+  right: 48px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 160px;
+  min-width: 170px;
+  max-width: 220px;
+  pointer-events: auto;
+  animation: recentIn 0.8s 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .recent-label {
@@ -633,6 +702,11 @@ onUnmounted(() => {
   100% { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes recentIn {
+  0% { opacity: 0; transform: translateX(20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -675,5 +749,7 @@ onUnmounted(() => {
   }
 
   .online-badge { justify-content: center; }
+
+  .recent-corner { display: none; }
 }
 </style>

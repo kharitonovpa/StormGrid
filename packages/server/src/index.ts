@@ -9,9 +9,40 @@ import { ConnectionLimiter } from './ratelimit.js'
 import { runMigrations } from './db/migrate.js'
 import { authRoutes } from './auth/oauth.js'
 import { verifyJwt, parseCookieToken } from './auth/jwt.js'
-import { saveMatch, listReplays, getReplay, getUserMatches } from './db/matchStore.js'
+import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard } from './db/matchStore.js'
 
 runMigrations()
+
+/* ── HTTP rate limiter (token bucket per IP) ── */
+
+function createHttpLimiter(opts: { windowMs: number; max: number }) {
+  const buckets = new Map<string, { tokens: number; last: number }>()
+  const refillRate = opts.max / opts.windowMs
+
+  // Evict stale entries every 60s
+  setInterval(() => {
+    const cutoff = Date.now() - opts.windowMs * 2
+    for (const [ip, b] of buckets) {
+      if (b.last < cutoff) buckets.delete(ip)
+    }
+  }, 60_000).unref()
+
+  return (ip: string): boolean => {
+    const now = Date.now()
+    let bucket = buckets.get(ip)
+    if (!bucket) {
+      bucket = { tokens: opts.max, last: now }
+      buckets.set(ip, bucket)
+    }
+    bucket.tokens = Math.min(opts.max, bucket.tokens + (now - bucket.last) * refillRate)
+    bucket.last = now
+    if (bucket.tokens < 1) return false
+    bucket.tokens--
+    return true
+  }
+}
+
+const apiLimiter = createHttpLimiter({ windowMs: 60_000, max: 60 })
 
 const app = new Hono()
 const _rawGrace = process.env.RECONNECT_GRACE_MS ? Number(process.env.RECONNECT_GRACE_MS) : undefined
@@ -21,16 +52,26 @@ const roomManager = new RoomManager({
   gracePeriodMs,
   replayStore,
   onMatchEnd(data, replay) {
-    try { saveMatch({
-      roomId: data.roomId,
-      playerAId: data.playerAUserId,
-      playerBId: data.playerBUserId,
-      characterA: data.characterA,
-      characterB: data.characterB,
-      winner: data.winner,
-      rounds: data.rounds,
-      durationMs: data.durationMs,
-    }, replay) } catch (e) { console.error('[db] saveMatch failed:', e) }
+    try {
+      saveMatch({
+        roomId: data.roomId,
+        playerAId: data.playerAUserId,
+        playerBId: data.playerBUserId,
+        characterA: data.characterA,
+        characterB: data.characterB,
+        winner: data.winner,
+        rounds: data.rounds,
+        durationMs: data.durationMs,
+      }, replay)
+    } catch (e) { console.error('[db] saveMatch failed:', e) }
+
+    try {
+      updatePlayerStats(data.playerAUserId, data.playerBUserId, data.winner)
+    } catch (e) { console.error('[db] updatePlayerStats failed:', e) }
+
+    try {
+      updateWatcherStats(data.watcherScores)
+    } catch (e) { console.error('[db] updateWatcherStats failed:', e) }
   },
 })
 const matchmaking = new Matchmaking(roomManager)
@@ -43,7 +84,7 @@ function broadcastLobbyStatus() {
   if (lobbyStatusTimer) return
   lobbyStatusTimer = setTimeout(() => {
     lobbyStatusTimer = null
-    const msg = JSON.stringify({ type: 'lobby:status', online: allClients.size })
+    const msg = JSON.stringify({ type: 'lobby:status', online: allClients.size, inQueue: matchmaking.queueSize })
     for (const ws of allClients) {
       try { ws.send(msg) } catch { /* closed */ }
     }
@@ -55,6 +96,16 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   : ['http://localhost:5173']
 
 app.use('/api/*', cors({ origin: ALLOWED_ORIGINS, credentials: true }))
+
+app.use('/api/*', async (c, next) => {
+  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+    || c.req.header('x-real-ip')
+    || 'unknown'
+  if (!apiLimiter(ip)) {
+    return c.json({ error: 'Too many requests' }, 429)
+  }
+  await next()
+})
 
 app.route('/api/auth', authRoutes)
 
@@ -80,6 +131,9 @@ app.get('/api/me/matches', async (c) => {
   if (!payload) return c.json({ error: 'Unauthorized' }, 401)
   return c.json(getUserMatches(payload.sub))
 })
+
+app.get('/api/leaderboard/players', (c) => c.json(getPlayerLeaderboard()))
+app.get('/api/leaderboard/watchers', (c) => c.json(getWatcherLeaderboard()))
 
 app.get('/health', (c) => c.json({ ok: true }))
 
@@ -155,11 +209,13 @@ const server = Bun.serve<WsData>({
             return
           }
           matchmaking.enqueue(ws, msg.character)
+          broadcastLobbyStatus()
           break
         }
 
         case 'queue:leave': {
           matchmaking.dequeue(ws)
+          broadcastLobbyStatus()
           break
         }
 

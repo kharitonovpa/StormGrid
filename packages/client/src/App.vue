@@ -98,7 +98,8 @@ function triggerCelebration(prediction: import('@wheee/shared').WatcherPredictio
 
 unsubMessage1 = socket.onMessage((msg) => {
   if (msg.type === 'lobby:status') {
-    onlineCount.value = msg.online
+    onlineCount.value = Number.isFinite(msg.online) ? msg.online : 0
+    inQueue.value = Number.isFinite(msg.inQueue) ? msg.inQueue : 0
     return
   }
   if (msg.type === 'game:start') {
@@ -162,6 +163,7 @@ const showOpponentDisconnected = computed(() =>
 )
 
 const onlineCount = ref(0)
+const inQueue = ref(0)
 let pendingAction: (() => void) | null = null
 
 function ensureConnected(then: () => void) {
@@ -184,16 +186,19 @@ watch(() => socket.connected.value, (connected) => {
 function onPlay(character: CharacterType) {
   game.selectedCharacter.value = character
   audio.play('queue-enter')
+  stopLobbyDemo()
   ensureConnected(() => socket.joinQueue(character))
 }
 
 function onWatch() {
   audio.play('queue-enter')
+  stopLobbyDemo()
   ensureConnected(() => socket.joinWatch())
 }
 
 function onArchitect() {
   audio.play('queue-enter')
+  stopLobbyDemo()
   ensureConnected(() => socket.joinArchitect())
 }
 
@@ -344,6 +349,7 @@ function onFlipView() {
 }
 
 /* ── Demo orbit: dip below the board to show both sides ── */
+const demoOrbitPaused = ref(false)
 let demoOrbitActive = false
 let demoOrbitElapsed = 0
 let demoOrbitBasePos: THREE.Vector3 | null = null
@@ -363,7 +369,11 @@ function updateDemoOrbit(dt: number) {
   const sideDir = new THREE.Vector3(base.x, 0, base.z).normalize()
   const lowPos = sideDir.clone().multiplyScalar(pullback).setY(-dist * 0.12)
 
-  if (controls instanceof OrbitControls) controls.autoRotate = false
+  if (controls instanceof OrbitControls) {
+    controls.autoRotate = false
+    controls.enabled = false
+  }
+  if (!demoOrbitPaused.value) demoOrbitPaused.value = true
 
   if (demoOrbitElapsed < DEMO_DIP_DUR) {
     const t = smoothstep(demoOrbitElapsed / DEMO_DIP_DUR)
@@ -379,10 +389,12 @@ function updateDemoOrbit(dt: number) {
   } else {
     demoOrbitActive = false
     demoOrbitBasePos = null
+    demoOrbitPaused.value = false
     cam.position.copy(base)
     cam.lookAt(0, 0, 0)
-    if (lobbyDemoActive && controls instanceof OrbitControls) {
-      controls.autoRotate = true
+    if (controls instanceof OrbitControls) {
+      controls.enabled = true
+      if (lobbyDemoActive) controls.autoRotate = true
     }
   }
 }
@@ -590,9 +602,15 @@ function stopLobbyDemo() {
   if (!lobbyDemoActive) return
   lobbyDemoActive = false
   lobbyDemo?.stop()
+  if (demoOrbitActive && demoOrbitBasePos) {
+    sceneCamera.position.copy(demoOrbitBasePos)
+    sceneCamera.lookAt(0, 0, 0)
+  }
   demoOrbitActive = false
   demoOrbitBasePos = null
+  demoOrbitPaused.value = false
   if (controls instanceof OrbitControls) {
+    controls.enabled = true
     controls.autoRotate = false
   }
 }
@@ -1109,7 +1127,7 @@ onMounted(() => {
     const now = performance.now()
     const dt = Math.min((now - prevTime) / 1000, 0.1)
     prevTime = now
-    controls.update()
+    if (!demoOrbitActive) controls.update()
 
     if (lobbyDemoActive && lobbyDemo) {
       lobbyDemo.update(dt)
@@ -1239,10 +1257,21 @@ onUnmounted(() => {
     </div>
   </Transition>
 
+  <!-- Demo orbit pause indicator -->
+  <Transition name="demo-pause">
+    <div v-if="demoOrbitPaused && game.phase.value === 'lobby'" class="demo-pause-overlay">
+      <div class="demo-pause-icon">
+        <div class="demo-pause-bar" />
+        <div class="demo-pause-bar" />
+      </div>
+    </div>
+  </Transition>
+
   <LobbyOverlay
     v-if="showLobby && !replayMode"
     :phase="game.phase.value"
     :online-count="onlineCount"
+    :in-queue="inQueue"
     @play="onPlay"
     @watch="onWatch"
     @architect="onArchitect"
@@ -1386,6 +1415,83 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   overflow: hidden;
+}
+
+/* ── Demo orbit pause overlay ── */
+
+.demo-pause-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.12) 0%, transparent 70%);
+}
+
+.demo-pause-icon {
+  display: flex;
+  gap: 10px;
+  padding: 24px 28px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.demo-pause-bar {
+  width: 8px;
+  height: 36px;
+  border-radius: 4px;
+  background: linear-gradient(
+    180deg,
+    rgba(200, 210, 225, 0.5) 0%,
+    rgba(200, 210, 225, 0.25) 100%
+  );
+  box-shadow: 0 0 12px rgba(139, 180, 255, 0.15);
+}
+
+.demo-pause-enter-active {
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.demo-pause-enter-active .demo-pause-icon {
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.demo-pause-leave-active {
+  transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.demo-pause-leave-active .demo-pause-icon {
+  transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.demo-pause-enter-from {
+  opacity: 0;
+}
+.demo-pause-enter-from .demo-pause-icon {
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+.demo-pause-leave-to {
+  opacity: 0;
+}
+.demo-pause-leave-to .demo-pause-icon {
+  opacity: 0;
+  transform: scale(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-pause-enter-active,
+  .demo-pause-leave-active,
+  .demo-pause-enter-active .demo-pause-icon,
+  .demo-pause-leave-active .demo-pause-icon {
+    transition: none;
+  }
 }
 </style>
 

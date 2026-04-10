@@ -23,6 +23,7 @@ export type {
   WatcherPrediction,
   WatcherState,
   UserInfo,
+  WatcherScoreEntry,
 } from './types.js'
 
 export {
@@ -81,4 +82,6 @@ export type {
   ReplaySummary,
   ReplayData,
   MatchSummary,
+  PlayerLeaderboardEntry,
+  WatcherLeaderboardEntry,
 } from './protocol.js'

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -23,6 +23,19 @@ export const matches = sqliteTable('matches', {
   durationMs: integer('duration_ms').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 })
+
+export const userStats = sqliteTable('user_stats', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  wins: integer('wins').notNull().default(0),
+  losses: integer('losses').notNull().default(0),
+  draws: integer('draws').notNull().default(0),
+  watcherScore: integer('watcher_score').notNull().default(0),
+  gamesPlayed: integer('games_played').notNull().default(0),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (t) => [
+  index('user_stats_wins_idx').on(t.wins),
+  index('user_stats_watcher_score_idx').on(t.watcherScore),
+])
 
 export const replays = sqliteTable('replays', {
   id: text('id').primaryKey(),

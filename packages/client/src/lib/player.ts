@@ -245,7 +245,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   const JUMP_DURATION = 0.35
   const JUMP_HEIGHT = CELL_SIZE * 0.6
   const WIND_SLIDE_DURATION = 1.5
-  const WIND_DEATH_OVERSHOOT = CELL_SIZE * 5
+  const WIND_DEATH_OVERSHOOT = CELL_SIZE * 20
   const TURN_SPEED = 10
 
   function easeInOut(t: number): number {
@@ -284,7 +284,6 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     let windDied = false
     let windT = 0
     let windResolve: (() => void) | null = null
-    let cachedMaterials: THREE.Material[] | null = null
 
     function cellWorldPos(cx?: number, cz?: number) {
       const _cx = cx ?? state.cx
@@ -359,11 +358,6 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         windDied = false
         if (windResolve) { windResolve(); windResolve = null }
         mesh.visible = true
-        mesh.traverse(child => {
-          const m = (child as THREE.Mesh).material as THREE.Material | undefined
-          if (m) { m.opacity = 1; m.transparent = false }
-        })
-        cachedMaterials = null
       },
       startWindSlide(path: { x: number; y: number }[], died: boolean): Promise<void> {
         windPoints = path.map(p => cellWorldPos(p.x, p.y))
@@ -400,14 +394,6 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         windT = 0
         jumping = false
 
-        if (died) {
-          cachedMaterials = []
-          mesh.traverse(child => {
-            const m = (child as THREE.Mesh).material as THREE.Material | undefined
-            if (m) { m.transparent = true; cachedMaterials!.push(m) }
-          })
-        }
-
         const last = path[path.length - 1]
         if (!died) {
           state.cx = last.x
@@ -435,13 +421,6 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
           mesh.position.x = a.wx + (b.wx - a.wx) * frac
           mesh.position.z = a.wz + (b.wz - a.wz) * frac
           mesh.position.y = a.wy + (b.wy - a.wy) * frac
-
-          if (windDied && cachedMaterials) {
-            const fadeStart = 0.35
-            const fade = windT < fadeStart ? 1 : 1 - (windT - fadeStart) / (1 - fadeStart)
-            const opacity = fade * fade
-            for (const mat of cachedMaterials) mat.opacity = opacity
-          }
         } else if (jumping) {
           jumpT += dt / JUMP_DURATION
           if (jumpT >= 1) {

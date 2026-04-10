@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun'
-import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, WatcherState, WatcherPrediction, ReplayFrame, ReplayData } from '@wheee/shared'
+import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, WatcherState, WatcherPrediction, WatcherScoreEntry, ReplayFrame, ReplayData } from '@wheee/shared'
 import { TICK_DURATION_MS, RECONNECT_GRACE_MS } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
@@ -44,6 +44,7 @@ export type MatchEndData = {
   winner: PlayerId | 'draw'
   rounds: number
   durationMs: number
+  watcherScores: WatcherScoreEntry[]
 }
 
 export type RoomCallbacks = {
@@ -576,6 +577,19 @@ export class Room {
 
     this.callbacks.replayStore?.save(replay)
 
+    const bestByUser = new Map<string, number>()
+    for (const slot of this.watchers.values()) {
+      const uid = slot.ws.data.userId
+      if (uid && slot.state.score > 0) {
+        const prev = bestByUser.get(uid) ?? 0
+        if (slot.state.score > prev) bestByUser.set(uid, slot.state.score)
+      }
+    }
+    const watcherScores: WatcherScoreEntry[] = []
+    for (const [userId, score] of bestByUser) {
+      watcherScores.push({ userId, score })
+    }
+
     this.callbacks.onMatchEnd?.({
       roomId: this.id,
       playerAUserId: this.playerUserIds.A,
@@ -585,6 +599,7 @@ export class Room {
       winner,
       rounds: this.engine.getState().round,
       durationMs: this.matchStartedAt > 0 ? Date.now() - this.matchStartedAt : 0,
+      watcherScores,
     }, replay)
   }
 

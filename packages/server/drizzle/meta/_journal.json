@@ -22,6 +22,20 @@
       "when": 1775854183459,
       "tag": "0002_add_frame_count",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1775854525148,
+      "tag": "0003_add_user_stats",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1775855582932,
+      "tag": "0004_add_stats_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -142,7 +142,7 @@
 | 7.3 | ✅ Mobile-friendly | Touch input (pointerdown/up, synthetic click suppression, touch hover highlight), responsive HUD/Lobby/Overlays (media queries 640px), viewport clamping для radial menu, CharacterPreview fluid sizing, bugfix: flood BFS bounds check |
 | 7.4 | ✅ Reconnect handling | Переподключение при потере WS, восстановление state |
 | 7.5 | ✅ Replay system | Snapshot-based replay: сервер записывает кадры (GameState + weather), HTTP API для списка/загрузки, клиент с step/play/pause, анимация катаклизмов |
-| 7.6 | Leaderboard | Рейтинг игроков и наблюдателей (по очкам предсказаний) |
+| 7.6 | ✅ Leaderboard | `user_stats` table (wins/losses/draws/watcherScore), auto-update on match end, `/api/leaderboard/players` + `/watchers`, `LeaderboardPanel.vue` с табами Players/Watchers, gold/silver/bronze ранги |
 | 7.7 | ✅ Deploy | Docker compose (Bun + nginx), Dockerfile multi-stage build, Cloudflare Pages (global) + direct nginx (RU), api.wheee.io direct to origin Warsaw |
 | 7.8 | ✅ Rate limiting & anti-cheat | Token bucket per connection (25 burst / 15/sec), message size limit (1KB), invalid message flood disconnect (5 streak), server-side validation |
 
@@ -166,9 +166,9 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
 
 ---
 
-## Immediate Next Step → Phase 7.6: Leaderboard
+## Status: All Phases Complete
 
-Фазы 0–6 и 2b завершены. Полировка почти завершена:
+Все фазы (0–7 + 2b) завершены:
 - ✅ **Character visuals** — GLB-модели, матовые материалы, 3D-превью в лобби
 - ✅ **Reconnect handling** — восстановление при потере WS
 - ✅ **Rate limiting & anti-cheat** — token bucket, message size, invalid flood

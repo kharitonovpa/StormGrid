@@ -1,6 +1,6 @@
-import { eq, or, desc } from 'drizzle-orm'
+import { eq, or, desc, asc, sql } from 'drizzle-orm'
 import { db, schema } from './index.js'
-import type { ReplayData, ReplaySummary, MatchSummary } from '@wheee/shared'
+import type { ReplayData, ReplaySummary, MatchSummary, PlayerLeaderboardEntry, WatcherLeaderboardEntry, WatcherScoreEntry } from '@wheee/shared'
 
 export type MatchRecord = {
   roomId: string
@@ -101,4 +101,99 @@ export function getUserMatches(userId: string, limit = 50): MatchSummary[] {
     durationMs: r.durationMs,
     playedAt: r.createdAt.toISOString(),
   }))
+}
+
+/* ── Stats ── */
+
+function ensureStats(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], userId: string) {
+  const existing = tx.select({ userId: schema.userStats.userId })
+    .from(schema.userStats)
+    .where(eq(schema.userStats.userId, userId))
+    .get()
+  if (!existing) {
+    tx.insert(schema.userStats).values({
+      userId,
+      wins: 0, losses: 0, draws: 0,
+      watcherScore: 0, gamesPlayed: 0,
+      updatedAt: new Date(),
+    }).run()
+  }
+}
+
+export function updatePlayerStats(
+  playerAId: string | null,
+  playerBId: string | null,
+  winner: string,
+): void {
+  db.transaction((tx) => {
+    const now = new Date()
+    for (const [uid, side] of [[playerAId, 'A'], [playerBId, 'B']] as const) {
+      if (!uid) continue
+      ensureStats(tx, uid)
+      const won = winner === side
+      const drew = winner === 'draw'
+      tx.update(schema.userStats)
+        .set({
+          wins: won ? sql`${schema.userStats.wins} + 1` : schema.userStats.wins,
+          losses: !won && !drew ? sql`${schema.userStats.losses} + 1` : schema.userStats.losses,
+          draws: drew ? sql`${schema.userStats.draws} + 1` : schema.userStats.draws,
+          gamesPlayed: sql`${schema.userStats.gamesPlayed} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(schema.userStats.userId, uid))
+        .run()
+    }
+  })
+}
+
+export function updateWatcherStats(entries: WatcherScoreEntry[]): void {
+  if (entries.length === 0) return
+  db.transaction((tx) => {
+    const now = new Date()
+    for (const { userId, score } of entries) {
+      ensureStats(tx, userId)
+      tx.update(schema.userStats)
+        .set({
+          watcherScore: sql`${schema.userStats.watcherScore} + ${score}`,
+          updatedAt: now,
+        })
+        .where(eq(schema.userStats.userId, userId))
+        .run()
+    }
+  })
+}
+
+/* ── Leaderboard ── */
+
+export function getPlayerLeaderboard(limit = 20): PlayerLeaderboardEntry[] {
+  return db.select({
+    userId: schema.userStats.userId,
+    name: schema.users.name,
+    avatar: schema.users.avatar,
+    wins: schema.userStats.wins,
+    losses: schema.userStats.losses,
+    draws: schema.userStats.draws,
+    gamesPlayed: schema.userStats.gamesPlayed,
+  })
+    .from(schema.userStats)
+    .innerJoin(schema.users, eq(schema.userStats.userId, schema.users.id))
+    .where(sql`${schema.userStats.gamesPlayed} > 0`)
+    .orderBy(desc(schema.userStats.wins), desc(schema.userStats.gamesPlayed), asc(schema.userStats.userId))
+    .limit(limit)
+    .all()
+}
+
+export function getWatcherLeaderboard(limit = 20): WatcherLeaderboardEntry[] {
+  return db.select({
+    userId: schema.userStats.userId,
+    name: schema.users.name,
+    avatar: schema.users.avatar,
+    watcherScore: schema.userStats.watcherScore,
+  })
+    .from(schema.userStats)
+    .innerJoin(schema.users, eq(schema.userStats.userId, schema.users.id))
+    .where(sql`${schema.userStats.watcherScore} > 0`)
+    .orderBy(desc(schema.userStats.watcherScore), asc(schema.userStats.userId))
+    .limit(limit)
+    .all()
 }
