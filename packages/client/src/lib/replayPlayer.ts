@@ -3,13 +3,13 @@ import type { ReplayFrame, ReplayData, ReplaySummary } from '@wheee/shared'
 import { API_BASE } from './config'
 
 export async function fetchReplayList(): Promise<ReplaySummary[]> {
-  const res = await fetch(`${API_BASE}/api/replays`)
+  const res = await fetch(`${API_BASE}/api/replays`, { credentials: 'include' })
   if (!res.ok) return []
   return res.json()
 }
 
 export async function fetchReplayData(id: string): Promise<ReplayData | null> {
-  const res = await fetch(`${API_BASE}/api/replay/${id}`)
+  const res = await fetch(`${API_BASE}/api/replay/${id}`, { credentials: 'include' })
   if (!res.ok) return null
   return res.json()
 }

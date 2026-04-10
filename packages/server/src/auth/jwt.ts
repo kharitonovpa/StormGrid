@@ -1,0 +1,60 @@
+const SECRET = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-production'
+const EXPIRES_IN = 30 * 24 * 60 * 60 // 30 days in seconds
+
+const encoder = new TextEncoder()
+
+async function hmacSign(payload: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload))
+  return btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+async function hmacVerify(payload: string, signature: string): Promise<boolean> {
+  const expected = await hmacSign(payload)
+  return expected === signature
+}
+
+function base64url(obj: unknown): string {
+  return btoa(JSON.stringify(obj))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function fromBase64url(s: string): string {
+  const padded = s.replace(/-/g, '+').replace(/_/g, '/') + '=='.slice(0, (4 - (s.length % 4)) % 4)
+  return atob(padded)
+}
+
+export type JwtPayload = { sub: string; name: string; avatar: string | null; iat: number; exp: number }
+
+export async function signJwt(userId: string, name: string, avatar: string | null): Promise<string> {
+  const now = Math.floor(Date.now() / 1000)
+  const payload: JwtPayload = { sub: userId, name, avatar, iat: now, exp: now + EXPIRES_IN }
+  const header = base64url({ alg: 'HS256', typ: 'JWT' })
+  const body = base64url(payload)
+  const sig = await hmacSign(`${header}.${body}`)
+  return `${header}.${body}.${sig}`
+}
+
+export async function verifyJwt(token: string): Promise<JwtPayload | null> {
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  const [header, body, sig] = parts
+  if (!await hmacVerify(`${header}.${body}`, sig)) return null
+  try {
+    const payload: JwtPayload = JSON.parse(fromBase64url(body))
+    if (typeof payload.sub !== 'string') return null
+    if (payload.exp < Math.floor(Date.now() / 1000)) return null
+    return payload
+  } catch {
+    return null
+  }
+}
+
+export function parseCookieToken(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null
+  const match = cookieHeader.match(/(?:^|;\s*)token=([^;]+)/)
+  return match ? match[1] : null
+}

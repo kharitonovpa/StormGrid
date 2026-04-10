@@ -35,6 +35,17 @@ const CLEANUP_DELAY_MS = 10_000
 const POINTS_WINNER = 10
 const POINTS_MOVE = 5
 
+export type MatchEndData = {
+  roomId: string
+  playerAUserId: string | null
+  playerBUserId: string | null
+  characterA: string
+  characterB: string
+  winner: PlayerId | 'draw'
+  rounds: number
+  durationMs: number
+}
+
 export type RoomCallbacks = {
   onDispose: (id: string) => void
   findNextRoom?: (excludeId: string) => string | null
@@ -42,6 +53,7 @@ export type RoomCallbacks = {
   unregisterToken?: (token: string) => void
   gracePeriodMs?: number
   replayStore?: ReplayStore
+  onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
 }
 
 export class Room {
@@ -71,6 +83,8 @@ export class Room {
   private disconnectTimers: Partial<Record<PlayerId, ReturnType<typeof setTimeout>>> = {}
 
   private replayFrames: ReplayFrame[] = []
+  private matchStartedAt = 0
+  private playerUserIds: Record<PlayerId, string | null> = { A: null, B: null }
 
   constructor(id: string, callbacks: RoomCallbacks) {
     this.id = id
@@ -114,6 +128,7 @@ export class Room {
 
     const reconnectToken = crypto.randomUUID()
     this.players[pid] = { ws, reconnectToken, character, action: null, disconnectedAt: null }
+    this.playerUserIds[pid] = ws.data.userId ?? null
     ws.data.roomId = this.id
     ws.data.playerId = pid
     ws.data.role = 'player'
@@ -121,6 +136,7 @@ export class Room {
     this.callbacks.registerToken?.(reconnectToken, pid)
 
     if (this.isFull) {
+      this.matchStartedAt = Date.now()
       this.startGame()
     }
 
@@ -547,18 +563,29 @@ export class Room {
   }
 
   private saveReplay(winner: PlayerId | 'draw'): void {
-    const store = this.callbacks.replayStore
-    if (!store) return
     const charA = this.players.A?.character ?? this.engine.getState().players.A.character
     const charB = this.players.B?.character ?? this.engine.getState().players.B.character
-    store.save({
+    const replay: ReplayData = {
       id: this.id,
       charA,
       charB,
       winner,
       frameCount: this.replayFrames.length,
       frames: this.replayFrames,
-    })
+    }
+
+    this.callbacks.replayStore?.save(replay)
+
+    this.callbacks.onMatchEnd?.({
+      roomId: this.id,
+      playerAUserId: this.playerUserIds.A,
+      playerBUserId: this.playerUserIds.B,
+      characterA: charA,
+      characterB: charB,
+      winner,
+      rounds: this.engine.getState().round,
+      durationMs: this.matchStartedAt > 0 ? Date.now() - this.matchStartedAt : 0,
+    }, replay)
   }
 
   /* ── Prediction resolution ── */

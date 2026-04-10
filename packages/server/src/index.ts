@@ -6,12 +6,33 @@ import { ReplayStore } from './ReplayStore.js'
 import { parseClientMessage, send } from './protocol.js'
 import type { WsData } from './protocol.js'
 import { ConnectionLimiter } from './ratelimit.js'
+import { runMigrations } from './db/migrate.js'
+import { authRoutes } from './auth/oauth.js'
+import { verifyJwt, parseCookieToken } from './auth/jwt.js'
+import { saveMatch, listReplays, getReplay, getUserMatches } from './db/matchStore.js'
+
+runMigrations()
 
 const app = new Hono()
 const _rawGrace = process.env.RECONNECT_GRACE_MS ? Number(process.env.RECONNECT_GRACE_MS) : undefined
 const gracePeriodMs = _rawGrace !== undefined && Number.isFinite(_rawGrace) && _rawGrace > 0 ? _rawGrace : undefined
 const replayStore = new ReplayStore()
-const roomManager = new RoomManager({ gracePeriodMs, replayStore })
+const roomManager = new RoomManager({
+  gracePeriodMs,
+  replayStore,
+  onMatchEnd(data, replay) {
+    try { saveMatch({
+      roomId: data.roomId,
+      playerAId: data.playerAUserId,
+      playerBId: data.playerBUserId,
+      characterA: data.characterA,
+      characterB: data.characterB,
+      winner: data.winner,
+      rounds: data.rounds,
+      durationMs: data.durationMs,
+    }, replay) } catch (e) { console.error('[db] saveMatch failed:', e) }
+  },
+})
 const matchmaking = new Matchmaking(roomManager)
 
 const allClients = new Set<ServerWebSocket<WsData>>()
@@ -33,14 +54,31 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : ['http://localhost:5173']
 
-app.use('/api/*', cors({ origin: ALLOWED_ORIGINS }))
+app.use('/api/*', cors({ origin: ALLOWED_ORIGINS, credentials: true }))
 
-app.get('/api/replays', (c) => c.json(replayStore.list()))
+app.route('/api/auth', authRoutes)
+
+app.get('/api/replays', (c) => {
+  const memList = replayStore.list()
+  const dbList = listReplays()
+  const seen = new Set(memList.map((r) => r.id))
+  const merged = [...memList, ...dbList.filter((r) => !seen.has(r.id))]
+  return c.json(merged.slice(0, 20))
+})
 
 app.get('/api/replay/:id', (c) => {
-  const data = replayStore.get(c.req.param('id'))
+  const id = c.req.param('id')
+  const data = replayStore.get(id) ?? getReplay(id)
   if (!data) return c.json({ error: 'Not found' }, 404)
   return c.json(data)
+})
+
+app.get('/api/me/matches', async (c) => {
+  const token = parseCookieToken(c.req.header('cookie') ?? null)
+  if (!token) return c.json({ error: 'Unauthorized' }, 401)
+  const payload = await verifyJwt(token)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
+  return c.json(getUserMatches(payload.sub))
 })
 
 app.get('/health', (c) => c.json({ ok: true }))
@@ -57,13 +95,19 @@ const PORT = Number(process.env.PORT) || 3001
 
 const server = Bun.serve<WsData>({
   port: PORT,
-  fetch(req, server) {
+  async fetch(req, server) {
     const url = new URL(req.url)
 
     if (url.pathname === '/ws') {
       const sessionId = crypto.randomUUID()
+      let userId: string | null = null
+      const token = parseCookieToken(req.headers.get('cookie'))
+      if (token) {
+        const payload = await verifyJwt(token)
+        if (payload) userId = payload.sub
+      }
       const ok = server.upgrade(req, {
-        data: { sessionId, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter() },
+        data: { sessionId, userId, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter() },
       })
       if (ok) return undefined
       return new Response('WebSocket upgrade failed', { status: 400 })

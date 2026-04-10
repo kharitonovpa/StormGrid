@@ -84,6 +84,19 @@ export type ReplaySummary = {
 
 export type ReplayData = ReplaySummary & { frames: ReplayFrame[] }
 
+/* ── Match History ── */
+
+export type MatchSummary = {
+  id: string
+  roomId: string
+  characterA: string
+  characterB: string
+  winner: string | null
+  rounds: number
+  durationMs: number
+  playedAt: string
+}
+
 export type ServerMessage =
   | QueueWaitingMsg
   | GameStartMsg

@@ -9,6 +9,8 @@ services:
     env_file: .env
     expose:
       - "3001"
+    volumes:
+      - app-data:/data
 
   nginx:
     build:
@@ -33,3 +35,4 @@ services:
 
 volumes:
   certbot-etc:
+  app-data:

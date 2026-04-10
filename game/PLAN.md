@@ -41,16 +41,22 @@
 - ✅ `index.ts` — Hono HTTP (`/health`, `/`) + Bun native WS (`/ws`), message routing
 - ✅ Integration test — two WS clients connect, queue, match, play through ticks
 
-## Phase 2b — Auth + Persistence (future)
+## Phase 2b — Auth + Persistence ✅ DONE
 
-> OAuth2, PostgreSQL, Redis — когда понадобится сохранение прогресса
+> SQLite (bun:sqlite) + Drizzle ORM, OAuth2, match history. Redis не нужен (single-instance).
 
-| # | Задача | Детали |
-|---|--------|--------|
-| 2b.1 | Auth — OAuth2 | Google + GitHub OAuth. JWT access/refresh tokens. Cookie-based sessions |
-| 2b.2 | User model + DB | PostgreSQL: `users(id, provider, provider_id, name, avatar, created_at)`. Drizzle ORM |
-| 2b.3 | Matchmaking Redis | Redis-backed очередь вместо in-memory |
-| 2b.4 | Match history | Сохранение результатов матчей в БД |
+- ✅ `bun:sqlite` + Drizzle ORM — WAL mode, zero extra containers, in-process DB
+- ✅ Schema: `users`, `matches`, `replays` tables + migrations (drizzle-kit)
+- ✅ Auth — Google + GitHub OAuth2, JWT cookies (HS256), popup flow with `postMessage`
+- ✅ WS upgrade extracts `userId` from cookie (`WsData.userId`)
+- ✅ Client `useAuth` composable — `login()` / `logout()` / `fetchMe()`, reactive user state
+- ✅ LobbyOverlay — Sign In dropdown (Google/GitHub), user avatar chip, Sign Out
+- ✅ Match history — `saveMatch()` on game end, `GET /api/me/matches` (authenticated)
+- ✅ Replay persistence — replays saved to SQLite, API falls back to DB
+- ✅ Docker volume for SQLite file persistence across container restarts
+- ✅ Tests: JWT sign/verify, cookie parsing, DB CRUD (12 new tests, 66 core tests pass)
+
+**Решение:** SQLite вместо PostgreSQL (встроен в Bun, 3-6x быстрее, zero infra). Redis убран — matchmaking остаётся in-memory (single server). Миграция на PostgreSQL через Drizzle — смена драйвера, если понадобится.
 
 ---
 
@@ -160,9 +166,9 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
 
 ---
 
-## Immediate Next Step → Phase 7: Polish & Production
+## Immediate Next Step → Phase 7.6: Leaderboard
 
-Фазы 0–6 завершены. Полировка в процессе:
+Фазы 0–6 и 2b завершены. Полировка почти завершена:
 - ✅ **Character visuals** — GLB-модели, матовые материалы, 3D-превью в лобби
 - ✅ **Reconnect handling** — восстановление при потере WS
 - ✅ **Rate limiting & anti-cheat** — token bucket, message size, invalid flood

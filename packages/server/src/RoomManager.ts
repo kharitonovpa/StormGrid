@@ -1,8 +1,16 @@
 import type { PlayerId } from '@wheee/shared'
 import { Room } from './Room.js'
+import type { MatchEndData } from './Room.js'
 import type { ReplayStore } from './ReplayStore.js'
+import type { ReplayData } from '@wheee/shared'
 
 let nextId = 1
+
+export type RoomManagerOpts = {
+  gracePeriodMs?: number
+  replayStore?: ReplayStore
+  onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
+}
 
 export class RoomManager {
   private rooms = new Map<string, Room>()
@@ -10,10 +18,12 @@ export class RoomManager {
 
   private gracePeriodMs?: number
   replayStore?: ReplayStore
+  private onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
 
-  constructor(opts?: { gracePeriodMs?: number; replayStore?: ReplayStore }) {
+  constructor(opts?: RoomManagerOpts) {
     this.gracePeriodMs = opts?.gracePeriodMs
     this.replayStore = opts?.replayStore
+    this.onMatchEnd = opts?.onMatchEnd
   }
 
   createRoom(): Room {
@@ -25,6 +35,7 @@ export class RoomManager {
       unregisterToken: (token) => this.unregisterToken(token),
       gracePeriodMs: this.gracePeriodMs,
       replayStore: this.replayStore,
+      onMatchEnd: this.onMatchEnd,
     })
     this.rooms.set(id, room)
     return room

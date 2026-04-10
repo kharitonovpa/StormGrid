@@ -121,6 +121,7 @@ import type { ConnectionLimiter } from './ratelimit.js'
 
 export type WsData = {
   sessionId: string
+  userId: string | null
   roomId: string | null
   playerId: PlayerId | null
   role: Exclude<Role, 'guest'> | null

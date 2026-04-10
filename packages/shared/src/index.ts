@@ -22,6 +22,7 @@ export type {
   WeatherResult,
   WatcherPrediction,
   WatcherState,
+  UserInfo,
 } from './types.js'
 
 export {
@@ -79,4 +80,5 @@ export type {
   ReplayFrame,
   ReplaySummary,
   ReplayData,
+  MatchSummary,
 } from './protocol.js'

@@ -124,3 +124,11 @@ export type WatcherState = {
   breakUsed: boolean
 }
 
+/* ── Auth ── */
+
+export type UserInfo = {
+  id: string
+  name: string
+  avatar: string | null
+}
+

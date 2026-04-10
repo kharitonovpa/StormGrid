@@ -1,0 +1,1 @@
+ALTER TABLE `replays` ADD `frame_count` integer NOT NULL DEFAULT 0;

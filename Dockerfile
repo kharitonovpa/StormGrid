@@ -28,8 +28,10 @@ FROM oven/bun:1-slim AS server
 
 WORKDIR /app
 COPY --from=build /app/packages/server/dist/index.js ./index.js
+COPY --from=build /app/packages/server/drizzle ./drizzle
 
 ENV PORT=3001
+ENV DB_PATH=/data/wheee.db
 EXPOSE 3001
 
 CMD ["bun", "run", "index.js"]
