@@ -132,6 +132,11 @@ export type UserInfo = {
   avatar: string | null
 }
 
+export type PlayerInfo = {
+  displayName: string
+  flag: string | null
+}
+
 /* ── Stats ── */
 
 export type WatcherScoreEntry = { userId: string; score: number }

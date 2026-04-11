@@ -1,12 +1,22 @@
 import type { ServerWebSocket } from 'bun'
-import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, WatcherState, WatcherPrediction, WatcherScoreEntry, ReplayFrame, ReplayData } from '@wheee/shared'
-import { TICK_DURATION_MS, RECONNECT_GRACE_MS } from '@wheee/shared'
+import type { Action, BonusType, CharacterType, PlayerId, PlayerInfo, WeatherType, WindDir, WatcherState, WatcherPrediction, WatcherScoreEntry, ReplayFrame, ReplayData } from '@wheee/shared'
+import { TICK_DURATION_MS, RECONNECT_GRACE_MS, WAR_AND_PEACE_SURNAMES } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
 import { chooseBotAction } from './engine/bot.js'
 import type { ServerMessage, WsData } from './protocol.js'
 import { send } from './protocol.js'
 import type { ReplayStore } from './ReplayStore.js'
+
+function countryToFlag(code: string): string {
+  return String.fromCodePoint(
+    ...code.toUpperCase().split('').map(c => 0x1F1E6 + c.charCodeAt(0) - 65),
+  )
+}
+
+function randomSurname(): string {
+  return WAR_AND_PEACE_SURNAMES[Math.floor(Math.random() * WAR_AND_PEACE_SURNAMES.length)]
+}
 
 type PlayerSlot = {
   ws: ServerWebSocket<WsData> | null
@@ -89,6 +99,10 @@ export class Room {
   private replayFrames: ReplayFrame[] = []
   private matchStartedAt = 0
   private playerUserIds: Record<PlayerId, string | null> = { A: null, B: null }
+  private playerInfoCache: Record<PlayerId, PlayerInfo> = {
+    A: { displayName: '', flag: null },
+    B: { displayName: '', flag: null },
+  }
 
   constructor(id: string, callbacks: RoomCallbacks) {
     this.id = id
@@ -133,6 +147,10 @@ export class Room {
     const reconnectToken = crypto.randomUUID()
     this.players[pid] = { ws, reconnectToken, character, action: null, disconnectedAt: null, isBot: false }
     this.playerUserIds[pid] = ws.data.userId ?? null
+    this.playerInfoCache[pid] = {
+      displayName: ws.data.userName ?? randomSurname(),
+      flag: ws.data.countryCode ? countryToFlag(ws.data.countryCode) : null,
+    }
     ws.data.roomId = this.id
     ws.data.playerId = pid
     ws.data.role = 'player'
@@ -157,6 +175,10 @@ export class Room {
       ws: null, reconnectToken: '', character, action: null,
       disconnectedAt: null, isBot: true,
     }
+    const other: PlayerId = pid === 'A' ? 'B' : 'A'
+    let name = randomSurname()
+    if (name === this.playerInfoCache[other].displayName) name = randomSurname()
+    this.playerInfoCache[pid] = { displayName: name, flag: null }
 
     if (this.isFull) {
       this.matchStartedAt = Date.now()
@@ -252,6 +274,7 @@ export class Room {
       tick: state.tick,
       deadline,
       forecastDeadline,
+      playerInfo: this.playerInfoCache,
     })
 
     const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
@@ -318,6 +341,7 @@ export class Room {
       roomId: this.id,
       state: this.engine.getState(),
       watcherState,
+      playerInfo: this.playerInfoCache,
     })
   }
 
@@ -372,7 +396,7 @@ export class Room {
     ws.data.roomId = this.id
     ws.data.role = 'architect'
 
-    send(ws, { type: 'architect:assigned', roomId: this.id, state: this.engine.getState() })
+    send(ws, { type: 'architect:assigned', roomId: this.id, state: this.engine.getState(), playerInfo: this.playerInfoCache })
 
     const state = this.engine.getState()
     if (state.phase === 'forecast' && !this.architectDecisionReceived) {
@@ -473,6 +497,7 @@ export class Room {
           state: stateForPlayer(state, pid),
           reconnectToken: slot.reconnectToken,
           roomId: this.id,
+          playerInfo: this.playerInfoCache,
         })
       }
     }

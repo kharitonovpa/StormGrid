@@ -2,6 +2,7 @@ import { ref, shallowRef, computed, onScopeDispose } from 'vue'
 import type {
   GameState,
   PlayerId,
+  PlayerInfo,
   CharacterType,
   WeatherResult,
   ForecastData,
@@ -31,6 +32,8 @@ export function useGameState() {
   const forecastDeadline = ref(0)
   const currentTick = ref(0)
   const actionSubmitted = ref(false)
+
+  const playerInfo = ref<Record<PlayerId, PlayerInfo> | null>(null)
 
   /* ── Watcher state ── */
   const isWatcher = ref(false)
@@ -100,6 +103,7 @@ export function useGameState() {
         stopQueueCountdown()
         myPlayerId.value = msg.playerId
         gameState.value = msg.state
+        playerInfo.value = msg.playerInfo
         phase.value = 'forecast'
         isWatcher.value = false
         break
@@ -145,6 +149,7 @@ export function useGameState() {
         watcherScore.value = msg.watcherState.score
         watcherPredictions.value = [...msg.watcherState.predictions]
         breakUsed.value = msg.watcherState.breakUsed
+        if (msg.playerInfo) playerInfo.value = msg.playerInfo
         phase.value = 'watching'
         break
 
@@ -171,6 +176,7 @@ export function useGameState() {
         isArchitect.value = true
         isWatcher.value = false
         gameState.value = msg.state
+        if (msg.playerInfo) playerInfo.value = msg.playerInfo
         phase.value = 'watching'
         break
 
@@ -192,6 +198,7 @@ export function useGameState() {
       case 'reconnect:ok':
         myPlayerId.value = msg.playerId
         gameState.value = msg.state
+        if (msg.playerInfo) playerInfo.value = msg.playerInfo
         tickDeadline.value = msg.deadline
         forecastDeadline.value = msg.forecastDeadline ?? 0
         currentTick.value = msg.tick
@@ -228,6 +235,7 @@ export function useGameState() {
     phase.value = 'lobby'
     myPlayerId.value = null
     gameState.value = null
+    playerInfo.value = null
     weatherResult.value = null
     winner.value = null
     tickDeadline.value = 0
@@ -250,6 +258,7 @@ export function useGameState() {
     phase,
     myPlayerId,
     gameState,
+    playerInfo,
     weatherResult,
     winner,
     selectedCharacter,

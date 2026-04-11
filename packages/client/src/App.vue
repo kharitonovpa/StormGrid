@@ -12,6 +12,7 @@ import { createRainSystem } from './lib/rain'
 import { createCompassSystem } from './lib/compass'
 import { createInteractionSystem } from './lib/interaction'
 import { createPlayerSystem } from './lib/player'
+import { createNameplateSystem } from './lib/nameplate'
 import { createPreviewSystem } from './lib/preview'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
@@ -200,6 +201,19 @@ function onArchitect() {
   audio.play('queue-enter')
   stopLobbyDemo()
   ensureConnected(() => socket.joinArchitect())
+}
+
+function onCancelSearch() {
+  audio.play('ui-click')
+  const phase = game.phase.value
+  if (phase === 'queue') socket.leaveQueue()
+  else if (phase === 'watch_queue') socket.leaveWatch()
+  else if (phase === 'architect_queue') socket.leaveArchitect()
+  game.reset()
+  if (lobbyDemo && !lobbyDemoActive) {
+    lobbyDemo.start()
+    lobbyDemoActive = true
+  }
 }
 
 const pendingBonusType = ref<import('@wheee/shared').BonusType | null>(null)
@@ -544,6 +558,7 @@ watch(menuVisible, (open) => {
 
 let handleAction: ((action: MenuAction) => void) | null = null
 let playersSystem: ReturnType<typeof createPlayerSystem> | null = null
+let nameplateSystem: ReturnType<typeof createNameplateSystem> | null = null
 let sceneCleanup: (() => void) | null = null
 
 const replayMode = ref(false)
@@ -596,6 +611,7 @@ function resetVisuals() {
   rainSystem?.setVisible(false)
   waterSystem?.dispose()
   shouldBuildWater = false
+  nameplateSystem?.setVisible(false)
 }
 
 function stopLobbyDemo() {
@@ -628,6 +644,10 @@ unsubMessage2 = socket.onMessage((msg) => {
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
       }
       resetVisuals()
+      if (nameplateSystem && msg.playerInfo) {
+        nameplateSystem.setInfo('A', msg.playerInfo.A)
+        nameplateSystem.setInfo('B', msg.playerInfo.B)
+      }
       switchToOrbit()
       startAnimating()
       startIntroAnimation()
@@ -646,6 +666,10 @@ unsubMessage2 = socket.onMessage((msg) => {
       }
       applyGameState(msg.state)
       resetVisuals()
+      if (nameplateSystem && msg.playerInfo) {
+        nameplateSystem.setInfo('A', msg.playerInfo.A)
+        nameplateSystem.setInfo('B', msg.playerInfo.B)
+      }
       switchToOrbit()
       startAnimating()
       audio.enterMatch()
@@ -666,6 +690,10 @@ unsubMessage2 = socket.onMessage((msg) => {
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
       }
       resetVisuals()
+      if (nameplateSystem && msg.playerInfo) {
+        nameplateSystem.setInfo('A', msg.playerInfo.A)
+        nameplateSystem.setInfo('B', msg.playerInfo.B)
+      }
       switchToTrackball()
       applyGameState(msg.state)
       startAnimating()
@@ -681,6 +709,10 @@ unsubMessage2 = socket.onMessage((msg) => {
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
       }
       resetVisuals()
+      if (nameplateSystem && msg.playerInfo) {
+        nameplateSystem.setInfo('A', msg.playerInfo.A)
+        nameplateSystem.setInfo('B', msg.playerInfo.B)
+      }
       switchToTrackball()
       applyGameState(msg.state)
       startAnimating()
@@ -816,6 +848,13 @@ onMounted(() => {
 
   const players = createPlayerSystem(scene, terrainState)
   playersSystem = players
+
+  const nameplates = createNameplateSystem(scene, terrainState)
+  nameplateSystem = nameplates
+  nameplates.setPlayerRefs(
+    { get state() { return players.playerA.state }, get mesh() { return players.playerA.mesh }, get surface() { return players.playerA.surface } },
+    { get state() { return players.playerB.state }, get mesh() { return players.playerB.mesh }, get surface() { return players.playerB.surface } },
+  )
 
   // --- Terrain meshes ---
   const terrainMat = new THREE.MeshStandardMaterial({
@@ -1175,6 +1214,7 @@ onMounted(() => {
     wind.update(dt)
     rain.update(dt)
     players.update(dt)
+    nameplates.update(dt)
     interaction.update(dt)
     preview.update(dt)
     audio.update(dt)
@@ -1199,10 +1239,12 @@ onMounted(() => {
     rain.dispose()
     compass.dispose()
     players.dispose()
+    nameplates.dispose()
     interaction.dispose()
     preview.dispose()
     handleAction = null
     playersSystem = null
+    nameplateSystem = null
     previewSystem = null
     waterSystem = null
     windSystem = null
@@ -1277,6 +1319,7 @@ onUnmounted(() => {
     @watch="onWatch"
     @architect="onArchitect"
     @watch-replay="startReplay"
+    @cancel-search="onCancelSearch"
   />
 
   <GameHud

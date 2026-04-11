@@ -155,13 +155,18 @@ const server = Bun.serve<WsData>({
     if (url.pathname === '/ws') {
       const sessionId = crypto.randomUUID()
       let userId: string | null = null
+      let userName: string | null = null
       const token = parseCookieToken(req.headers.get('cookie'))
       if (token) {
         const payload = await verifyJwt(token)
-        if (payload) userId = payload.sub
+        if (payload) {
+          userId = payload.sub
+          userName = payload.name
+        }
       }
+      const countryCode = detectCountry(req.headers)
       const ok = server.upgrade(req, {
-        data: { sessionId, userId, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter() },
+        data: { sessionId, userId, userName, countryCode, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter() },
       })
       if (ok) return undefined
       return new Response('WebSocket upgrade failed', { status: 400 })
@@ -388,5 +393,31 @@ function getArchitectRoom(ws: ServerWebSocket<WsData>) {
 }
 
 type ServerWebSocket<T> = import('bun').ServerWebSocket<T>
+
+const LANG_TO_COUNTRY: Record<string, string> = {
+  ru: 'RU', uk: 'UA', be: 'BY', kk: 'KZ', de: 'DE', fr: 'FR', ja: 'JP',
+  ko: 'KR', zh: 'CN', pt: 'BR', es: 'ES', it: 'IT', pl: 'PL', nl: 'NL',
+  sv: 'SE', da: 'DK', fi: 'FI', nb: 'NO', no: 'NO', cs: 'CZ', tr: 'TR',
+  he: 'IL', th: 'TH', vi: 'VN', id: 'ID', hi: 'IN', el: 'GR', ro: 'RO',
+  hu: 'HU', sk: 'SK', bg: 'BG', hr: 'HR', sr: 'RS', lt: 'LT', lv: 'LV',
+  et: 'EE', ka: 'GE', hy: 'AM', az: 'AZ', ms: 'MY', tl: 'PH', bn: 'BD',
+}
+
+function detectCountry(headers: Headers): string | null {
+  const cfCountry = headers.get('cf-ipcountry')
+  if (cfCountry && cfCountry !== 'XX' && cfCountry.length === 2) return cfCountry.toUpperCase()
+
+  const xCountry = headers.get('x-country-code')
+  if (xCountry && xCountry.length === 2) return xCountry.toUpperCase()
+
+  const al = headers.get('accept-language')
+  if (!al) return null
+
+  const first = al.split(',')[0].trim().split(';')[0]
+  const parts = first.split('-')
+  if (parts.length >= 2 && parts[1].length === 2) return parts[1].toUpperCase()
+  const lang = parts[0].toLowerCase()
+  return LANG_TO_COUNTRY[lang] ?? null
+}
 
 console.log(`wheee server listening on http://localhost:${server.port}`)

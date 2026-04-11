@@ -23,6 +23,7 @@ export type {
   WatcherPrediction,
   WatcherState,
   UserInfo,
+  PlayerInfo,
   WatcherScoreEntry,
 } from './types.js'
 
@@ -40,6 +41,8 @@ export {
   SPAWN_PAIRS,
   RECONNECT_GRACE_MS,
 } from './constants.js'
+
+export { WAR_AND_PEACE_SURNAMES } from './names.js'
 
 export type {
   ClientMessage,

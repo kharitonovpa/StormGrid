@@ -27,6 +27,7 @@ const emit = defineEmits<{
   watch: []
   architect: []
   watchReplay: [roomId: string]
+  cancelSearch: []
 }>()
 
 const audio = inject<AudioSystem>('audio')
@@ -128,6 +129,7 @@ onUnmounted(() => {
               <span v-else-if="phase === 'watch_queue'">Finding a match<span class="dots" /></span>
               <span v-else>Finding a match<span class="dots" /></span>
             </div>
+            <button class="btn-cancel" @click="emit('cancelSearch')">Cancel</button>
           </template>
           <template v-else>
             <div class="actions-primary">
@@ -691,6 +693,27 @@ onUnmounted(() => {
   color: rgba(233, 69, 96, 0.8);
   letter-spacing: 0.5px;
   font-variant-numeric: tabular-nums;
+}
+
+.btn-cancel {
+  margin-top: 10px;
+  padding: 6px 20px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  color: rgba(200, 210, 225, 0.5);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(220, 225, 235, 0.85);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .dots {
