@@ -18,6 +18,17 @@ function randomSurname(): string {
   return WAR_AND_PEACE_SURNAMES[Math.floor(Math.random() * WAR_AND_PEACE_SURNAMES.length)]
 }
 
+const RANDOM_FLAGS = [
+  'RU', 'UA', 'DE', 'FR', 'JP', 'KR', 'BR', 'ES', 'IT', 'PL',
+  'SE', 'NO', 'FI', 'CZ', 'TR', 'GR', 'NL', 'PT', 'GB', 'US',
+  'CA', 'AU', 'IN', 'MX', 'AR', 'CL', 'CO', 'PE', 'EG', 'ZA',
+  'KE', 'NG', 'GH', 'MA', 'TH', 'VN', 'ID', 'PH', 'MY', 'GE',
+]
+
+function randomFlag(): string {
+  return countryToFlag(RANDOM_FLAGS[Math.floor(Math.random() * RANDOM_FLAGS.length)])
+}
+
 type PlayerSlot = {
   ws: ServerWebSocket<WsData> | null
   reconnectToken: string
@@ -149,7 +160,7 @@ export class Room {
     this.playerUserIds[pid] = ws.data.userId ?? null
     this.playerInfoCache[pid] = {
       displayName: ws.data.userName ?? randomSurname(),
-      flag: ws.data.countryCode ? countryToFlag(ws.data.countryCode) : null,
+      flag: ws.data.countryCode ? countryToFlag(ws.data.countryCode) : randomFlag(),
     }
     ws.data.roomId = this.id
     ws.data.playerId = pid
@@ -178,7 +189,7 @@ export class Room {
     const other: PlayerId = pid === 'A' ? 'B' : 'A'
     let name = randomSurname()
     if (name === this.playerInfoCache[other].displayName) name = randomSurname()
-    this.playerInfoCache[pid] = { displayName: name, flag: null }
+    this.playerInfoCache[pid] = { displayName: name, flag: randomFlag() }
 
     if (this.isFull) {
       this.matchStartedAt = Date.now()
