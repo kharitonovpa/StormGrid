@@ -18,13 +18,18 @@ async function hmacVerify(payload: string, signature: string): Promise<boolean> 
 }
 
 function base64url(obj: unknown): string {
-  return btoa(JSON.stringify(obj))
+  const bytes = encoder.encode(JSON.stringify(obj))
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 function fromBase64url(s: string): string {
   const padded = s.replace(/-/g, '+').replace(/_/g, '/') + '=='.slice(0, (4 - (s.length % 4)) % 4)
-  return atob(padded)
+  const binary = atob(padded)
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
 }
 
 export type JwtPayload = { sub: string; name: string; avatar: string | null; iat: number; exp: number }
