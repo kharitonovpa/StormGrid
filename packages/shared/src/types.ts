@@ -134,7 +134,7 @@ export type UserInfo = {
 
 export type PlayerInfo = {
   displayName: string
-  flag: string | null
+  flag: string
 }
 
 /* ── Stats ── */

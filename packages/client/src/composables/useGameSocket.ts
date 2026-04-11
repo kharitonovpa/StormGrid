@@ -76,7 +76,7 @@ export function useGameSocket() {
   }
 
   function joinQueue(character: CharacterType = 'wheat') {
-    send({ type: 'queue:join', character })
+    return send({ type: 'queue:join', character })
   }
 
   function leaveQueue() {

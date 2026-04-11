@@ -35,7 +35,7 @@ function createPlateCanvas(): HTMLCanvasElement {
   return c
 }
 
-function renderPlate(canvas: HTMLCanvasElement, name: string, flag: string | null, pid: PlayerId): void {
+function renderPlate(canvas: HTMLCanvasElement, name: string, flag: string, pid: PlayerId): void {
   const ctx = canvas.getContext('2d')!
   const w = canvas.width
   const h = canvas.height
@@ -146,6 +146,7 @@ export function createNameplateSystem(
 
   let playerRefA: PlayerRef | null = null
   let playerRefB: PlayerRef | null = null
+  let enabled = false
 
   function setPlayerRefs(a: PlayerRef, b: PlayerRef) {
     playerRefA = a
@@ -160,6 +161,7 @@ export function createNameplateSystem(
   }
 
   function setVisible(v: boolean) {
+    enabled = v
     if (!v) {
       plateA.sprite.visible = false
       plateB.sprite.visible = false
@@ -180,6 +182,8 @@ export function createNameplateSystem(
   }
 
   function update(dt: number) {
+    if (!enabled) return
+
     const targetA = playerRefA && plateA.hasContent ? 1 : 0
     const targetB = playerRefB && plateB.hasContent ? 1 : 0
     fadeA += (targetA - fadeA) * Math.min(dt * 4, 1)

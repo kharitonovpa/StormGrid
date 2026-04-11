@@ -121,6 +121,7 @@ unsubMessage1 = socket.onMessage((msg) => {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
       return
     }
+    nameplateSystem?.setVisible(false)
     audio.enterFinished()
     const w = (msg as { winner: 'A' | 'B' | 'draw' }).winner
     const myId = game.myPlayerId.value
@@ -145,6 +146,11 @@ const showLobby = computed(() =>
   game.phase.value === 'watch_queue' ||
   game.phase.value === 'architect_queue',
 )
+
+const lobbyCharacterLocked = computed(
+  () => game.queueJoinPending.value || game.phase.value !== 'lobby',
+)
+const lobbyCommittedCharacter = computed(() => game.selectedCharacter.value)
 const showHud = computed(() =>
   game.phase.value === 'forecast' ||
   game.phase.value === 'ticking' ||
@@ -192,7 +198,9 @@ function onPlay(character: CharacterType) {
   game.selectedCharacter.value = character
   audio.play('queue-enter')
   stopLobbyDemo()
-  ensureConnected(() => socket.joinQueue(character))
+  ensureConnected(() => {
+    if (socket.joinQueue(character)) game.queueJoinPending.value = true
+  })
 }
 
 function onWatch() {
@@ -240,7 +248,46 @@ function onPlayAgain() {
   game.reset()
   game.selectedCharacter.value = lastCharacter
   audio.enterLobby()
-  ensureConnected(() => socket.joinQueue(lastCharacter))
+  ensureConnected(() => {
+    if (socket.joinQueue(lastCharacter)) game.queueJoinPending.value = true
+  })
+}
+
+function onBackToLobby() {
+  pendingGameEnd = null
+  socket.setReconnectToken(null)
+  game.reset()
+  terrainState.resetFlat()
+  resetVisuals()
+  if (playersSystem) {
+    playersSystem.setActivePlayer(null)
+    playersSystem.playerA.resetAppearance()
+    playersSystem.playerB.resetAppearance()
+    playersSystem.applyPositions(
+      { x: 2, y: 2, alive: true, character: 'wheat' },
+      { x: 4, y: 4, alive: true, character: 'corn' },
+    )
+  }
+  nameplateSystem?.setVisible(false)
+  switchToOrbit()
+  startAnimating()
+  introActive.value = false
+  introShowLabels.value = false
+  introBounceFlip.value = false
+  introBasePos = null
+  cameraAnimTarget = null
+  cameraAnimFrom = null
+  cameraAnimProgress = 0
+  if (lobbyDemo && !lobbyDemoActive) {
+    lobbyDemo.start()
+    lobbyDemoActive = true
+  }
+  if (controls instanceof OrbitControls) {
+    controls.enabled = true
+    controls.autoRotate = true
+    controls.autoRotateSpeed = 0.4
+  }
+  audio.enterLobby()
 }
 
 async function startReplay(roomId: string) {
@@ -651,6 +698,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       if (nameplateSystem && msg.playerInfo) {
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
+        nameplateSystem.setVisible(true)
       }
       switchToOrbit()
       startAnimating()
@@ -673,6 +721,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       if (nameplateSystem && msg.playerInfo) {
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
+        nameplateSystem.setVisible(true)
       }
       switchToOrbit()
       startAnimating()
@@ -697,6 +746,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       if (nameplateSystem && msg.playerInfo) {
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
+        nameplateSystem.setVisible(true)
       }
       switchToTrackball()
       applyGameState(msg.state)
@@ -716,6 +766,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       if (nameplateSystem && msg.playerInfo) {
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
+        nameplateSystem.setVisible(true)
       }
       switchToTrackball()
       applyGameState(msg.state)
@@ -775,6 +826,7 @@ unsubMessage2 = socket.onMessage((msg) => {
           if (shouldBuildWater && deaths.length === 0) audio.play('water-rise')
           weatherAnimDone = true
           if (pendingGameEnd) {
+            nameplateSystem?.setVisible(false)
             audio.enterFinished()
             const w = pendingGameEnd.winner
             const myId = game.myPlayerId.value
@@ -1319,6 +1371,8 @@ onUnmounted(() => {
   <LobbyOverlay
     v-if="showLobby && !replayMode"
     :phase="game.phase.value"
+    :character-locked="lobbyCharacterLocked"
+    :committed-character="lobbyCommittedCharacter"
     :online-count="onlineCount"
     :in-queue="inQueue"
     :queue-countdown="game.queueCountdown.value"
@@ -1379,6 +1433,7 @@ onUnmounted(() => {
     :room-id="lastRoomId"
     @play-again="onPlayAgain"
     @watch-replay="startReplay"
+    @back-to-lobby="onBackToLobby"
   />
 
   <ReplayOverlay

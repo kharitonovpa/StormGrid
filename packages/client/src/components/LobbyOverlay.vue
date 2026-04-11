@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, inject, onMounted, onUnmounted } from 'vue'
+import { ref, inject, onMounted, onUnmounted, watch } from 'vue'
 import type { CharacterType, ReplaySummary } from '@wheee/shared'
 import { GAME_TITLE } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
@@ -17,6 +17,10 @@ const TAGLINES = [
 
 const props = defineProps<{
   phase: string
+  /** When true, crop choice is fixed (searching / Play Again already queued). */
+  characterLocked: boolean
+  /** Crop used for this matchmaking session when `characterLocked`. */
+  committedCharacter: CharacterType
   onlineCount: number
   inQueue: number
   queueCountdown: number
@@ -44,9 +48,21 @@ const selected = ref<CharacterType>('wheat')
 const replays = ref<ReplaySummary[]>([])
 
 function selectChar(id: CharacterType) {
+  if (props.characterLocked) return
   selected.value = id
   audio?.play('ui-click')
 }
+
+function isCharActive(id: CharacterType) {
+  return props.characterLocked ? props.committedCharacter === id : selected.value === id
+}
+
+watch(
+  () => props.characterLocked,
+  (locked) => {
+    if (!locked) selected.value = props.committedCharacter
+  },
+)
 
 function handleLogin(provider: 'google' | 'github') {
   audio?.play('ui-click')
@@ -71,6 +87,7 @@ function onClickOutside(e: MouseEvent) {
 }
 
 onMounted(async () => {
+  selected.value = props.committedCharacter
   document.addEventListener('click', onClickOutside, true)
   fetchMe()
   replays.value = (await fetchReplayList()).slice(0, 5)
@@ -95,17 +112,21 @@ onUnmounted(() => {
       <div class="panel-content">
         <!-- Crop selector -->
         <div class="panel-section crops-section">
-          <div class="char-select">
+          <div class="char-select" :class="{ 'char-select-locked': characterLocked }">
             <button
               v-for="ch in characters"
               :key="ch.id"
+              type="button"
               class="char-btn"
-              :class="{ active: selected === ch.id }"
+              :class="{ active: isCharActive(ch.id), locked: characterLocked }"
               :style="{ '--accent': ch.color, '--glow': ch.glow }"
+              :disabled="characterLocked"
+              :aria-disabled="characterLocked"
+              :aria-pressed="isCharActive(ch.id)"
               @click="selectChar(ch.id)"
             >
               <div class="char-preview-wrap">
-                <CharacterPreview :character="ch.id" :active="selected === ch.id" />
+                <CharacterPreview :character="ch.id" :active="isCharActive(ch.id)" />
               </div>
               <span class="char-name">{{ ch.name }}</span>
             </button>
@@ -347,6 +368,37 @@ onUnmounted(() => {
 
 .char-btn.active .char-preview-wrap {
   filter: drop-shadow(0 0 8px var(--glow));
+}
+
+.char-select-locked .char-btn {
+  cursor: default;
+}
+
+.char-btn.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.char-btn.locked:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(200, 210, 225, 0.5);
+}
+
+.char-btn.locked.active {
+  opacity: 1;
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  box-shadow: 0 0 20px var(--glow), inset 0 0 20px rgba(255, 255, 255, 0.02);
+}
+
+.char-btn.locked.active:hover {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
 }
 
 .char-name {

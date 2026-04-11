@@ -41,6 +41,8 @@ export function useGameState() {
 
   /* ── Queue countdown ── */
   const queueCountdown = ref(0)
+  /** True after `queue:join` is sent until server ack (`queue:waiting` or `game:start`). Locks crop UI while phase is still `lobby`. */
+  const queueJoinPending = ref(false)
   let _queueInterval: ReturnType<typeof setInterval> | null = null
   let _queueDeadline = 0
 
@@ -95,11 +97,13 @@ export function useGameState() {
   function handleMessage(msg: ServerMessage) {
     switch (msg.type) {
       case 'queue:waiting':
+        queueJoinPending.value = false
         phase.value = 'queue'
         startQueueCountdown(msg.maxWaitMs)
         break
 
       case 'game:start':
+        queueJoinPending.value = false
         stopQueueCountdown()
         myPlayerId.value = msg.playerId
         gameState.value = msg.state
@@ -232,6 +236,7 @@ export function useGameState() {
 
   function reset() {
     stopQueueCountdown()
+    queueJoinPending.value = false
     phase.value = 'lobby'
     myPlayerId.value = null
     gameState.value = null
@@ -279,6 +284,7 @@ export function useGameState() {
     isArchitect,
     architectDeadline,
     queueCountdown,
+    queueJoinPending,
     opponentDisconnected,
     weatherSubmitted,
     handleMessage,

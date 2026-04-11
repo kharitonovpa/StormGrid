@@ -13,6 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   playAgain: []
   watchReplay: [roomId: string]
+  backToLobby: []
 }>()
 
 const audio = inject<AudioSystem>('audio')
@@ -111,6 +112,14 @@ onUnmounted(() => {
           <span>Replay</span>
         </button>
       </div>
+
+      <button
+        type="button"
+        class="btn-lobby"
+        @click="audio?.play('ui-click'); emit('backToLobby')"
+      >
+        Back to lobby
+      </button>
     </div>
   </div>
 </template>
@@ -327,6 +336,27 @@ onUnmounted(() => {
   background: rgba(139, 180, 255, 0.1);
   border-color: rgba(139, 180, 255, 0.35);
   transform: translateY(-2px);
+}
+
+.btn-lobby {
+  display: block;
+  margin: 20px auto 0;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: rgba(160, 175, 200, 0.55);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.2s, opacity 0.2s;
+  animation: fadeUp 0.5s 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.btn-lobby:hover {
+  color: rgba(200, 210, 225, 0.9);
 }
 
 /* ── Mobile ── */

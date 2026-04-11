@@ -111,8 +111,8 @@ export class Room {
   private matchStartedAt = 0
   private playerUserIds: Record<PlayerId, string | null> = { A: null, B: null }
   private playerInfoCache: Record<PlayerId, PlayerInfo> = {
-    A: { displayName: '', flag: null },
-    B: { displayName: '', flag: null },
+    A: { displayName: '', flag: '' },
+    B: { displayName: '', flag: '' },
   }
 
   constructor(id: string, callbacks: RoomCallbacks) {
@@ -188,7 +188,8 @@ export class Room {
     }
     const other: PlayerId = pid === 'A' ? 'B' : 'A'
     let name = randomSurname()
-    if (name === this.playerInfoCache[other].displayName) name = randomSurname()
+    let attempts = 0
+    while (name === this.playerInfoCache[other].displayName && attempts++ < 5) name = randomSurname()
     this.playerInfoCache[pid] = { displayName: name, flag: randomFlag() }
 
     if (this.isFull) {
