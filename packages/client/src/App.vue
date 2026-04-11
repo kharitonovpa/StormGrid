@@ -114,7 +114,7 @@ unsubMessage1 = socket.onMessage((msg) => {
   }
   if (msg.type === 'game:end') {
     socket.setReconnectToken(null)
-    if (pendingGameEnd === null && game.phase.value === 'weather') {
+    if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
       return
     }
@@ -166,6 +166,7 @@ const showOpponentDisconnected = computed(() =>
 const onlineCount = ref(0)
 const inQueue = ref(0)
 let pendingAction: (() => void) | null = null
+let weatherAnimDone = false
 
 function ensureConnected(then: () => void) {
   if (socket.connected.value) {
@@ -762,12 +763,14 @@ unsubMessage2 = socket.onMessage((msg) => {
         const paths = msg.result.windPath as Record<'A' | 'B', { x: number; y: number }[]>
         const deaths = msg.result.deaths as ('A' | 'B')[]
         if (paths.A.length > 1 || paths.B.length > 1) audio.play('wind-push')
+        weatherAnimDone = false
         playersSystem.animateWindPaths(paths, deaths).then(() => {
           if (!playersSystem) return
           playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B)
           audio.stopWeather()
           if (deaths.length > 0) audio.play('death')
           if (shouldBuildWater && deaths.length === 0) audio.play('water-rise')
+          weatherAnimDone = true
           if (pendingGameEnd) {
             audio.enterFinished()
             const w = pendingGameEnd.winner
