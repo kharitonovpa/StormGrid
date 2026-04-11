@@ -21,6 +21,7 @@ import { createAudioSystem, type AudioSystem } from './lib/audio'
 import { createReplayPlayer, fetchReplayData, type ReplayPlayer } from './lib/replayPlayer'
 import { useGameSocket } from './composables/useGameSocket'
 import { useGameState } from './composables/useGameState'
+import { useAuth } from './composables/useAuth'
 import LobbyOverlay from './components/LobbyOverlay.vue'
 import GameHud from './components/GameHud.vue'
 import GameOverOverlay from './components/GameOverOverlay.vue'
@@ -38,9 +39,11 @@ let sceneCamera: THREE.PerspectiveCamera
 
 const socket = useGameSocket()
 const game = useGameState()
+const { onAuthChange } = useAuth()
 
 const modelsReady = preloadModels()
 socket.connect()
+const unsubAuth = onAuthChange(() => socket.refreshConnection())
 
 const audio = createAudioSystem()
 provide<AudioSystem>('audio', audio)
@@ -1270,6 +1273,7 @@ onUnmounted(() => {
   pendingGameEnd = null
   unsubMessage1?.()
   unsubMessage2?.()
+  unsubAuth()
   document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   sceneCleanup?.()
   sceneCleanup = null

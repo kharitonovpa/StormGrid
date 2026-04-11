@@ -4,6 +4,7 @@ import { API_BASE } from '../lib/config'
 
 const user = ref<UserInfo | null>(null)
 const loading = ref(false)
+const authCallbacks = new Set<() => void>()
 
 let initialized = false
 
@@ -24,6 +25,11 @@ export function useAuth() {
     }
   }
 
+  function onAuthChange(cb: () => void) {
+    authCallbacks.add(cb)
+    return () => authCallbacks.delete(cb)
+  }
+
   function login(provider: 'google' | 'github') {
     const url = `${API_BASE}/api/auth/${provider}`
     const w = 500
@@ -39,6 +45,7 @@ export function useAuth() {
       user.value = e.data.user as UserInfo
       window.removeEventListener('message', onMessage)
       popup?.close()
+      for (const cb of authCallbacks) cb()
     }
     window.addEventListener('message', onMessage)
   }
@@ -49,6 +56,7 @@ export function useAuth() {
     } catch { /* ignore */ }
     user.value = null
     initialized = false
+    for (const cb of authCallbacks) cb()
   }
 
   return {
@@ -57,5 +65,6 @@ export function useAuth() {
     fetchMe,
     login,
     logout,
+    onAuthChange,
   }
 }

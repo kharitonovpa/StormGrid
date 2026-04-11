@@ -132,6 +132,16 @@ export function useGameSocket() {
     reconnectToken.value = token
   }
 
+  function refreshConnection() {
+    if (!ws.value || ws.value.readyState > WebSocket.OPEN) return
+    intentionalClose = true
+    ws.value.close()
+    ws.value = null
+    connected.value = false
+    intentionalClose = false
+    createSocket()
+  }
+
   function disconnect() {
     intentionalClose = true
     reconnectToken.value = null
@@ -148,6 +158,7 @@ export function useGameSocket() {
     reconnectToken,
     connect,
     disconnect,
+    refreshConnection,
     setReconnectToken,
     joinQueue,
     leaveQueue,
