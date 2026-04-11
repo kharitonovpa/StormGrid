@@ -3,6 +3,7 @@ import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, 
 import { TICK_DURATION_MS, RECONNECT_GRACE_MS } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
+import { chooseBotAction } from './engine/bot.js'
 import type { ServerMessage, WsData } from './protocol.js'
 import { send } from './protocol.js'
 import type { ReplayStore } from './ReplayStore.js'
@@ -13,6 +14,7 @@ type PlayerSlot = {
   character: CharacterType
   action: Action | null
   disconnectedAt: number | null
+  isBot: boolean
 }
 
 type WatcherSlot = {
@@ -67,6 +69,7 @@ export class Room {
   private architectBonusPlaced = false
   private architectTimer: ReturnType<typeof setTimeout> | null = null
   private tickTimer: ReturnType<typeof setTimeout> | null = null
+  private botActionTimers = new Map<PlayerId, ReturnType<typeof setTimeout>>()
   private cleanupTimer: ReturnType<typeof setTimeout> | null = null
   private callbacks: RoomCallbacks
   private ended = false
@@ -114,7 +117,7 @@ export class Room {
   private get isAnyPlayerDisconnected(): boolean {
     for (const pid of ['A', 'B'] as PlayerId[]) {
       const slot = this.players[pid]
-      if (slot && slot.disconnectedAt !== null) return true
+      if (slot && !slot.isBot && slot.disconnectedAt !== null) return true
     }
     return false
   }
@@ -128,7 +131,7 @@ export class Room {
     else return null
 
     const reconnectToken = crypto.randomUUID()
-    this.players[pid] = { ws, reconnectToken, character, action: null, disconnectedAt: null }
+    this.players[pid] = { ws, reconnectToken, character, action: null, disconnectedAt: null, isBot: false }
     this.playerUserIds[pid] = ws.data.userId ?? null
     ws.data.roomId = this.id
     ws.data.playerId = pid
@@ -144,10 +147,29 @@ export class Room {
     return pid
   }
 
+  joinBot(character: CharacterType = 'wheat'): PlayerId | null {
+    let pid: PlayerId
+    if (!this.players.A) pid = 'A'
+    else if (!this.players.B) pid = 'B'
+    else return null
+
+    this.players[pid] = {
+      ws: null, reconnectToken: '', character, action: null,
+      disconnectedAt: null, isBot: true,
+    }
+
+    if (this.isFull) {
+      this.matchStartedAt = Date.now()
+      this.startGame()
+    }
+
+    return pid
+  }
+
   submitAction(pid: PlayerId, action: Action): void {
     if (this.ended) return
     const slot = this.players[pid]
-    if (!slot || !slot.ws) return
+    if (!slot || (!slot.ws && !slot.isBot)) return
 
     const state = this.engine.getState()
     if (state.phase !== 'ticking') return
@@ -172,7 +194,7 @@ export class Room {
     if (gameStarted && !this.ended) {
       this.handleDisconnect(pid)
     } else {
-      this.callbacks.unregisterToken?.(slot.reconnectToken)
+      if (slot.reconnectToken) this.callbacks.unregisterToken?.(slot.reconnectToken)
       delete this.players[pid]
     }
   }
@@ -250,7 +272,7 @@ export class Room {
 
   private forfeitPlayer(pid: PlayerId): void {
     const slot = this.players[pid]
-    if (slot) {
+    if (slot?.reconnectToken) {
       this.callbacks.unregisterToken?.(slot.reconnectToken)
     }
 
@@ -270,7 +292,7 @@ export class Room {
       oppSlot.ws.data.playerId = null
       oppSlot.ws.data.role = null
     }
-    if (oppSlot) {
+    if (oppSlot?.reconnectToken) {
       this.callbacks.unregisterToken?.(oppSlot.reconnectToken)
     }
     this.broadcastSpectators({ type: 'game:end', winner: opponent })
@@ -418,6 +440,7 @@ export class Room {
     this.disposed = true
     this.ended = true
     this.clearTimer()
+    this.clearBotTimers()
     this.clearPausedTimers()
     if (this.cleanupTimer) { clearTimeout(this.cleanupTimer); this.cleanupTimer = null }
     this.clearArchitectTimer()
@@ -425,7 +448,7 @@ export class Room {
 
     for (const pid of ['A', 'B'] as PlayerId[]) {
       const slot = this.players[pid]
-      if (slot) this.callbacks.unregisterToken?.(slot.reconnectToken)
+      if (slot?.reconnectToken) this.callbacks.unregisterToken?.(slot.reconnectToken)
     }
 
     this.redirectWatchers()
@@ -440,22 +463,19 @@ export class Room {
   private startGame(): void {
     this.engine.setCharacters(this.players.A!.character, this.players.B!.character)
     const state = this.engine.getState()
-    const slotA = this.players.A!
-    const slotB = this.players.B!
-    send(slotA.ws!, {
-      type: 'game:start',
-      playerId: 'A',
-      state: stateForPlayer(state, 'A'),
-      reconnectToken: slotA.reconnectToken,
-      roomId: this.id,
-    })
-    send(slotB.ws!, {
-      type: 'game:start',
-      playerId: 'B',
-      state: stateForPlayer(state, 'B'),
-      reconnectToken: slotB.reconnectToken,
-      roomId: this.id,
-    })
+
+    for (const pid of ['A', 'B'] as PlayerId[]) {
+      const slot = this.players[pid]!
+      if (slot.ws) {
+        send(slot.ws, {
+          type: 'game:start',
+          playerId: pid,
+          state: stateForPlayer(state, pid),
+          reconnectToken: slot.reconnectToken,
+          roomId: this.id,
+        })
+      }
+    }
 
     this.beginRound()
   }
@@ -513,6 +533,8 @@ export class Room {
     this.setTickTimer(TICK_DURATION_MS, () => {
       this.resolveTick()
     })
+
+    this.scheduleBotAction()
   }
 
   private resolveTick(): void {
@@ -682,7 +704,7 @@ export class Room {
     for (const pid of ['A', 'B'] as PlayerId[]) {
       const slot = this.players[pid]
       if (slot) {
-        this.callbacks.unregisterToken?.(slot.reconnectToken)
+        if (slot.reconnectToken) this.callbacks.unregisterToken?.(slot.reconnectToken)
         if (slot.ws) {
           slot.ws.data.roomId = null
           slot.ws.data.playerId = null
@@ -697,6 +719,34 @@ export class Room {
     this.clearPausedTimers()
     if (this.cleanupTimer) { clearTimeout(this.cleanupTimer); this.cleanupTimer = null }
     this.cleanupTimer = setTimeout(() => this.dispose(), CLEANUP_DELAY_MS)
+  }
+
+  /* ── Bot action scheduling ── */
+
+  private scheduleBotAction(): void {
+    this.clearBotTimers()
+    for (const pid of ['A', 'B'] as PlayerId[]) {
+      const slot = this.players[pid]
+      if (!slot?.isBot) continue
+
+      const delay = 1000 + Math.random() * 3000
+      const timer = setTimeout(() => {
+        this.botActionTimers.delete(pid)
+        if (this.ended) return
+        const state = this.engine.getState()
+        if (state.phase !== 'ticking') return
+        const action = chooseBotAction(state, pid)
+        if (action) this.submitAction(pid, action)
+      }, delay)
+      this.botActionTimers.set(pid, timer)
+    }
+  }
+
+  private clearBotTimers(): void {
+    for (const timer of this.botActionTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.botActionTimers.clear()
   }
 
   /* ── Timer management ── */
@@ -756,6 +806,7 @@ export class Room {
       const { remaining, callback } = this.pausedTick
       this.pausedTick = null
       this.setTickTimer(remaining, callback)
+      this.scheduleBotAction()
     }
     if (this.pausedArchitect) {
       const { remaining, callback } = this.pausedArchitect
@@ -770,6 +821,7 @@ export class Room {
       this.tickTimer = null
     }
     this.tickTimerCallback = null
+    this.clearBotTimers()
   }
 
   private clearArchitectTimer(): void {

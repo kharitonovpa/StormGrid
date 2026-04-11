@@ -36,7 +36,7 @@ export type ClientMessage =
 
 /* ── Server → Client ── */
 
-export type QueueWaitingMsg = { type: 'queue:waiting' }
+export type QueueWaitingMsg = { type: 'queue:waiting'; maxWaitMs: number }
 export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string; roomId: string }
 export type RoundStartMsg = { type: 'round:start'; state: GameState; forecastDeadline: number }
 export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number }

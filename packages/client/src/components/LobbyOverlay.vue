@@ -19,6 +19,7 @@ const props = defineProps<{
   phase: string
   onlineCount: number
   inQueue: number
+  queueCountdown: number
 }>()
 
 const emit = defineEmits<{
@@ -118,7 +119,12 @@ onUnmounted(() => {
           <template v-if="phase === 'queue' || phase === 'watch_queue' || phase === 'architect_queue'">
             <div class="queue-status">
               <div class="queue-spinner" />
-              <span v-if="phase === 'queue'">Searching for opponent<span class="dots" /></span>
+              <span v-if="phase === 'queue'">
+                Searching for opponent<span class="dots" />
+                <span v-if="queueCountdown > 0" class="queue-countdown">
+                  Match starts in {{ queueCountdown }}s or sooner
+                </span>
+              </span>
               <span v-else-if="phase === 'watch_queue'">Finding a match<span class="dots" /></span>
               <span v-else>Finding a match<span class="dots" /></span>
             </div>
@@ -675,6 +681,16 @@ onUnmounted(() => {
   border-top-color: #e94560;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+
+.queue-countdown {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(233, 69, 96, 0.8);
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .dots {

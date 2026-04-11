@@ -1272,6 +1272,7 @@ onUnmounted(() => {
     :phase="game.phase.value"
     :online-count="onlineCount"
     :in-queue="inQueue"
+    :queue-countdown="game.queueCountdown.value"
     @play="onPlay"
     @watch="onWatch"
     @architect="onArchitect"

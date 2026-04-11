@@ -1,4 +1,4 @@
-import { ref, shallowRef, computed } from 'vue'
+import { ref, shallowRef, computed, onScopeDispose } from 'vue'
 import type {
   GameState,
   PlayerId,
@@ -36,6 +36,29 @@ export function useGameState() {
   const isWatcher = ref(false)
   const watcherScore = ref(0)
 
+  /* ── Queue countdown ── */
+  const queueCountdown = ref(0)
+  let _queueInterval: ReturnType<typeof setInterval> | null = null
+  let _queueDeadline = 0
+
+  function startQueueCountdown(maxWaitMs: number) {
+    stopQueueCountdown()
+    _queueDeadline = Date.now() + maxWaitMs
+    queueCountdown.value = Math.ceil(maxWaitMs / 1000)
+    _queueInterval = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((_queueDeadline - Date.now()) / 1000))
+      queueCountdown.value = remaining
+      if (remaining <= 0) stopQueueCountdown()
+    }, 250)
+  }
+
+  function stopQueueCountdown() {
+    if (_queueInterval) { clearInterval(_queueInterval); _queueInterval = null }
+    queueCountdown.value = 0
+  }
+
+  onScopeDispose(stopQueueCountdown)
+
   /* ── Opponent connection state ── */
   const opponentDisconnected = ref(false)
 
@@ -70,9 +93,11 @@ export function useGameState() {
     switch (msg.type) {
       case 'queue:waiting':
         phase.value = 'queue'
+        startQueueCountdown(msg.maxWaitMs)
         break
 
       case 'game:start':
+        stopQueueCountdown()
         myPlayerId.value = msg.playerId
         gameState.value = msg.state
         phase.value = 'forecast'
@@ -199,6 +224,7 @@ export function useGameState() {
   }
 
   function reset() {
+    stopQueueCountdown()
     phase.value = 'lobby'
     myPlayerId.value = null
     gameState.value = null
@@ -243,6 +269,7 @@ export function useGameState() {
     movePredicted,
     isArchitect,
     architectDeadline,
+    queueCountdown,
     opponentDisconnected,
     weatherSubmitted,
     handleMessage,
