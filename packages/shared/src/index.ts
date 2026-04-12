@@ -87,4 +87,5 @@ export type {
   MatchSummary,
   PlayerLeaderboardEntry,
   WatcherLeaderboardEntry,
+  Paginated,
 } from './protocol.js'

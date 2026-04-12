@@ -132,8 +132,16 @@ app.get('/api/me/matches', async (c) => {
   return c.json(getUserMatches(payload.sub))
 })
 
-app.get('/api/leaderboard/players', (c) => c.json(getPlayerLeaderboard()))
-app.get('/api/leaderboard/watchers', (c) => c.json(getWatcherLeaderboard()))
+app.get('/api/leaderboard/players', (c) => {
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '20') || 20, 1), 50)
+  const offset = Math.max(parseInt(c.req.query('offset') ?? '0') || 0, 0)
+  return c.json(getPlayerLeaderboard(limit, offset))
+})
+app.get('/api/leaderboard/watchers', (c) => {
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '20') || 20, 1), 50)
+  const offset = Math.max(parseInt(c.req.query('offset') ?? '0') || 0, 0)
+  return c.json(getWatcherLeaderboard(limit, offset))
+})
 
 app.get('/health', (c) => c.json({ ok: true }))
 

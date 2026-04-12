@@ -1,6 +1,6 @@
 import { eq, or, desc, asc, sql } from 'drizzle-orm'
 import { db, schema } from './index.js'
-import type { ReplayData, ReplaySummary, MatchSummary, PlayerLeaderboardEntry, WatcherLeaderboardEntry, WatcherScoreEntry } from '@wheee/shared'
+import type { ReplayData, ReplaySummary, MatchSummary, PlayerLeaderboardEntry, WatcherLeaderboardEntry, WatcherScoreEntry, Paginated } from '@wheee/shared'
 
 export type MatchRecord = {
   roomId: string
@@ -165,8 +165,8 @@ export function updateWatcherStats(entries: WatcherScoreEntry[]): void {
 
 /* ── Leaderboard ── */
 
-export function getPlayerLeaderboard(limit = 20): PlayerLeaderboardEntry[] {
-  return db.select({
+export function getPlayerLeaderboard(limit = 20, offset = 0): Paginated<PlayerLeaderboardEntry> {
+  const items = db.select({
     userId: schema.userStats.userId,
     name: schema.users.name,
     avatar: schema.users.avatar,
@@ -180,11 +180,19 @@ export function getPlayerLeaderboard(limit = 20): PlayerLeaderboardEntry[] {
     .where(sql`${schema.userStats.gamesPlayed} > 0`)
     .orderBy(desc(schema.userStats.wins), desc(schema.userStats.gamesPlayed), asc(schema.userStats.userId))
     .limit(limit)
+    .offset(offset)
     .all()
+
+  const { total } = db.select({ total: sql<number>`count(*)` })
+    .from(schema.userStats)
+    .where(sql`${schema.userStats.gamesPlayed} > 0`)
+    .get()!
+
+  return { items, total }
 }
 
-export function getWatcherLeaderboard(limit = 20): WatcherLeaderboardEntry[] {
-  return db.select({
+export function getWatcherLeaderboard(limit = 20, offset = 0): Paginated<WatcherLeaderboardEntry> {
+  const items = db.select({
     userId: schema.userStats.userId,
     name: schema.users.name,
     avatar: schema.users.avatar,
@@ -195,5 +203,13 @@ export function getWatcherLeaderboard(limit = 20): WatcherLeaderboardEntry[] {
     .where(sql`${schema.userStats.watcherScore} > 0`)
     .orderBy(desc(schema.userStats.watcherScore), asc(schema.userStats.userId))
     .limit(limit)
+    .offset(offset)
     .all()
+
+  const { total } = db.select({ total: sql<number>`count(*)` })
+    .from(schema.userStats)
+    .where(sql`${schema.userStats.watcherScore} > 0`)
+    .get()!
+
+  return { items, total }
 }

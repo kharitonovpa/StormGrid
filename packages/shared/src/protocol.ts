@@ -116,6 +116,11 @@ export type WatcherLeaderboardEntry = {
   watcherScore: number
 }
 
+export type Paginated<T> = {
+  items: T[]
+  total: number
+}
+
 export type ServerMessage =
   | QueueWaitingMsg
   | GameStartMsg
