@@ -30,15 +30,16 @@ export function useAuth() {
     loading.value = true
     try {
       if (IS_TELEGRAM) {
-        await loginTelegramWithRetry()
+        const ok = await loginTelegramWithRetry()
+        if (ok) initialized = true
       } else {
         const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
         if (res.ok) {
           const data = await res.json() as { user: UserInfo | null }
           user.value = data.user
         }
+        initialized = true
       }
-      initialized = true
     } catch {
       if (!IS_TELEGRAM) initialized = true
     } finally {
@@ -48,7 +49,7 @@ export function useAuth() {
     }
   }
 
-  async function loginTelegramWithRetry(maxAttempts = 3) {
+  async function loginTelegramWithRetry(maxAttempts = 3): Promise<boolean> {
     const initData = window.Telegram!.WebApp!.initData as string
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt))
@@ -63,9 +64,10 @@ export function useAuth() {
         telegramToken = data.token
         user.value = data.user
         for (const cb of authCallbacks) cb()
-        return
+        return true
       } catch { /* retry */ }
     }
+    return false
   }
 
   function onAuthChange(cb: () => void) {
