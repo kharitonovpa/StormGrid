@@ -111,7 +111,6 @@ async function validateTelegramInitData(initData: string, botToken: string): Pro
   const hash = params.get('hash')
   if (!hash) { console.log('[TG validate] no hash in initData'); return null }
   params.delete('hash')
-  params.delete('signature')
 
   const authDate = Number(params.get('auth_date') || 0)
   const now = Math.floor(Date.now() / 1000)
