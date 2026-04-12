@@ -27,7 +27,8 @@ function isPaginated<T>(v: unknown, check: (e: unknown) => boolean): v is Pagina
 const isPlayerEntry = (e: unknown) => typeof e === 'object' && e !== null && 'wins' in e && 'userId' in e
 const isWatcherEntry = (e: unknown) => typeof e === 'object' && e !== null && 'watcherScore' in e && 'userId' in e
 
-async function fetchLeaderboard() {
+async function fetchLeaderboard(retries = 2) {
+  let failed = false
   try {
     const [pRaw, wRaw] = await Promise.all([
       fetch(`${API_BASE}/api/leaderboard/players?limit=${PAGE_SIZE}`).then(r => r.ok ? r.json() : null),
@@ -41,8 +42,13 @@ async function fetchLeaderboard() {
       watchers.value = wRaw.items
       watchersTotal.value = wRaw.total
     }
-  } catch (e) {
-    if (import.meta.env.DEV) console.warn('[leaderboard] fetch failed:', e)
+    failed = pRaw === null && wRaw === null
+  } catch {
+    failed = true
+  }
+  if (failed && retries > 0) {
+    setTimeout(() => fetchLeaderboard(retries - 1), 1500)
+    return
   }
   loaded.value = true
 }
