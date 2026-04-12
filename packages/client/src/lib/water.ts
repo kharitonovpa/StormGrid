@@ -172,6 +172,13 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
     }
   }
 
+  function clearBodies() {
+    for (const wb of waterBodies) { scene.remove(wb.mesh); wb.geo.dispose() }
+    waterBodies.length = 0
+    for (const wb of waterBodiesBot) { scene.remove(wb.mesh); wb.geo.dispose() }
+    waterBodiesBot.length = 0
+  }
+
   return {
     buildTop() { buildWaterSet(topWaterCfg, waterBodies) },
     buildBot() { buildWaterSet(botWaterCfg, waterBodiesBot) },
@@ -181,11 +188,9 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
       updateWaterBodies(waterBodies, dt)
       updateWaterBodies(waterBodiesBot, dt)
     },
+    clear: clearBodies,
     dispose() {
-      for (const wb of waterBodies) { scene.remove(wb.mesh); wb.geo.dispose() }
-      waterBodies.length = 0
-      for (const wb of waterBodiesBot) { scene.remove(wb.mesh); wb.geo.dispose() }
-      waterBodiesBot.length = 0
+      clearBodies()
       waterMat.dispose()
     },
   }

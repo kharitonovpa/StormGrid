@@ -321,7 +321,6 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         const vis = mesh.visible
         const oldMesh = mesh
         scene.remove(oldMesh)
-        disposeGroup(oldMesh)
         mesh = getModel(type)
         mesh.position.copy(pos)
         mesh.rotation.y = rot

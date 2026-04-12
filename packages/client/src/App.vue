@@ -63,8 +63,10 @@ function worldToScreen(wx: number, wy: number, wz: number): { x: number; y: numb
 }
 
 const winnerPopup = ref<{ player: 'A' | 'B'; points: number } | null>(null)
+const contextLost = ref(false)
 let winnerPopupTimer = 0
 let celebrateTimer = 0
+let contextLostTimer = 0
 let unsubMessage1: (() => void) | null = null
 let unsubMessage2: (() => void) | null = null
 
@@ -665,7 +667,7 @@ function applyGameState(state: GameState) {
 function resetVisuals() {
   windSystem?.setVisible(false)
   rainSystem?.setVisible(false)
-  waterSystem?.dispose()
+  waterSystem?.clear()
   shouldBuildWater = false
   nameplateSystem?.setVisible(false)
 }
@@ -695,6 +697,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       stopLobbyDemo()
       pendingGameEnd = null
       terrainState.resetFlat()
+      terrainState.applyBoardState(msg.state.board)
       if (playersSystem) {
         playersSystem.setActivePlayer(msg.playerId)
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
@@ -1293,6 +1296,27 @@ onMounted(() => {
 
   animate()
 
+  /* ── WebGL context loss / restore ── */
+  renderer.domElement.addEventListener('webglcontextlost', () => {
+    clearTimeout(contextLostTimer)
+    contextLostTimer = window.setTimeout(() => { contextLost.value = true }, 1500)
+  })
+
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    clearTimeout(contextLostTimer)
+    contextLost.value = false
+    startAnimating()
+  })
+
+  const onVisibility = () => {
+    cancelAnimationFrame(animId)
+    if (!document.hidden) {
+      prevTime = performance.now()
+      animate()
+    }
+  }
+  document.addEventListener('visibilitychange', onVisibility)
+
   const onResize = () => {
     const rw = el.clientWidth, rh = el.clientHeight
     camera.aspect = rw / rh
@@ -1303,6 +1327,8 @@ onMounted(() => {
   window.addEventListener('resize', onResize)
 
   sceneCleanup = () => {
+    document.removeEventListener('visibilitychange', onVisibility)
+    clearTimeout(contextLostTimer)
     window.removeEventListener('resize', onResize)
     water.dispose()
     wind.dispose()
@@ -1332,6 +1358,7 @@ onUnmounted(() => {
   cancelAnimationFrame(animId)
   clearTimeout(winnerPopupTimer)
   clearTimeout(celebrateTimer)
+  clearTimeout(contextLostTimer)
   clearTimeout(menuListenerId)
   disposeCelebrate()
   pendingGameEnd = null
@@ -1351,6 +1378,15 @@ onUnmounted(() => {
 
 <template>
   <div ref="container" class="canvas-root" />
+
+  <!-- WebGL context lost overlay -->
+  <Transition name="rc">
+    <div v-if="contextLost" class="reconnect-overlay" style="cursor:pointer" @click="$event.preventDefault(); location.reload()">
+      <div class="reconnect-card">
+        <div class="reconnect-text">Display error — tap to reload</div>
+      </div>
+    </div>
+  </Transition>
 
   <!-- Reconnecting overlay -->
   <Transition name="rc">
