@@ -109,25 +109,28 @@ function bufToHex(buf: ArrayBuffer): string {
 async function validateTelegramInitData(initData: string, botToken: string): Promise<TgUser | null> {
   const params = new URLSearchParams(initData)
   const hash = params.get('hash')
-  if (!hash) return null
+  if (!hash) { console.log('[TG validate] no hash in initData'); return null }
   params.delete('hash')
   params.delete('signature')
 
   const authDate = Number(params.get('auth_date') || 0)
-  const age = Math.floor(Date.now() / 1000) - authDate
-  if (age > TG_INIT_DATA_MAX_AGE || age < -60) return null
+  const now = Math.floor(Date.now() / 1000)
+  const age = now - authDate
+  console.log('[TG validate] auth_date:', authDate, 'now:', now, 'age:', age, 'max:', TG_INIT_DATA_MAX_AGE)
+  if (age > TG_INIT_DATA_MAX_AGE || age < -60) { console.log('[TG validate] REJECTED: auth_date too old/future'); return null }
 
   const sorted = [...params.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
   const dataCheckString = sorted.map(([k, v]) => `${k}=${v}`).join('\n')
+  console.log('[TG validate] keys:', sorted.map(([k]) => k).join(', '))
 
-  // secret_key = HMAC_SHA256(key="WebAppData", msg=bot_token)
   const secretKey = await hmacSha256(encoder.encode('WebAppData'), botToken)
   const computed = bufToHex(await hmacSha256(secretKey, dataCheckString))
-  if (!timingSafeEqual(computed, hash)) return null
+  console.log('[TG validate] hash match:', computed === hash, 'computed:', computed.slice(0, 16) + '...', 'received:', hash.slice(0, 16) + '...')
+  if (!timingSafeEqual(computed, hash)) { console.log('[TG validate] REJECTED: hash mismatch'); return null }
 
   const userStr = params.get('user')
-  if (!userStr) return null
-  try { return JSON.parse(userStr) as TgUser } catch { return null }
+  if (!userStr) { console.log('[TG validate] no user field'); return null }
+  try { return JSON.parse(userStr) as TgUser } catch { console.log('[TG validate] user JSON parse failed'); return null }
 }
 
 authRoutes.post('/telegram', async (c) => {
