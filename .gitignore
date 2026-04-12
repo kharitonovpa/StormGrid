@@ -18,6 +18,7 @@ dist-ssr
 *.db-shm
 
 # Environment
+.env
 deploy/.env
 
 # Editor directories and files

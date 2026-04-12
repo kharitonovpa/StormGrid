@@ -1,6 +1,7 @@
 import { ref, shallowRef } from 'vue'
 import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, ClientMessage, ServerMessage } from '@wheee/shared'
-import { WS_URL } from '../lib/config'
+import { WS_URL, IS_TELEGRAM } from '../lib/config'
+import { getAuthToken } from './useAuth'
 
 export type MessageHandler = (msg: ServerMessage) => void
 
@@ -23,8 +24,14 @@ export function useGameSocket() {
     createSocket()
   }
 
+  function buildWsUrl(): string {
+    if (!IS_TELEGRAM) return WS_URL
+    const token = getAuthToken()
+    return token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL
+  }
+
   function createSocket() {
-    const socket = new WebSocket(WS_URL)
+    const socket = new WebSocket(buildWsUrl())
     ws.value = socket
 
     socket.onopen = () => {

@@ -15,9 +15,16 @@ async function hmacSign(payload: string): Promise<string> {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let mismatch = 0
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return mismatch === 0
+}
+
 async function hmacVerify(payload: string, signature: string): Promise<boolean> {
   const expected = await hmacSign(payload)
-  return expected === signature
+  return timingSafeEqual(expected, signature)
 }
 
 function base64url(obj: unknown): string {
@@ -65,4 +72,16 @@ export function parseCookieToken(cookieHeader: string | null): string | null {
   if (!cookieHeader) return null
   const match = cookieHeader.match(/(?:^|;\s*)token=([^;]+)/)
   return match ? match[1] : null
+}
+
+/** Extract JWT from cookie, Authorization header, or query param (in that order). */
+export function extractToken(
+  cookieHeader: string | null,
+  authHeader?: string | null,
+  queryToken?: string | null,
+): string | null {
+  return parseCookieToken(cookieHeader)
+    || (authHeader?.replace(/^Bearer\s+/i, '') ?? null)
+    || queryToken
+    || null
 }

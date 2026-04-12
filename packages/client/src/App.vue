@@ -22,6 +22,7 @@ import { createReplayPlayer, fetchReplayData, type ReplayPlayer } from './lib/re
 import { useGameSocket } from './composables/useGameSocket'
 import { useGameState } from './composables/useGameState'
 import { useAuth } from './composables/useAuth'
+import { IS_TELEGRAM } from './lib/config'
 import LobbyOverlay from './components/LobbyOverlay.vue'
 import GameHud from './components/GameHud.vue'
 import GameOverOverlay from './components/GameOverOverlay.vue'
@@ -39,10 +40,14 @@ let sceneCamera: THREE.PerspectiveCamera
 
 const socket = useGameSocket()
 const game = useGameState()
-const { onAuthChange } = useAuth()
+const { onAuthChange, fetchMe: authFetchMe } = useAuth()
 
 const modelsReady = preloadModels()
-socket.connect()
+if (IS_TELEGRAM) {
+  authFetchMe().then(() => socket.connect())
+} else {
+  socket.connect()
+}
 const unsubAuth = onAuthChange(() => socket.refreshConnection())
 
 const audio = createAudioSystem()
@@ -1176,6 +1181,12 @@ onMounted(() => {
 
   sceneReady = true
   audio.enterLobby()
+
+  if (IS_TELEGRAM && window.Telegram?.WebApp) {
+    window.Telegram.WebApp.ready()
+    window.Telegram.WebApp.expand()
+    window.Telegram.WebApp.disableVerticalSwipes()
+  }
 
   // --- Lobby demo: cinematic showcase ---
   players.setActivePlayer(null)

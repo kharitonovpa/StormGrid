@@ -1,7 +1,7 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { eq, and } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
-import { signJwt, verifyJwt, parseCookieToken } from './jwt.js'
+import { signJwt, verifyJwt, extractToken, timingSafeEqual } from './jwt.js'
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || ''
@@ -9,6 +9,8 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || ''
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || ''
 const CALLBACK_URL = process.env.AUTH_CALLBACK_URL || 'http://localhost:3001/api/auth/callback'
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
+const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN || ''
+const TG_INIT_DATA_MAX_AGE = 300 // 5 minutes
 
 export const authRoutes = new Hono()
 
@@ -89,10 +91,68 @@ authRoutes.get('/callback/github', async (c) => {
   return finishLogin(c, 'github', String(profile.id), profile.login, profile.avatar_url ?? null)
 })
 
+/* ── Telegram Mini App ────────────────────────────── */
+
+const encoder = new TextEncoder()
+
+type TgUser = { id: number; first_name: string; last_name?: string; username?: string; photo_url?: string }
+
+async function hmacSha256(key: ArrayBuffer | Uint8Array<ArrayBuffer>, data: string): Promise<ArrayBuffer> {
+  const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  return crypto.subtle.sign('HMAC', k, encoder.encode(data))
+}
+
+function bufToHex(buf: ArrayBuffer): string {
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function validateTelegramInitData(initData: string, botToken: string): Promise<TgUser | null> {
+  const params = new URLSearchParams(initData)
+  const hash = params.get('hash')
+  if (!hash) return null
+  params.delete('hash')
+  params.delete('signature')
+
+  const authDate = Number(params.get('auth_date') || 0)
+  const age = Math.floor(Date.now() / 1000) - authDate
+  if (age > TG_INIT_DATA_MAX_AGE || age < -60) return null
+
+  const sorted = [...params.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+  const dataCheckString = sorted.map(([k, v]) => `${k}=${v}`).join('\n')
+
+  // secret_key = HMAC_SHA256(key="WebAppData", msg=bot_token)
+  const secretKey = await hmacSha256(encoder.encode('WebAppData'), botToken)
+  const computed = bufToHex(await hmacSha256(secretKey, dataCheckString))
+  if (!timingSafeEqual(computed, hash)) return null
+
+  const userStr = params.get('user')
+  if (!userStr) return null
+  try { return JSON.parse(userStr) as TgUser } catch { return null }
+}
+
+authRoutes.post('/telegram', async (c) => {
+  if (!TG_BOT_TOKEN) return c.json({ error: 'Telegram auth not configured' }, 500)
+
+  const body = await c.req.json<{ initData?: string }>().catch(() => null)
+  if (!body?.initData) return c.json({ error: 'Missing initData' }, 400)
+
+  const tgUser = await validateTelegramInitData(body.initData, TG_BOT_TOKEN)
+  if (!tgUser) return c.json({ error: 'Invalid initData' }, 401)
+
+  const name = tgUser.username || [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ')
+  const avatar = tgUser.photo_url ?? null
+  const providerId = String(tgUser.id)
+
+  const { userId, finalName, finalAvatar } = upsertUser('telegram', providerId, name, avatar)
+  const jwt = await signJwt(userId, finalName, finalAvatar)
+
+  return c.json({ token: jwt, user: { id: userId, name: finalName, avatar: finalAvatar } })
+})
+
 /* ── /me and /logout ──────────────────────────────── */
 
 authRoutes.get('/me', async (c) => {
-  const token = parseCookieToken(c.req.header('cookie') ?? null)
+  const token = extractToken(c.req.header('cookie') ?? null, c.req.header('authorization'))
   if (!token) return c.json({ user: null })
   const payload = await verifyJwt(token)
   if (!payload) return c.json({ user: null })
@@ -105,15 +165,9 @@ authRoutes.post('/logout', (c) => {
   return c.json({ ok: true })
 })
 
-/* ── Shared login finisher ────────────────────────── */
+/* ── Shared helpers ───────────────────────────────── */
 
-async function finishLogin(
-  c: Parameters<Parameters<typeof authRoutes.get>[1]>[0],
-  provider: string,
-  providerId: string,
-  name: string,
-  avatar: string | null,
-) {
+function upsertUser(provider: string, providerId: string, name: string, avatar: string | null) {
   const existing = db.select().from(schema.users)
     .where(and(eq(schema.users.provider, provider), eq(schema.users.providerId, providerId)))
     .get()
@@ -132,12 +186,24 @@ async function finishLogin(
       .run()
   }
 
-  const jwt = await signJwt(userId, name, avatar)
+  return { userId, finalName: name, finalAvatar: avatar }
+}
+
+async function finishLogin(
+  c: Context,
+  provider: string,
+  providerId: string,
+  name: string,
+  avatar: string | null,
+) {
+  const { userId, finalName, finalAvatar } = upsertUser(provider, providerId, name, avatar)
+
+  const jwt = await signJwt(userId, finalName, finalAvatar)
   const isSecure = CALLBACK_URL.startsWith('https')
   const maxAge = 30 * 24 * 60 * 60
   c.header('Set-Cookie', `token=${jwt}; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Path=/; Max-Age=${maxAge}`)
 
-  const safeJson = JSON.stringify({ id: userId, name, avatar }).replace(/</g, '\\u003c')
+  const safeJson = JSON.stringify({ id: userId, name: finalName, avatar: finalAvatar }).replace(/</g, '\\u003c')
   const safeOrigin = JSON.stringify(CLIENT_ORIGIN)
   return c.html(`<!DOCTYPE html><html><body><script>
     window.opener.postMessage({ type: 'auth:done', user: ${safeJson} }, ${safeOrigin});

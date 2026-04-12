@@ -8,7 +8,7 @@ import type { WsData } from './protocol.js'
 import { ConnectionLimiter } from './ratelimit.js'
 import { runMigrations } from './db/migrate.js'
 import { authRoutes } from './auth/oauth.js'
-import { verifyJwt, parseCookieToken } from './auth/jwt.js'
+import { verifyJwt, parseCookieToken, extractToken } from './auth/jwt.js'
 import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard } from './db/matchStore.js'
 
 runMigrations()
@@ -125,7 +125,7 @@ app.get('/api/replay/:id', (c) => {
 })
 
 app.get('/api/me/matches', async (c) => {
-  const token = parseCookieToken(c.req.header('cookie') ?? null)
+  const token = extractToken(c.req.header('cookie') ?? null, c.req.header('authorization'))
   if (!token) return c.json({ error: 'Unauthorized' }, 401)
   const payload = await verifyJwt(token)
   if (!payload) return c.json({ error: 'Unauthorized' }, 401)
@@ -157,6 +157,7 @@ const server = Bun.serve<WsData>({
       let userId: string | null = null
       let userName: string | null = null
       const token = parseCookieToken(req.headers.get('cookie'))
+        || url.searchParams.get('token')
       if (token) {
         const payload = await verifyJwt(token)
         if (payload) {

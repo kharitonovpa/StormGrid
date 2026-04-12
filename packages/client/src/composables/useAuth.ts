@@ -1,27 +1,70 @@
 import { ref, readonly } from 'vue'
 import type { UserInfo } from '@wheee/shared'
-import { API_BASE } from '../lib/config'
+import { API_BASE, IS_TELEGRAM } from '../lib/config'
 
 const user = ref<UserInfo | null>(null)
 const loading = ref(false)
 const authCallbacks = new Set<() => void>()
 
 let initialized = false
+let telegramToken: string | null = null
+let _authReadyResolve: (() => void) | null = null
+const _authReady = new Promise<void>(r => { _authReadyResolve = r })
+
+/** Returns the bearer token for environments where cookies are unavailable (Telegram WebView). */
+export function getAuthToken(): string | null {
+  return telegramToken
+}
+
+/**
+ * Resolves once the initial auth check is complete (TG login or cookie /me).
+ * In non-TG mode resolves immediately — cookies handle WS auth.
+ */
+export function authReady(): Promise<void> {
+  return IS_TELEGRAM ? _authReady : Promise.resolve()
+}
 
 export function useAuth() {
   async function fetchMe() {
     if (initialized) return
-    initialized = true
     loading.value = true
     try {
-      const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
-      if (!res.ok) return
-      const data = await res.json() as { user: UserInfo | null }
-      user.value = data.user
+      if (IS_TELEGRAM) {
+        await loginTelegramWithRetry()
+      } else {
+        const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json() as { user: UserInfo | null }
+          user.value = data.user
+        }
+      }
+      initialized = true
     } catch {
-      /* offline or server unavailable */
+      if (!IS_TELEGRAM) initialized = true
     } finally {
       loading.value = false
+      _authReadyResolve?.()
+      _authReadyResolve = null
+    }
+  }
+
+  async function loginTelegramWithRetry(maxAttempts = 3) {
+    const initData = window.Telegram!.WebApp!.initData as string
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt))
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/telegram`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData }),
+        })
+        if (!res.ok) continue
+        const data = await res.json() as { token: string; user: UserInfo }
+        telegramToken = data.token
+        user.value = data.user
+        for (const cb of authCallbacks) cb()
+        return
+      } catch { /* retry */ }
     }
   }
 
@@ -51,10 +94,12 @@ export function useAuth() {
   }
 
   async function logout() {
+    if (IS_TELEGRAM) return
     try {
       await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' })
     } catch { /* ignore */ }
     user.value = null
+    telegramToken = null
     initialized = false
     for (const cb of authCallbacks) cb()
   }
@@ -62,6 +107,7 @@ export function useAuth() {
   return {
     user: readonly(user),
     loading: readonly(loading),
+    isTelegram: IS_TELEGRAM,
     fetchMe,
     login,
     logout,
