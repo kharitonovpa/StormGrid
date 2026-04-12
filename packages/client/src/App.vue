@@ -844,6 +844,7 @@ unsubMessage2 = socket.onMessage((msg) => {
     }
     case 'round:start': {
       resetVisuals()
+      nameplateSystem?.setVisible(true)
       applyGameState(msg.state)
       startAnimating()
       audio.stopWeather()
