@@ -64,6 +64,7 @@ function worldToScreen(wx: number, wy: number, wz: number): { x: number; y: numb
 
 const winnerPopup = ref<{ player: 'A' | 'B'; points: number } | null>(null)
 const contextLost = ref(false)
+function onContextReload() { window.location.reload() }
 let winnerPopupTimer = 0
 let celebrateTimer = 0
 let contextLostTimer = 0
@@ -1381,7 +1382,7 @@ onUnmounted(() => {
 
   <!-- WebGL context lost overlay -->
   <Transition name="rc">
-    <div v-if="contextLost" class="reconnect-overlay" style="cursor:pointer" @click="$event.preventDefault(); location.reload()">
+    <div v-if="contextLost" class="reconnect-overlay" style="cursor:pointer" @click="onContextReload">
       <div class="reconnect-card">
         <div class="reconnect-text">Display error — tap to reload</div>
       </div>
