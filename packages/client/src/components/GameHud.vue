@@ -140,10 +140,13 @@ watch(() => props.phase, (newPhase, oldPhase) => {
 
         <!-- Action status -->
         <Transition name="check-pop">
-          <div v-if="actionSubmitted" class="action-check">
-            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="4,10 8,14 16,6" />
-            </svg>
+          <div v-if="actionSubmitted" class="action-status">
+            <div class="action-check">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="4,10 8,14 16,6" />
+              </svg>
+            </div>
+            <span class="waiting-text">Waiting for opponent...</span>
           </div>
         </Transition>
       </div>
@@ -321,7 +324,13 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   letter-spacing: 0.5px;
 }
 
-/* ── Action check ── */
+/* ── Action status ── */
+
+.action-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 .action-check {
   width: 28px;
@@ -332,6 +341,14 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+}
+
+.waiting-text {
+  font-size: 11px;
+  color: rgba(200, 210, 225, 0.4);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 .check-pop-enter-active {

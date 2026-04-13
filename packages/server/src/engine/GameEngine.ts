@@ -1,6 +1,7 @@
 import type {
   Action,
   BonusType,
+  DeathCause,
   GameState,
   PlayerId,
   WeatherType,
@@ -86,6 +87,7 @@ export class GameEngine {
     this.state.weather = { type: decision.type, dir: decision.dir }
 
     const deaths: PlayerId[] = []
+    const deathCauses: Partial<Record<PlayerId, DeathCause>> = {}
     let windPaths: Record<PlayerId, { x: number; y: number }[]> = { A: [], B: [] }
     let floodedCellsA: { x: number; y: number }[] = []
     let floodedCellsB: { x: number; y: number }[] = []
@@ -93,12 +95,14 @@ export class GameEngine {
     if (decision.type === 'wind' || decision.type === 'wind_rain') {
       const wr = resolveWind(this.state, decision.dir)
       deaths.push(...wr.deaths)
+      Object.assign(deathCauses, wr.deathCauses)
       windPaths = wr.paths
     }
 
     if (decision.type === 'rain' || decision.type === 'wind_rain') {
       const rr = resolveRain(this.state)
       deaths.push(...rr.deaths)
+      Object.assign(deathCauses, rr.deathCauses)
       floodedCellsA = rr.floodedCellsA
       floodedCellsB = rr.floodedCellsB
     }
@@ -112,6 +116,7 @@ export class GameEngine {
     return {
       state: this.getState(),
       deaths: [...new Set(deaths)],
+      deathCauses,
       windPath: windPaths,
       floodedCells: floodedCellsA,
       floodedCellsB,

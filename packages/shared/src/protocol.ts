@@ -1,4 +1,4 @@
-import type { Action, BonusType, CharacterType, GameState, PlayerId, WeatherResult, WeatherType, WindDir, WatcherPrediction, WatcherState, PlayerInfo } from './types.js'
+import type { Action, BonusType, CharacterType, DeathCause, GameState, PlayerId, WeatherResult, WeatherType, WindDir, WatcherPrediction, WatcherState, PlayerInfo } from './types.js'
 
 /* ── Client → Server ── */
 
@@ -42,7 +42,7 @@ export type RoundStartMsg = { type: 'round:start'; state: GameState; forecastDea
 export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number }
 export type TickResolveMsg = { type: 'tick:resolve'; state: GameState }
 export type WeatherResultMsg = { type: 'weather:result'; result: WeatherResult }
-export type GameEndMsg = { type: 'game:end'; winner: PlayerId | 'draw' }
+export type GameEndMsg = { type: 'game:end'; winner: PlayerId | 'draw'; deathCauses?: Partial<Record<PlayerId, DeathCause>> }
 export type ErrorMsg = { type: 'error'; message: string }
 
 export type WatchAssignedMsg = { type: 'watch:assigned'; roomId: string; state: GameState; watcherState: WatcherState; playerInfo?: Record<PlayerId, PlayerInfo> }

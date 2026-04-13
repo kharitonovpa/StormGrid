@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun'
-import type { Action, BonusType, CharacterType, PlayerId, PlayerInfo, WeatherType, WindDir, WatcherState, WatcherPrediction, WatcherScoreEntry, ReplayFrame, ReplayData } from '@wheee/shared'
+import type { Action, BonusType, CharacterType, DeathCause, PlayerId, PlayerInfo, WeatherType, WindDir, WatcherState, WatcherPrediction, WatcherScoreEntry, ReplayFrame, ReplayData } from '@wheee/shared'
 import { TICK_DURATION_MS, RECONNECT_GRACE_MS, WAR_AND_PEACE_SURNAMES } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
@@ -320,9 +320,10 @@ export class Room {
 
     const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
     this.saveReplay(opponent)
+    const dcCauses: Partial<Record<PlayerId, DeathCause>> = { [pid]: { type: 'disconnect' as const } }
     const oppSlot = this.players[opponent]
     if (oppSlot?.ws) {
-      send(oppSlot.ws, { type: 'game:end', winner: opponent })
+      send(oppSlot.ws, { type: 'game:end', winner: opponent, deathCauses: dcCauses })
       oppSlot.ws.data.roomId = null
       oppSlot.ws.data.playerId = null
       oppSlot.ws.data.role = null
@@ -330,7 +331,7 @@ export class Room {
     if (oppSlot?.reconnectToken) {
       this.callbacks.unregisterToken?.(oppSlot.reconnectToken)
     }
-    this.broadcastSpectators({ type: 'game:end', winner: opponent })
+    this.broadcastSpectators({ type: 'game:end', winner: opponent, deathCauses: dcCauses })
     this.scheduleCleanup()
   }
 
@@ -612,7 +613,7 @@ export class Room {
 
     if (result.state.winner !== null) {
       this.saveReplay(result.state.winner)
-      const endMsg: ServerMessage = { type: 'game:end', winner: result.state.winner }
+      const endMsg: ServerMessage = { type: 'game:end', winner: result.state.winner, deathCauses: result.deathCauses }
       this.broadcast(endMsg)
       this.broadcastSpectators(endMsg)
       this.releasePlayerSlots()

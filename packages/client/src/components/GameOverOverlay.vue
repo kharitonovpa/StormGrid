@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, inject } from 'vue'
-import type { PlayerId } from '@wheee/shared'
+import type { DeathCause, PlayerId } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
+
+const DIR_LABELS: Record<string, string> = { N: 'north', S: 'south', E: 'east', W: 'west' }
 
 const props = defineProps<{
   winner: PlayerId | 'draw' | null
   myPlayerId: PlayerId | null
   roomId: string | null
+  deathCauses?: Partial<Record<PlayerId, DeathCause>> | null
 }>()
 
 const emit = defineEmits<{
@@ -30,9 +33,45 @@ const title = computed(() => {
 })
 
 const subtitle = computed(() => {
-  if (isDraw.value) return 'Both fell to the elements'
-  if (isSpectator.value) return 'The match has concluded'
-  if (isWin.value) return 'The storm bends to your will'
+  const causes = props.deathCauses
+  if (!causes) {
+    if (isDraw.value) return 'Both fell to the elements'
+    if (isSpectator.value) return 'The match has concluded'
+    if (isWin.value) return 'The storm bends to your will'
+    return 'Every storm passes — try again?'
+  }
+
+  const myId = props.myPlayerId
+  const oppId: PlayerId | null = myId === 'A' ? 'B' : myId === 'B' ? 'A' : null
+
+  if (isDraw.value) {
+    const aCause = causes.A
+    const bCause = causes.B
+    if (aCause?.type === 'wind' && bCause?.type === 'wind') return 'Both blown away by the storm'
+    if (aCause?.type === 'rain' && bCause?.type === 'rain') return 'Both drowned in flooded basins'
+    return 'Both fell to the elements'
+  }
+
+  if (isSpectator.value) {
+    const loserId = props.winner === 'A' ? 'B' : 'A'
+    const cause = causes[loserId]
+    if (cause?.type === 'wind') return `Player ${loserId} blown off the ${DIR_LABELS[cause.dir]} edge`
+    if (cause?.type === 'rain') return `Player ${loserId} drowned in a flooded basin`
+    if (cause?.type === 'disconnect') return `Player ${loserId} disconnected`
+    return 'The match has concluded'
+  }
+
+  if (isWin.value) {
+    const oppCause = oppId ? causes[oppId] : null
+    if (oppCause?.type === 'wind') return `Opponent blown off the ${DIR_LABELS[oppCause.dir]} edge`
+    if (oppCause?.type === 'rain') return 'Opponent drowned in a flooded basin'
+    if (oppCause?.type === 'disconnect') return 'Opponent disconnected'
+    return 'The storm bends to your will'
+  }
+
+  const myCause = myId ? causes[myId] : null
+  if (myCause?.type === 'wind') return `Wind blew you off the ${DIR_LABELS[myCause.dir]} edge`
+  if (myCause?.type === 'rain') return 'You drowned in a flooded basin'
   return 'Every storm passes — try again?'
 })
 

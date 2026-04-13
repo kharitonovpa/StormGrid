@@ -1,5 +1,6 @@
 import { ref, shallowRef, computed, onScopeDispose } from 'vue'
 import type {
+  DeathCause,
   GameState,
   PlayerId,
   PlayerInfo,
@@ -27,6 +28,7 @@ export function useGameState() {
   const gameState = shallowRef<GameState | null>(null)
   const weatherResult = ref<WeatherResult | null>(null)
   const winner = ref<PlayerId | 'draw' | null>(null)
+  const deathCauses = ref<Partial<Record<PlayerId, DeathCause>> | null>(null)
   const selectedCharacter = ref<CharacterType>('wheat')
   const tickDeadline = ref(0)
   const forecastDeadline = ref(0)
@@ -142,6 +144,7 @@ export function useGameState() {
 
       case 'game:end':
         winner.value = msg.winner
+        deathCauses.value = msg.deathCauses ?? null
         phase.value = 'finished'
         break
 
@@ -243,6 +246,7 @@ export function useGameState() {
     playerInfo.value = null
     weatherResult.value = null
     winner.value = null
+    deathCauses.value = null
     tickDeadline.value = 0
     forecastDeadline.value = 0
     currentTick.value = 0
@@ -266,6 +270,7 @@ export function useGameState() {
     playerInfo,
     weatherResult,
     winner,
+    deathCauses,
     selectedCharacter,
     tickDeadline,
     forecastDeadline,

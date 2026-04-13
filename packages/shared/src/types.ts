@@ -90,6 +90,13 @@ export type GameState = {
   winner: PlayerId | 'draw' | null
 }
 
+/* ── Death causes ── */
+
+export type DeathCause =
+  | { type: 'wind'; dir: WindDir }
+  | { type: 'rain' }
+  | { type: 'disconnect' }
+
 /* ── Tick / Weather results ── */
 
 export type TickResult = {
@@ -100,6 +107,7 @@ export type TickResult = {
 export type WeatherResult = {
   state: GameState
   deaths: PlayerId[]
+  deathCauses: Partial<Record<PlayerId, DeathCause>>
   windPath: Record<PlayerId, { x: number; y: number }[]>
   floodedCells: { x: number; y: number }[]
   floodedCellsB: { x: number; y: number }[]

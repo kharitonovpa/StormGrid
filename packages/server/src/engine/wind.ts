@@ -1,9 +1,10 @@
-import type { Cell, GameState, PlayerId, WindDir, Height } from '@wheee/shared'
+import type { Cell, DeathCause, GameState, PlayerId, WindDir, Height } from '@wheee/shared'
 import { BOARD_SIZE, DIRECTIONS } from '@wheee/shared'
 import { inBounds } from './board.js'
 
 export type WindResult = {
   deaths: PlayerId[]
+  deathCauses: Partial<Record<PlayerId, DeathCause>>
   paths: Record<PlayerId, { x: number; y: number }[]>
 }
 
@@ -26,6 +27,7 @@ export type WindResult = {
 export function resolveWind(state: GameState, dir: WindDir): WindResult {
   const d = DIRECTIONS[dir]
   const deaths: PlayerId[] = []
+  const deathCauses: Partial<Record<PlayerId, DeathCause>> = {}
   const paths: Record<PlayerId, { x: number; y: number }[]> = { A: [], B: [] }
 
   for (const pid of ['A', 'B'] as PlayerId[]) {
@@ -90,11 +92,12 @@ export function resolveWind(state: GameState, dir: WindDir): WindResult {
     if (dead) {
       p.alive = false
       deaths.push(pid)
+      deathCauses[pid] = { type: 'wind', dir }
     } else {
       p.x = cx
       p.y = cy
     }
   }
 
-  return { deaths, paths }
+  return { deaths, deathCauses, paths }
 }

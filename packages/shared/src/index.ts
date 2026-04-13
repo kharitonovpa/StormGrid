@@ -20,6 +20,7 @@ export type {
   GameState,
   TickResult,
   WeatherResult,
+  DeathCause,
   WatcherPrediction,
   WatcherState,
   UserInfo,

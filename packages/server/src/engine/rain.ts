@@ -1,9 +1,10 @@
-import type { Cell, GameState, PlayerId, Height } from '@wheee/shared'
+import type { Cell, DeathCause, GameState, PlayerId, Height } from '@wheee/shared'
 import { BOARD_SIZE } from '@wheee/shared'
 import { inBounds } from './board.js'
 
 export type RainResult = {
   deaths: PlayerId[]
+  deathCauses: Partial<Record<PlayerId, DeathCause>>
   floodedCellsA: { x: number; y: number }[]
   floodedCellsB: { x: number; y: number }[]
 }
@@ -17,6 +18,7 @@ export type RainResult = {
  */
 export function resolveRain(state: GameState): RainResult {
   const deaths: PlayerId[] = []
+  const deathCauses: Partial<Record<PlayerId, DeathCause>> = {}
 
   const floodedA = findAndFlood(state.board, 1)
   const floodedB = findAndFlood(state.board, -1)
@@ -28,15 +30,17 @@ export function resolveRain(state: GameState): RainResult {
   if (pA.alive && floodSetA.has(pA.y * BOARD_SIZE + pA.x)) {
     pA.alive = false
     deaths.push('A')
+    deathCauses.A = { type: 'rain' }
   }
 
   const pB = state.players.B
   if (pB.alive && floodSetB.has(pB.y * BOARD_SIZE + pB.x)) {
     pB.alive = false
     deaths.push('B')
+    deathCauses.B = { type: 'rain' }
   }
 
-  return { deaths, floodedCellsA: floodedA, floodedCellsB: floodedB }
+  return { deaths, deathCauses, floodedCellsA: floodedA, floodedCellsB: floodedB }
 }
 
 /**

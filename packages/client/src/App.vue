@@ -31,6 +31,7 @@ import WatcherHud from './components/WatcherHud.vue'
 import ArchitectHud from './components/ArchitectHud.vue'
 import ReplayOverlay from './components/ReplayOverlay.vue'
 import VolumeControl from './components/VolumeControl.vue'
+import StoriesOverlay from './components/StoriesOverlay.vue'
 
 const container = ref<HTMLElement | null>(null)
 let renderer: THREE.WebGLRenderer
@@ -160,9 +161,11 @@ const lobbyCharacterLocked = computed(
 )
 const lobbyCommittedCharacter = computed(() => game.selectedCharacter.value)
 const showHud = computed(() =>
-  game.phase.value === 'forecast' ||
-  game.phase.value === 'ticking' ||
-  game.phase.value === 'weather',
+  !showStories.value && (
+    game.phase.value === 'forecast' ||
+    game.phase.value === 'ticking' ||
+    game.phase.value === 'weather'
+  ),
 )
 const showGameOver = computed(() => game.phase.value === 'finished')
 const showWatcher = computed(() => game.isWatcher.value && game.gameState.value !== null)
@@ -472,6 +475,20 @@ function updateDemoOrbit(dt: number) {
   }
 }
 
+/* ── Stories onboarding (every game until user taps Skip) ── */
+const STORIES_STORAGE_KEY = 'wheee:stories_skipped'
+const showStories = ref(false)
+
+function onStoriesDone() {
+  showStories.value = false
+  startIntroAnimation()
+}
+
+function onStoriesSkip() {
+  showStories.value = false
+  storageSet(STORIES_STORAGE_KEY, '1')
+}
+
 /* ── Intro fly-around (first game only) ── */
 const INTRO_STORAGE_KEY = 'wheee:intro_seen'
 const introActive = ref(false)
@@ -711,7 +728,11 @@ unsubMessage2 = socket.onMessage((msg) => {
       }
       switchToOrbit()
       startAnimating()
-      startIntroAnimation()
+      if (!storageGet(STORIES_STORAGE_KEY)) {
+        showStories.value = true
+      } else {
+        startIntroAnimation()
+      }
       break
     }
     case 'reconnect:ok': {
@@ -1486,6 +1507,7 @@ onUnmounted(() => {
     :winner="game.winner.value"
     :my-player-id="game.myPlayerId.value"
     :room-id="lastRoomId"
+    :death-causes="game.deathCauses.value"
     @play-again="onPlayAgain"
     @watch-replay="startReplay"
     @back-to-lobby="onBackToLobby"
@@ -1496,6 +1518,8 @@ onUnmounted(() => {
     :player="replayPlayer"
     @exit="exitReplay"
   />
+
+  <StoriesOverlay v-if="showStories" @done="onStoriesDone" @skip="onStoriesSkip" />
 
   <VolumeControl />
 
