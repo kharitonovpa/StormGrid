@@ -721,6 +721,9 @@ unsubMessage2 = socket.onMessage((msg) => {
       introShowLabels.value = false
       introBounceFlip.value = false
       introBasePos = null
+      previewSystem?.hide()
+      playersSystem?.hideMoveOptions()
+      menuVisible.value = false
       if (playersSystem) {
         playersSystem.setActivePlayer(msg.playerId)
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
@@ -738,6 +741,9 @@ unsubMessage2 = socket.onMessage((msg) => {
       break
     }
     case 'reconnect:fail': {
+      previewSystem?.hide()
+      playersSystem?.hideMoveOptions()
+      menuVisible.value = false
       terrainState.resetFlat()
       resetVisuals()
       startAnimating()
@@ -1981,7 +1987,7 @@ onUnmounted(() => {
 }
 
 .rc-enter-active { transition: opacity 0.3s ease; }
-.rc-leave-active { transition: opacity 0.25s ease; }
+.rc-leave-active { transition: opacity 0.25s ease; pointer-events: none; }
 .rc-enter-from, .rc-leave-to { opacity: 0; }
 
 /* ── Opponent disconnected banner ── */
