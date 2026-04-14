@@ -3,10 +3,11 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { CharacterType } from '@wheee/shared'
 import { CELL_SIZE } from './constants'
 
+const base = import.meta.env.BASE_URL
 const MODEL_PATHS: Record<CharacterType, string> = {
-  wheat: '/models/wheat.glb',
-  rice: '/models/rice.glb',
-  corn: '/models/corn.glb',
+  wheat: `${base}models/wheat.glb`,
+  rice: `${base}models/rice.glb`,
+  corn: `${base}models/corn.glb`,
 }
 
 const TARGET_HEIGHT = CELL_SIZE * 0.55

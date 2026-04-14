@@ -74,7 +74,7 @@ interface SoundDef {
 }
 
 function def(id: SoundId): SoundDef {
-  const src = `/sounds/${id}.mp3`
+  const src = `${import.meta.env.BASE_URL}sounds/${id}.mp3`
 
   switch (id) {
     // Ambient loops (barely-there bed)

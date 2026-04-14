@@ -21,6 +21,9 @@ function platformHtmlPlugin(): Plugin {
   }
 }
 
+const isYandex = (process.env.VITE_PLATFORM ?? '') === 'yandex'
+
 export default defineConfig({
+  base: isYandex ? './' : '/',
   plugins: [vue(), platformHtmlPlugin()],
 })
