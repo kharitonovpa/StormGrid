@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /ws
+
+Sitemap: https://wheee.io/sitemap.xml
+Sitemap: https://ru.wheee.io/sitemap.xml
