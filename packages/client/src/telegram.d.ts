@@ -16,5 +16,4 @@ interface Window {
   Telegram?: {
     WebApp?: TelegramWebApp
   }
-  __tgReady?: Promise<void>
 }
