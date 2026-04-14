@@ -83,16 +83,39 @@ export function useAuth() {
     const top = window.screenY + (window.innerHeight - h) / 2
     const popup = window.open(url, 'wheee-auth', `width=${w},height=${h},left=${left},top=${top}`)
 
-    const expectedOrigin = new URL(API_BASE).origin
+    // Accept postMessage only from same-site origins (*.wheee.io, localhost)
+    const site = location.hostname.split('.').slice(-2).join('.')
     const onMessage = (e: MessageEvent) => {
-      if (e.origin !== expectedOrigin) return
+      try { if (!new URL(e.origin).hostname.endsWith(site)) return } catch { return }
       if (e.data?.type !== 'auth:done') return
       user.value = e.data.user as UserInfo
       window.removeEventListener('message', onMessage)
+      clearInterval(poll)
       popup?.close()
       for (const cb of authCallbacks) cb()
     }
     window.addEventListener('message', onMessage)
+
+    // Fallback: cookie on .wheee.io is shared across subdomains, so /me works
+    // even if postMessage was somehow blocked.
+    const poll = setInterval(async () => {
+      if (!popup || popup.closed) {
+        clearInterval(poll)
+        window.removeEventListener('message', onMessage)
+        if (!user.value) {
+          try {
+            const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
+            if (res.ok) {
+              const data = await res.json() as { user: UserInfo | null }
+              if (data.user) {
+                user.value = data.user
+                for (const cb of authCallbacks) cb()
+              }
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    }, 500)
   }
 
   async function logout() {

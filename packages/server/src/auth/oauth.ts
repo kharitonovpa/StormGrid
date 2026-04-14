@@ -9,27 +9,78 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || ''
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || ''
 const CALLBACK_URL = process.env.AUTH_CALLBACK_URL || 'http://localhost:3001/api/auth/callback'
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
+const ALLOWED_CLIENT_ORIGINS = new Set(
+  (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim()),
+)
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ''
 const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN || ''
 const TG_INIT_DATA_MAX_AGE = 300 // 5 minutes
 
+const pendingStates = new Map<string, { origin: string; expires: number }>()
+
 export const authRoutes = new Hono()
+
+/* ── Cookie helper ──────────────────────────────────── */
+
+function setTokenCookie(c: Context, jwt: string, maxAge: number) {
+  const isSecure = CALLBACK_URL.startsWith('https')
+  const domain = COOKIE_DOMAIN ? `; Domain=${COOKIE_DOMAIN}` : ''
+  c.header('Set-Cookie', `token=${jwt}; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Path=/${domain}; Max-Age=${maxAge}`)
+}
+
+function clearTokenCookie(c: Context) {
+  const isSecure = CALLBACK_URL.startsWith('https')
+  const domain = COOKIE_DOMAIN ? `; Domain=${COOKIE_DOMAIN}` : ''
+  c.header('Set-Cookie', `token=; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Path=/${domain}; Max-Age=0`)
+}
+
+/* ── CSRF state helpers ─────────────────────────────── */
+
+function createOAuthState(clientOrigin: string): string {
+  const nonce = crypto.randomUUID()
+  pendingStates.set(nonce, { origin: clientOrigin, expires: Date.now() + 10 * 60_000 })
+  // Evict expired entries (keep map bounded)
+  if (pendingStates.size > 1000) {
+    const now = Date.now()
+    for (const [k, v] of pendingStates) {
+      if (v.expires < now) pendingStates.delete(k)
+    }
+  }
+  return nonce
+}
+
+function consumeOAuthState(nonce: string | null): string | null {
+  if (!nonce) return null
+  const entry = pendingStates.get(nonce)
+  if (!entry) return null
+  pendingStates.delete(nonce)
+  if (entry.expires < Date.now()) return null
+  return entry.origin
+}
 
 /* ── Google OAuth ─────────────────────────────────── */
 
 authRoutes.get('/google', (c) => {
+  const clientOrigin = resolveClientOrigin(c)
+  const state = createOAuthState(clientOrigin)
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: `${CALLBACK_URL}/google`,
     response_type: 'code',
     scope: 'openid profile',
     prompt: 'select_account',
+    state,
   })
   return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`)
 })
 
 authRoutes.get('/callback/google', async (c) => {
   const code = c.req.query('code')
+  const stateNonce = c.req.query('state') || null
   if (!code) return c.text('Missing code', 400)
+
+  const clientOrigin = consumeOAuthState(stateNonce)
+  if (!clientOrigin) return c.text('Invalid or expired state', 403)
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -51,23 +102,30 @@ authRoutes.get('/callback/google', async (c) => {
   if (!profileRes.ok) return c.text('Profile fetch failed', 502)
 
   const profile = await profileRes.json() as { id: string; name: string; picture?: string }
-  return finishLogin(c, 'google', profile.id, profile.name, profile.picture ?? null)
+  return finishLogin(c, 'google', profile.id, profile.name, profile.picture ?? null, clientOrigin)
 })
 
 /* ── GitHub OAuth ─────────────────────────────────── */
 
 authRoutes.get('/github', (c) => {
+  const clientOrigin = resolveClientOrigin(c)
+  const state = createOAuthState(clientOrigin)
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
     redirect_uri: `${CALLBACK_URL}/github`,
     scope: 'read:user',
+    state,
   })
   return c.redirect(`https://github.com/login/oauth/authorize?${params}`)
 })
 
 authRoutes.get('/callback/github', async (c) => {
   const code = c.req.query('code')
+  const stateNonce = c.req.query('state') || null
   if (!code) return c.text('Missing code', 400)
+
+  const clientOrigin = consumeOAuthState(stateNonce)
+  if (!clientOrigin) return c.text('Invalid or expired state', 403)
 
   const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
@@ -88,7 +146,7 @@ authRoutes.get('/callback/github', async (c) => {
   if (!profileRes.ok) return c.text('Profile fetch failed', 502)
 
   const profile = await profileRes.json() as { id: number; login: string; avatar_url?: string }
-  return finishLogin(c, 'github', String(profile.id), profile.login, profile.avatar_url ?? null)
+  return finishLogin(c, 'github', String(profile.id), profile.login, profile.avatar_url ?? null, clientOrigin)
 })
 
 /* ── Telegram Mini App ────────────────────────────── */
@@ -158,8 +216,7 @@ authRoutes.get('/me', async (c) => {
 })
 
 authRoutes.post('/logout', (c) => {
-  const isSecure = CALLBACK_URL.startsWith('https')
-  c.header('Set-Cookie', `token=; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Path=/; Max-Age=0`)
+  clearTokenCookie(c)
   return c.json({ ok: true })
 })
 
@@ -187,22 +244,32 @@ function upsertUser(provider: string, providerId: string, name: string, avatar: 
   return { userId, finalName: name, finalAvatar: avatar }
 }
 
+function resolveClientOrigin(c: Context): string {
+  const referer = c.req.header('referer')
+  if (referer) {
+    try {
+      const origin = new URL(referer).origin
+      if (ALLOWED_CLIENT_ORIGINS.has(origin)) return origin
+    } catch { /* ignore malformed */ }
+  }
+  return CLIENT_ORIGIN
+}
+
 async function finishLogin(
   c: Context,
   provider: string,
   providerId: string,
   name: string,
   avatar: string | null,
+  clientOrigin: string,
 ) {
   const { userId, finalName, finalAvatar } = upsertUser(provider, providerId, name, avatar)
 
   const jwt = await signJwt(userId, finalName, finalAvatar)
-  const isSecure = CALLBACK_URL.startsWith('https')
-  const maxAge = 30 * 24 * 60 * 60
-  c.header('Set-Cookie', `token=${jwt}; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Lax; Path=/; Max-Age=${maxAge}`)
+  setTokenCookie(c, jwt, 30 * 24 * 60 * 60)
 
   const safeJson = JSON.stringify({ id: userId, name: finalName, avatar: finalAvatar }).replace(/</g, '\\u003c')
-  const safeOrigin = JSON.stringify(CLIENT_ORIGIN)
+  const safeOrigin = JSON.stringify(clientOrigin)
   return c.html(`<!DOCTYPE html><html><body><script>
     window.opener.postMessage({ type: 'auth:done', user: ${safeJson} }, ${safeOrigin});
     window.close();
