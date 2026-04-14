@@ -1,4 +1,7 @@
-const SECRET = process.env.JWT_SECRET || 'dev-secret-do-not-use-in-production'
+const SECRET = process.env.JWT_SECRET
+  ?? (process.env.NODE_ENV === 'production'
+    ? (() => { throw new Error('JWT_SECRET must be set in production') })()
+    : 'dev-secret-do-not-use-in-production')
 const EXPIRES_IN = 30 * 24 * 60 * 60 // 30 days in seconds
 
 const encoder = new TextEncoder()
