@@ -16,7 +16,7 @@ COPY packages/client packages/client
 RUN bun run --cwd packages/server build
 
 ARG VITE_API_URL
-RUN cd packages/client && bunx vite build
+RUN cd packages/client && bunx vite build && bun run inline-bundle.ts
 
 # ── Stage 2: nginx with client static files ──────────────────
 FROM nginx:alpine AS nginx
