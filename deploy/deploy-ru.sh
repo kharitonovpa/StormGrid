@@ -18,6 +18,6 @@ VITE_API_URL="" bunx vite build
 
 # ── Upload dist/ to Russian VPS ──────────────────────────────
 echo "==> Uploading dist/ to $REMOTE:/var/www/wheee/ ..."
-rsync -avz --delete "$CLIENT_DIR/dist/" "$REMOTE:/var/www/wheee/"
+rsync -avz --delete --exclude='.DS_Store' "$CLIENT_DIR/dist/" "$REMOTE:/var/www/wheee/"
 
 echo "==> Done! Static files deployed to Russian VPS."

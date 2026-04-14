@@ -18,6 +18,13 @@ const TG_INIT_DATA_MAX_AGE = 300 // 5 minutes
 
 const pendingStates = new Map<string, { origin: string; expires: number }>()
 
+setInterval(() => {
+  const now = Date.now()
+  for (const [k, v] of pendingStates) {
+    if (v.expires < now) pendingStates.delete(k)
+  }
+}, 60_000)
+
 export const authRoutes = new Hono()
 
 /* ── Cookie helper ──────────────────────────────────── */
@@ -75,6 +82,7 @@ authRoutes.get('/google', (c) => {
 })
 
 authRoutes.get('/callback/google', async (c) => {
+  if (c.req.query('error')) return c.html('<!DOCTYPE html><html><body><script>window.close()</script></body></html>')
   const code = c.req.query('code')
   const stateNonce = c.req.query('state') || null
   if (!code) return c.text('Missing code', 400)
@@ -120,6 +128,7 @@ authRoutes.get('/github', (c) => {
 })
 
 authRoutes.get('/callback/github', async (c) => {
+  if (c.req.query('error')) return c.html('<!DOCTYPE html><html><body><script>window.close()</script></body></html>')
   const code = c.req.query('code')
   const stateNonce = c.req.query('state') || null
   if (!code) return c.text('Missing code', 400)
