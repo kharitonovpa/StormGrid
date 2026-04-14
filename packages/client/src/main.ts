@@ -1,5 +1,7 @@
 import { createApp } from 'vue'
 import './style.css'
-import App from './App.vue'
 
+await (window.__tgReady ?? Promise.resolve())
+
+const { default: App } = await import('./App.vue')
 createApp(App).mount('#app')

@@ -44,8 +44,22 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Comfortaa:wght@400;600;700&display=swap" rel="stylesheet" />
 
-    <!-- Telegram Mini App SDK (no-op outside Telegram WebView) -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Telegram Mini App SDK — only loaded inside TG WebView -->
+    <script>
+      window.__tgReady=new Promise(function(resolve){
+        var inTg=location.hash.indexOf('tgWebAppData')!==-1
+                 ||typeof TelegramWebviewProxy!=='undefined';
+        if(!inTg){resolve();return}
+        var done=false;
+        function finish(){if(!done){done=true;clearTimeout(tid);resolve()}}
+        var tid=setTimeout(finish,3000);
+        var s=document.createElement('script');
+        s.src='https://telegram.org/js/telegram-web-app.js';
+        s.onload=finish;
+        s.onerror=finish;
+        document.head.appendChild(s);
+      });
+    </script>
   </head>
   <body>
     <div id="app"></div>
