@@ -3,8 +3,11 @@ import { onMounted, onUnmounted, computed, inject } from 'vue'
 import type { DeathCause, PlayerId } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
+import { t } from '../lib/i18n'
 
-const DIR_LABELS: Record<string, string> = { N: 'north', S: 'south', E: 'east', W: 'west' }
+function dirLabel(d: string): string {
+  return t(`dir.${d}`)
+}
 
 const props = defineProps<{
   winner: PlayerId | 'draw' | null
@@ -26,19 +29,19 @@ const isDraw = computed(() => props.winner === 'draw')
 const isSpectator = computed(() => !props.myPlayerId)
 
 const title = computed(() => {
-  if (isDraw.value) return 'Stalemate'
-  if (isSpectator.value) return `Player ${props.winner} Wins`
-  if (isWin.value) return 'Victory!'
-  return 'Defeated'
+  if (isDraw.value) return t('gameover.stalemate')
+  if (isSpectator.value) return t('gameover.playerWins', props.winner!)
+  if (isWin.value) return t('gameover.victory')
+  return t('gameover.defeated')
 })
 
 const subtitle = computed(() => {
   const causes = props.deathCauses
   if (!causes) {
-    if (isDraw.value) return 'Both fell to the elements'
-    if (isSpectator.value) return 'The match has concluded'
-    if (isWin.value) return 'The storm bends to your will'
-    return 'Every storm passes — try again?'
+    if (isDraw.value) return t('gameover.bothFell')
+    if (isSpectator.value) return t('gameover.concluded')
+    if (isWin.value) return t('gameover.stormBends')
+    return t('gameover.tryAgain')
   }
 
   const myId = props.myPlayerId
@@ -47,32 +50,32 @@ const subtitle = computed(() => {
   if (isDraw.value) {
     const aCause = causes.A
     const bCause = causes.B
-    if (aCause?.type === 'wind' && bCause?.type === 'wind') return 'Both blown away by the storm'
-    if (aCause?.type === 'rain' && bCause?.type === 'rain') return 'Both drowned in flooded basins'
-    return 'Both fell to the elements'
+    if (aCause?.type === 'wind' && bCause?.type === 'wind') return t('gameover.bothBlown')
+    if (aCause?.type === 'rain' && bCause?.type === 'rain') return t('gameover.bothDrowned')
+    return t('gameover.bothFell')
   }
 
   if (isSpectator.value) {
     const loserId = props.winner === 'A' ? 'B' : 'A'
     const cause = causes[loserId]
-    if (cause?.type === 'wind') return `Player ${loserId} blown off the ${DIR_LABELS[cause.dir]} edge`
-    if (cause?.type === 'rain') return `Player ${loserId} drowned in a flooded basin`
-    if (cause?.type === 'disconnect') return `Player ${loserId} disconnected`
-    return 'The match has concluded'
+    if (cause?.type === 'wind') return t('gameover.blownOff', loserId, dirLabel(cause.dir))
+    if (cause?.type === 'rain') return t('gameover.drowned', loserId)
+    if (cause?.type === 'disconnect') return t('gameover.disconnected', loserId)
+    return t('gameover.concluded')
   }
 
   if (isWin.value) {
     const oppCause = oppId ? causes[oppId] : null
-    if (oppCause?.type === 'wind') return `Opponent blown off the ${DIR_LABELS[oppCause.dir]} edge`
-    if (oppCause?.type === 'rain') return 'Opponent drowned in a flooded basin'
-    if (oppCause?.type === 'disconnect') return 'Opponent disconnected'
-    return 'The storm bends to your will'
+    if (oppCause?.type === 'wind') return t('gameover.opponentBlown', dirLabel(oppCause.dir))
+    if (oppCause?.type === 'rain') return t('gameover.opponentDrowned')
+    if (oppCause?.type === 'disconnect') return t('gameover.opponentDisconnected')
+    return t('gameover.stormBends')
   }
 
   const myCause = myId ? causes[myId] : null
-  if (myCause?.type === 'wind') return `Wind blew you off the ${DIR_LABELS[myCause.dir]} edge`
-  if (myCause?.type === 'rain') return 'You drowned in a flooded basin'
-  return 'Every storm passes — try again?'
+  if (myCause?.type === 'wind') return t('gameover.youBlown', dirLabel(myCause.dir))
+  if (myCause?.type === 'rain') return t('gameover.youDrowned')
+  return t('gameover.tryAgain')
 })
 
 const resultClass = computed(() => {
@@ -117,12 +120,13 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  for (const t of fireworkTimeouts) clearTimeout(t)
+  for (const tid of fireworkTimeouts) clearTimeout(tid)
   fireworkTimeouts.length = 0
   if (fireworkInterval) {
     clearInterval(fireworkInterval)
     fireworkInterval = 0
   }
+  disposeCelebrate()
 })
 </script>
 
@@ -137,7 +141,7 @@ onUnmounted(() => {
 
       <div class="btn-row">
         <button class="btn-again" :class="resultClass" @click="audio?.play('ui-click'); emit('playAgain')">
-          <span>Play Again</span>
+          <span>{{ t('gameover.playAgain') }}</span>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M23 4v6h-6M1 20v-6h6" />
             <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
@@ -148,7 +152,7 @@ onUnmounted(() => {
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="5 3 19 12 5 21 5 3"/>
           </svg>
-          <span>Replay</span>
+          <span>{{ t('gameover.replay') }}</span>
         </button>
       </div>
 
@@ -157,7 +161,7 @@ onUnmounted(() => {
         class="btn-lobby"
         @click="audio?.play('ui-click'); emit('backToLobby')"
       >
-        Back to lobby
+        {{ t('gameover.backToLobby') }}
       </button>
     </div>
   </div>

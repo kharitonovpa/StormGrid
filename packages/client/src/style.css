@@ -10,6 +10,8 @@ html, body, #app {
   height: 100%;
   overflow: hidden;
   background: #0a0e14;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 canvas {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, inject, onMounted, onUnmounted } from 'vue'
 import type { AudioSystem } from '../lib/audio'
+import { t } from '../lib/i18n'
 
 const audio = inject<AudioSystem>('audio')
 const open = ref(false)
@@ -61,11 +62,11 @@ onUnmounted(() => {
       <div v-if="open" class="vol-panel">
         <button class="vol-mute-row" @click="toggleMute">
           <span class="vol-mute-icon">{{ muted ? '🔇' : '🔊' }}</span>
-          <span class="vol-mute-label">{{ muted ? 'Unmute' : 'Mute' }}</span>
+          <span class="vol-mute-label">{{ muted ? t('volume.unmute') : t('volume.mute') }}</span>
         </button>
 
         <div class="vol-group">
-          <label class="vol-label">Music</label>
+          <label class="vol-label">{{ t('volume.music') }}</label>
           <input
             type="range" min="0" max="100" :value="musicVol"
             class="vol-range" @input="onMusicInput"
@@ -73,7 +74,7 @@ onUnmounted(() => {
         </div>
 
         <div class="vol-group">
-          <label class="vol-label">SFX</label>
+          <label class="vol-label">{{ t('volume.sfx') }}</label>
           <input
             type="range" min="0" max="100" :value="sfxVol"
             class="vol-range" @input="onSfxInput"

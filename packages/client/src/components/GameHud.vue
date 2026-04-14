@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch, inject } from 'vue'
 import type { PlayerId } from '@wheee/shared'
 import { TICK_DURATION_MS, TICKS_PER_ROUND } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
+import { t } from '../lib/i18n'
 
 const TICK_SECONDS = TICK_DURATION_MS / 1000
 
@@ -135,7 +136,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
               }"
             />
           </div>
-          <div class="round-label">Round {{ round }}</div>
+          <div class="round-label">{{ t('hud.round', round) }}</div>
         </div>
 
         <!-- Action status -->
@@ -146,7 +147,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
                 <polyline points="4,10 8,14 16,6" />
               </svg>
             </div>
-            <span class="waiting-text">Waiting for opponent...</span>
+            <span class="waiting-text">{{ t('hud.waiting') }}</span>
           </div>
         </Transition>
       </div>
@@ -162,10 +163,10 @@ watch(() => props.phase, (newPhase, oldPhase) => {
             </svg>
           </div>
           <div class="phase-text">
-            <span class="phase-title">Forecast</span>
-            <span class="phase-sub">Your turn is coming...</span>
+            <span class="phase-title">{{ t('hud.forecast') }}</span>
+            <span class="phase-sub">{{ t('hud.forecastSub') }}</span>
           </div>
-          <div class="round-pill">R{{ round }}</div>
+          <div class="round-pill">{{ t('hud.roundPill', round) }}</div>
           <div class="forecast-progress-track">
             <div class="forecast-progress-bar" :style="{ transform: `scaleX(${forecastProgress})` }" />
           </div>
@@ -176,7 +177,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
     <!-- Choose your move flash -->
     <Transition name="choose-flash">
       <div v-if="showChooseFlash" class="choose-banner" key="choose">
-        <span class="choose-text">Choose your move!</span>
+        <span class="choose-text">{{ t('hud.chooseMoveFlash') }}</span>
       </div>
     </Transition>
 
@@ -188,7 +189,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
           <svg class="cataclysm-bolt" viewBox="0 0 32 32" width="28" height="28">
             <polygon points="18,2 10,16 15,16 8,30 24,13 17,13 22,2" fill="currentColor" />
           </svg>
-          <span class="cataclysm-text">Cataclysm</span>
+          <span class="cataclysm-text">{{ t('hud.cataclysm') }}</span>
           <svg class="cataclysm-bolt cataclysm-bolt-r" viewBox="0 0 32 32" width="28" height="28">
             <polygon points="18,2 10,16 15,16 8,30 24,13 17,13 22,2" fill="currentColor" />
           </svg>
@@ -196,7 +197,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
       </div>
     </Transition>
     <!-- Flip view button -->
-    <button type="button" class="flip-btn" :class="{ 'flip-bounce': bounceFlip }" @click="emit('flip')" title="Peek at opponent's side">
+    <button type="button" class="flip-btn" :class="{ 'flip-bounce': bounceFlip }" @click="emit('flip')" :title="t('hud.flipView')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="17,1 21,5 17,9" />
         <path d="M3 11V9a4 4 0 0 1 4-4h14" />

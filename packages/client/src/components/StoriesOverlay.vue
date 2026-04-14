@@ -2,18 +2,19 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { WindDir } from '@wheee/shared'
 import ForecastPanel from './ForecastPanel.vue'
+import { t } from '../lib/i18n'
 
 const emit = defineEmits<{ done: []; skip: [] }>()
 
 const SLIDE_DURATION = 4000
 
-const slides = [
-  { text: 'A storm is coming.\nYou have **5 moves** to prepare.', id: 'storm' },
-  { text: '**Tap a cell.** Move, raise, or lower.', id: 'actions' },
-  { text: '**Wind** blows you off the map.\nA wall blocks it.', id: 'wind' },
-  { text: '**Rain** floods low ground.\nDon\'t stand in a pit.', id: 'rain' },
-  { text: '**Compass** shows wind.\n**Icon** shows rain chance.', id: 'forecast' },
-] as const
+const slides = computed(() => [
+  { text: t('stories.slide1'), id: 'storm' as const },
+  { text: t('stories.slide2'), id: 'actions' as const },
+  { text: t('stories.slide3'), id: 'wind' as const },
+  { text: t('stories.slide4'), id: 'rain' as const },
+  { text: t('stories.slide5'), id: 'forecast' as const },
+])
 
 const current = ref(0)
 const progress = ref(0)
@@ -38,7 +39,7 @@ function clearTimers() {
 }
 
 function advance() {
-  if (current.value < slides.length - 1) {
+  if (current.value < slides.value.length - 1) {
     current.value++
     startAutoAdvance()
   } else {
@@ -53,16 +54,19 @@ function finish(skipped = false) {
   clearTimers()
   clearInterval(forecastTimer)
   leaving.value = true
-  leaveTimer = window.setTimeout(() => emit(skipped ? 'skip' : 'done'), 350)
+  leaveTimer = window.setTimeout(() => {
+    if (skipped) emit('skip')
+    else emit('done')
+  }, 350)
 }
 
 const formattedText = computed(() =>
-  slides[current.value].text
+  slides.value[current.value].text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br>'),
 )
 
-const currentId = computed(() => slides[current.value].id)
+const currentId = computed(() => slides.value[current.value].id)
 
 /* ── Card 1: Isometric grid ── */
 
@@ -181,7 +185,7 @@ onUnmounted(() => { clearTimers(); clearInterval(forecastTimer); clearTimeout(le
       </div>
     </div>
 
-    <button class="skip-btn" @click.stop="finish(true)">Skip</button>
+    <button class="skip-btn" @click.stop="finish(true)">{{ t('stories.skip') }}</button>
 
     <Transition name="slide" mode="out-in">
       <div class="slide-content" :key="current">
@@ -203,7 +207,7 @@ onUnmounted(() => { clearTimers(); clearInterval(forecastTimer); clearTimeout(le
                 <div v-for="i in 5" :key="i" class="storm-dot"
                   :style="{ animationDelay: `${(i - 1) * 0.45}s` }" />
               </div>
-              <span class="storm-round-lbl">Round 1</span>
+              <span class="storm-round-lbl">{{ t('stories.round1') }}</span>
             </div>
           </div>
 
@@ -225,7 +229,7 @@ onUnmounted(() => { clearTimers(); clearInterval(forecastTimer); clearTimeout(le
             <svg viewBox="0 0 32 32" width="16" height="16">
               <polygon points="18,2 10,16 15,16 8,30 24,13 17,13 22,2" fill="currentColor" />
             </svg>
-            <span>Cataclysm</span>
+            <span>{{ t('stories.cataclysm') }}</span>
             <svg viewBox="0 0 32 32" width="16" height="16" style="transform: scaleX(-1)">
               <polygon points="18,2 10,16 15,16 8,30 24,13 17,13 22,2" fill="currentColor" />
             </svg>
@@ -255,7 +259,7 @@ onUnmounted(() => { clearTimers(); clearInterval(forecastTimer); clearTimeout(le
               <polygon :points="moveCells[2].top" fill="rgba(99,102,241,0.25)" class="move-hl" />
               <!-- Character sliding from (0,0) → (1,0) -->
               <g class="act-move-char"><use href="#so-char" /></g>
-              <text :x="moveFrom.cx" y="72" class="act-label" fill="rgba(99,102,241,0.7)">Move</text>
+              <text :x="moveFrom.cx" y="72" class="act-label" fill="rgba(99,102,241,0.7)">{{ t('stories.move') }}</text>
             </g>
 
             <!-- ── Raise: 2 iso cells ── -->
@@ -269,7 +273,7 @@ onUnmounted(() => { clearTimers(); clearInterval(forecastTimer); clearTimeout(le
                 <polygon :points="raiseCells[1].right" fill="url(#so-earth-r)" />
                 <polygon :points="raiseCells[1].top" fill="url(#so-grass)" stroke="rgba(228,197,71,0.35)" stroke-width="0.5" />
               </g>
-              <text :x="raiseCells[0].cx + AHW / 2" y="72" class="act-label" fill="rgba(228,197,71,0.7)">Raise</text>
+              <text :x="raiseCells[0].cx + AHW / 2" y="72" class="act-label" fill="rgba(228,197,71,0.7)">{{ t('stories.raise') }}</text>
             </g>
 
             <!-- ── Lower: 2 iso cells ── -->
@@ -284,7 +288,7 @@ onUnmounted(() => { clearTimers(); clearInterval(forecastTimer); clearTimeout(le
                 <polygon :points="lowerCells[1].right" fill="url(#so-earth-r)" />
                 <polygon :points="lowerCells[1].top" fill="url(#so-grass)" stroke="rgba(200,210,225,0.25)" stroke-width="0.5" />
               </g>
-              <text :x="lowerCells[0].cx + AHW / 2" y="72" class="act-label" fill="rgba(200,210,225,0.5)">Lower</text>
+              <text :x="lowerCells[0].cx + AHW / 2" y="72" class="act-label" fill="rgba(200,210,225,0.5)">{{ t('stories.lower') }}</text>
             </g>
           </svg>
         </div>
@@ -407,7 +411,7 @@ onUnmounted(() => { clearTimers(); clearInterval(forecastTimer); clearTimeout(le
             />
           </div>
           <div class="forecast-labels">
-            <span>wind direction · rain chance</span>
+            <span>{{ t('stories.windRain') }}</span>
           </div>
         </div>
 
@@ -415,7 +419,7 @@ onUnmounted(() => { clearTimers(); clearInterval(forecastTimer); clearTimeout(le
       </div>
     </Transition>
 
-    <div class="tap-hint">Tap to continue</div>
+    <div class="tap-hint">{{ t('stories.tapToContinue') }}</div>
   </div>
 </template>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, inject, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted, watch } from 'vue'
 import type { CharacterType, ReplaySummary } from '@wheee/shared'
 import { GAME_TITLE } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
@@ -7,13 +7,7 @@ import { fetchReplayList } from '../lib/replayPlayer'
 import { useAuth } from '../composables/useAuth'
 import CharacterPreview from './CharacterPreview.vue'
 import LeaderboardPanel from './LeaderboardPanel.vue'
-
-const TAGLINES = [
-  'One gust. One grid. No mercy.',
-  'The wind doesn\'t care who built the hill.',
-  'Shape. Stand. Survive.',
-  'Hold your ground — if you can.',
-]
+import { t, TAGLINES } from '../lib/i18n'
 
 const props = defineProps<{
   phase: string
@@ -35,14 +29,14 @@ const emit = defineEmits<{
 }>()
 
 const audio = inject<AudioSystem>('audio')
-const { user, login, logout, fetchMe, isTelegram } = useAuth()
+const { user, login, logout, fetchMe, platformType } = useAuth()
 const showAuthMenu = ref(false)
 
-const characters: { id: CharacterType; name: string; color: string; glow: string }[] = [
-  { id: 'wheat', name: 'Wheat', color: '#e8c547', glow: 'rgba(232, 197, 71, 0.35)' },
-  { id: 'rice', name: 'Rice', color: '#7bc47f', glow: 'rgba(123, 196, 127, 0.35)' },
-  { id: 'corn', name: 'Corn', color: '#e8874a', glow: 'rgba(232, 135, 74, 0.35)' },
-]
+const characters = computed(() => [
+  { id: 'wheat' as CharacterType, name: t('char.wheat'), color: '#e8c547', glow: 'rgba(232, 197, 71, 0.35)' },
+  { id: 'rice' as CharacterType, name: t('char.rice'), color: '#7bc47f', glow: 'rgba(123, 196, 127, 0.35)' },
+  { id: 'corn' as CharacterType, name: t('char.corn'), color: '#e8874a', glow: 'rgba(232, 135, 74, 0.35)' },
+])
 
 const selected = ref<CharacterType>('wheat')
 const replays = ref<ReplaySummary[]>([])
@@ -76,8 +70,15 @@ function handleLogout() {
   showAuthMenu.value = false
 }
 
-const charLabel: Record<string, string> = { wheat: 'Wheat', rice: 'Rice', corn: 'Corn' }
-const tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)]
+const charLabel = computed<Record<string, string>>(() => ({
+  wheat: t('char.wheat'),
+  rice: t('char.rice'),
+  corn: t('char.corn'),
+}))
+const tagline = computed(() => {
+  const tags = TAGLINES.value
+  return tags[Math.floor(Math.random() * tags.length)]
+})
 
 function onClickOutside(e: MouseEvent) {
   if (!showAuthMenu.value) return
@@ -142,25 +143,25 @@ onUnmounted(() => {
             <div class="queue-status">
               <div class="queue-spinner" />
               <span v-if="phase === 'queue'">
-                Searching for opponent<span class="dots" />
+                {{ t('lobby.searching') }}<span class="dots" />
                 <span v-if="queueCountdown > 0" class="queue-countdown">
-                  Match starts in {{ queueCountdown }}s or sooner
+                  {{ t('lobby.countdown', queueCountdown) }}
                 </span>
               </span>
-              <span v-else-if="phase === 'watch_queue'">Finding a match<span class="dots" /></span>
-              <span v-else>Finding a match<span class="dots" /></span>
+              <span v-else-if="phase === 'watch_queue'">{{ t('lobby.finding') }}<span class="dots" /></span>
+              <span v-else>{{ t('lobby.finding') }}<span class="dots" /></span>
             </div>
-            <button class="btn-cancel" @click="emit('cancelSearch')">Cancel</button>
+            <button class="btn-cancel" @click="emit('cancelSearch')">{{ t('lobby.cancel') }}</button>
           </template>
           <template v-else>
             <div class="actions-primary">
               <button
                 class="btn-play"
                 :class="{ 'btn-play-hot': props.inQueue > 0 }"
-                :aria-label="props.inQueue > 0 ? 'Play — instant match available' : 'Play'"
+                :aria-label="props.inQueue > 0 ? t('lobby.play.instant') : t('lobby.play')"
                 @click="emit('play', selected)"
               >
-                <span class="btn-play-text">Play</span>
+                <span class="btn-play-text">{{ t('lobby.play') }}</span>
                 <svg class="btn-play-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M5 12h14M13 6l6 6-6 6" />
                 </svg>
@@ -168,19 +169,19 @@ onUnmounted(() => {
                   <span v-if="props.inQueue > 0" class="queue-pip" aria-hidden="true" />
                 </Transition>
               </button>
-              <template v-if="!isTelegram">
+              <template v-if="platformType === 'web'">
                 <!-- Auth: logged-in user chip -->
                 <div v-if="user" class="user-chip" @click="showAuthMenu = !showAuthMenu">
-                  <img v-if="user.avatar" :src="user.avatar" class="user-avatar" alt="" />
+                  <img v-if="user.avatar" :src="user.avatar" class="user-avatar" alt="" referrerpolicy="no-referrer" />
                   <span class="user-name">{{ user.name }}</span>
                   <div v-if="showAuthMenu" class="auth-dropdown" @click.stop>
-                    <button class="auth-dropdown-item" @click="handleLogout">Sign Out</button>
+                    <button class="auth-dropdown-item" @click="handleLogout">{{ t('lobby.signOut') }}</button>
                   </div>
                 </div>
                 <!-- Auth: sign-in button -->
                 <div v-else class="signin-wrap">
                   <button class="btn-signin" @click="showAuthMenu = !showAuthMenu">
-                    Sign In
+                    {{ t('lobby.signIn') }}
                   </button>
                   <div v-if="showAuthMenu" class="auth-dropdown" @click.stop>
                     <button class="auth-dropdown-item" @click="handleLogin('google')">
@@ -198,11 +199,11 @@ onUnmounted(() => {
             <div class="actions-secondary">
               <button class="btn-role" @click="emit('watch')">
                 <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M10 3C5 3 1.7 7.1 1 10c.7 2.9 4 7 9 7s8.3-4.1 9-7c-.7-2.9-4-7-9-7zm0 11.5a4.5 4.5 0 110-9 4.5 4.5 0 010 9zm0-7a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/></svg>
-                Watch
+                {{ t('lobby.watch') }}
               </button>
               <button class="btn-role btn-architect" @click="emit('architect')">
                 <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M17.4 2.6a2 2 0 00-2.8 0L3 14.2V17h2.8L17.4 5.4a2 2 0 000-2.8zM5.1 15.5H4.5V15l9.3-9.3.6.6-9.3 9.2z"/></svg>
-                Architect
+                {{ t('lobby.architect') }}
               </button>
             </div>
           </template>
@@ -212,7 +213,7 @@ onUnmounted(() => {
         <div class="panel-divider" v-if="onlineCount > 0" />
         <div class="online-badge" v-if="onlineCount > 0">
           <div class="online-dot" />
-          <span>{{ onlineCount }} online</span>
+          <span>{{ t('lobby.online', onlineCount) }}</span>
         </div>
 
         <!-- Leaderboard -->
@@ -223,15 +224,15 @@ onUnmounted(() => {
 
     <!-- Recent Matches — top-right corner -->
     <div v-if="replays.length > 0" class="recent-corner">
-      <span class="recent-label">Recent</span>
+      <span class="recent-label">{{ t('lobby.recent') }}</span>
       <button
         v-for="r in replays"
         :key="r.id"
         class="replay-item"
         @click="audio?.play('ui-click'); emit('watchReplay', r.id)"
       >
-        <span class="ri-chars">{{ charLabel[r.charA] || r.charA }} vs {{ charLabel[r.charB] || r.charB }}</span>
-        <span class="ri-result">{{ r.winner === 'draw' ? 'Draw' : `${r.winner} won` }}</span>
+        <span class="ri-chars">{{ charLabel[r.charA] ?? r.charA }} {{ t('lobby.vs') }} {{ charLabel[r.charB] ?? r.charB }}</span>
+        <span class="ri-result">{{ r.winner === 'draw' ? t('lobby.draw') : t('lobby.won', r.winner ?? '') }}</span>
       </button>
     </div>
   </div>

@@ -1,73 +1,30 @@
 import { ref, readonly } from 'vue'
 import type { UserInfo } from '@wheee/shared'
-import { API_BASE, IS_TELEGRAM } from '../lib/config'
+import { usePlatform } from '../lib/platform'
 
 const user = ref<UserInfo | null>(null)
 const loading = ref(false)
 const authCallbacks = new Set<() => void>()
 
-let initialized = false
-let telegramToken: string | null = null
-let _authReadyResolve: (() => void) | null = null
-const _authReady = new Promise<void>(r => { _authReadyResolve = r })
+let fetchMePromise: Promise<void> | null = null
 
-/** Returns the bearer token for environments where cookies are unavailable (Telegram WebView). */
 export function getAuthToken(): string | null {
-  return telegramToken
-}
-
-/**
- * Resolves once the initial auth check is complete (TG login or cookie /me).
- * In non-TG mode resolves immediately — cookies handle WS auth.
- */
-export function authReady(): Promise<void> {
-  return IS_TELEGRAM ? _authReady : Promise.resolve()
+  try { return usePlatform().getAuthToken() } catch { return null }
 }
 
 export function useAuth() {
-  async function fetchMe() {
-    if (initialized) return
-    loading.value = true
-    try {
-      if (IS_TELEGRAM) {
-        const ok = await loginTelegramWithRetry()
-        if (ok) initialized = true
-      } else {
-        const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
-        if (res.ok) {
-          const data = await res.json() as { user: UserInfo | null }
-          user.value = data.user
-        }
-        initialized = true
-      }
-    } catch {
-      if (!IS_TELEGRAM) initialized = true
-    } finally {
-      loading.value = false
-      _authReadyResolve?.()
-      _authReadyResolve = null
-    }
-  }
+  const platform = usePlatform()
 
-  async function loginTelegramWithRetry(maxAttempts = 3): Promise<boolean> {
-    const initData = window.Telegram!.WebApp!.initData as string
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt))
+  async function fetchMe() {
+    if (fetchMePromise) return fetchMePromise
+    loading.value = true
+    fetchMePromise = (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/auth/telegram`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData }),
-        })
-        if (!res.ok) continue
-        const data = await res.json() as { token: string; user: UserInfo }
-        telegramToken = data.token
-        user.value = data.user
-        for (const cb of authCallbacks) cb()
-        return true
-      } catch { /* retry */ }
-    }
-    return false
+        user.value = await platform.getUser()
+      } catch { /* keep user null */ }
+      loading.value = false
+    })()
+    return fetchMePromise
   }
 
   function onAuthChange(cb: () => void) {
@@ -75,64 +32,30 @@ export function useAuth() {
     return () => authCallbacks.delete(cb)
   }
 
-  function login(provider: 'google' | 'github') {
-    const url = `${API_BASE}/api/auth/${provider}`
-    const w = 500
-    const h = 600
-    const left = window.screenX + (window.innerWidth - w) / 2
-    const top = window.screenY + (window.innerHeight - h) / 2
-    const popup = window.open(url, 'wheee-auth', `width=${w},height=${h},left=${left},top=${top}`)
-
-    // Accept postMessage only from same-site origins (*.wheee.io, localhost)
-    const site = location.hostname.split('.').slice(-2).join('.')
-    const onMessage = (e: MessageEvent) => {
-      try { if (!new URL(e.origin).hostname.endsWith(site)) return } catch { return }
-      if (e.data?.type !== 'auth:done') return
-      user.value = e.data.user as UserInfo
-      window.removeEventListener('message', onMessage)
-      clearInterval(poll)
-      popup?.close()
-      for (const cb of authCallbacks) cb()
-    }
-    window.addEventListener('message', onMessage)
-
-    // Fallback: cookie on .wheee.io is shared across subdomains, so /me works
-    // even if postMessage was somehow blocked.
-    const poll = setInterval(async () => {
-      if (!popup || popup.closed) {
-        clearInterval(poll)
-        window.removeEventListener('message', onMessage)
-        if (!user.value) {
-          try {
-            const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
-            if (res.ok) {
-              const data = await res.json() as { user: UserInfo | null }
-              if (data.user) {
-                user.value = data.user
-                for (const cb of authCallbacks) cb()
-              }
-            }
-          } catch { /* ignore */ }
-        }
+  async function login(provider?: string) {
+    loading.value = true
+    try {
+      const u = await platform.login(provider)
+      if (u) {
+        user.value = u
+        for (const cb of authCallbacks) cb()
       }
-    }, 500)
+    } finally {
+      loading.value = false
+    }
   }
 
   async function logout() {
-    if (IS_TELEGRAM) return
-    try {
-      await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' })
-    } catch { /* ignore */ }
+    await platform.logout()
     user.value = null
-    telegramToken = null
-    initialized = false
+    fetchMePromise = null
     for (const cb of authCallbacks) cb()
   }
 
   return {
     user: readonly(user),
     loading: readonly(loading),
-    isTelegram: IS_TELEGRAM,
+    platformType: platform.type,
     fetchMe,
     login,
     logout,

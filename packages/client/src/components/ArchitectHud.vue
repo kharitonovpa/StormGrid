@@ -2,6 +2,7 @@
 import { ref, computed, onUnmounted, inject, watch } from 'vue'
 import type { GamePhase, WeatherType, WindDir, BonusType } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
+import { t } from '../lib/i18n'
 
 const props = defineProps<{
   phase: GamePhase | 'watching'
@@ -43,11 +44,11 @@ watch(() => props.deadline, (val) => {
 
 onUnmounted(() => clearTimeout(countdownId))
 
-const weatherTypes: { id: WeatherType; label: string; icon: string }[] = [
-  { id: 'wind', label: 'Wind', icon: '💨' },
-  { id: 'wind_rain', label: 'Storm', icon: '⛈' },
-  { id: 'rain', label: 'Rain', icon: '🌧' },
-]
+const weatherTypes = computed(() => [
+  { id: 'wind' as WeatherType, label: t('architect.wind'), icon: '💨' },
+  { id: 'wind_rain' as WeatherType, label: t('architect.storm'), icon: '⛈' },
+  { id: 'rain' as WeatherType, label: t('architect.rain'), icon: '🌧' },
+])
 
 const directions: WindDir[] = ['N', 'E', 'S', 'W']
 
@@ -77,7 +78,7 @@ defineExpose({ startCountdown, resetBonusState })
     <div v-if="isForecast && !weatherSubmitted" class="ah-section">
       <div class="ah-timer">
         <span class="ah-timer-num">{{ remaining }}</span>
-        <span class="ah-timer-label">s</span>
+        <span class="ah-timer-label">{{ t('architect.s') }}</span>
       </div>
 
       <div class="ah-weather-types">
@@ -105,14 +106,14 @@ defineExpose({ startCountdown, resetBonusState })
       </div>
 
       <button class="ah-confirm" @click="confirmWeather">
-        Confirm Weather
+        {{ t('architect.confirm') }}
       </button>
     </div>
 
     <!-- Weather Locked -->
     <div v-if="isForecast && weatherSubmitted" class="ah-section ah-locked">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Weather locked</span>
+      <span>{{ t('architect.locked') }}</span>
     </div>
 
     <!-- Bonus Placement -->
@@ -120,18 +121,18 @@ defineExpose({ startCountdown, resetBonusState })
       <div class="ah-bonus-row">
         <button class="ah-bonus" @click="selectBonus('time_extend')">
           <span class="ah-bonus-icon">⏱</span>
-          <span class="ah-bonus-label">Time</span>
+          <span class="ah-bonus-label">{{ t('architect.time') }}</span>
         </button>
         <button class="ah-bonus" @click="selectBonus('intel')">
           <span class="ah-bonus-icon">🔍</span>
-          <span class="ah-bonus-label">Intel</span>
+          <span class="ah-bonus-label">{{ t('architect.intel') }}</span>
         </button>
         <button class="ah-bonus" @click="selectBonus('clear_sky')">
           <span class="ah-bonus-icon">☀️</span>
-          <span class="ah-bonus-label">Clear</span>
+          <span class="ah-bonus-label">{{ t('architect.clear') }}</span>
         </button>
       </div>
-      <div v-if="bonusPlacing" class="ah-hint">click a cell to place</div>
+      <div v-if="bonusPlacing" class="ah-hint">{{ t('architect.placeHint') }}</div>
     </div>
   </div>
 </template>

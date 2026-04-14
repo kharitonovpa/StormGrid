@@ -17,12 +17,13 @@ import { createPreviewSystem } from './lib/preview'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
+import { Howler } from 'howler'
 import { createAudioSystem, type AudioSystem } from './lib/audio'
 import { createReplayPlayer, fetchReplayData, type ReplayPlayer } from './lib/replayPlayer'
 import { useGameSocket } from './composables/useGameSocket'
 import { useGameState } from './composables/useGameState'
 import { useAuth } from './composables/useAuth'
-import { IS_TELEGRAM } from './lib/config'
+import { usePlatform } from './lib/platform'
 import LobbyOverlay from './components/LobbyOverlay.vue'
 import GameHud from './components/GameHud.vue'
 import GameOverOverlay from './components/GameOverOverlay.vue'
@@ -32,6 +33,7 @@ import ArchitectHud from './components/ArchitectHud.vue'
 import ReplayOverlay from './components/ReplayOverlay.vue'
 import VolumeControl from './components/VolumeControl.vue'
 import StoriesOverlay from './components/StoriesOverlay.vue'
+import { t } from './lib/i18n'
 
 const container = ref<HTMLElement | null>(null)
 let renderer: THREE.WebGLRenderer
@@ -39,12 +41,13 @@ let controls: OrbitControls | TrackballControls
 let animId: number
 let sceneCamera: THREE.PerspectiveCamera
 
+const platform = usePlatform()
 const socket = useGameSocket()
 const game = useGameState()
 const { onAuthChange, fetchMe: authFetchMe } = useAuth()
 
 const modelsReady = preloadModels()
-if (IS_TELEGRAM) {
+if (platform.type === 'telegram') {
   authFetchMe().then(() => socket.connect())
 } else {
   socket.connect()
@@ -597,11 +600,11 @@ const menuOptions = computed(() => {
   const v = menuCellValue.value
   const opts: { action: MenuAction; label: string; icon: string; disabled: boolean }[] = []
   if (menuIsPlayer.value && !game.isWatcher.value) {
-    opts.push({ action: 'move', label: 'Move', icon: 'move', disabled: false })
+    opts.push({ action: 'move', label: t('action.move'), icon: 'move', disabled: false })
   }
   opts.push(
-    { action: 'raise', label: 'Raise', icon: 'raise', disabled: v === 1 },
-    { action: 'lower', label: 'Lower', icon: 'lower', disabled: v === -1 },
+    { action: 'raise', label: t('action.raise'), icon: 'raise', disabled: v === 1 },
+    { action: 'lower', label: t('action.lower'), icon: 'lower', disabled: v === -1 },
   )
   return opts
 })
@@ -672,6 +675,8 @@ function optionStyle(index: number) {
   }
   return { left: `${x}px`, top: `${y}px`, '--i': String(index) } as Record<string, string>
 }
+
+function preventContextMenu(e: Event) { e.preventDefault() }
 
 let sceneReady = false
 
@@ -1213,11 +1218,9 @@ onMounted(() => {
   sceneReady = true
   audio.enterLobby()
 
-  if (IS_TELEGRAM && window.Telegram?.WebApp) {
-    window.Telegram.WebApp.ready()
-    window.Telegram.WebApp.expand()
-    window.Telegram.WebApp.disableVerticalSwipes()
-  }
+  document.addEventListener('contextmenu', preventContextMenu)
+
+  platform.ready()
 
   // --- Lobby demo: cinematic showcase ---
   players.setActivePlayer(null)
@@ -1337,6 +1340,7 @@ onMounted(() => {
   })
 
   const onVisibility = () => {
+    Howler.mute(document.hidden || audio.isMuted())
     cancelAnimationFrame(animId)
     if (!document.hidden) {
       prevTime = performance.now()
@@ -1344,6 +1348,13 @@ onMounted(() => {
     }
   }
   document.addEventListener('visibilitychange', onVisibility)
+
+  const unsubPause = platform.onPause(() => {
+    Howler.mute(true)
+  })
+  const unsubResume = platform.onResume(() => {
+    if (!audio.isMuted()) Howler.mute(false)
+  })
 
   const onResize = () => {
     const rw = el.clientWidth, rh = el.clientHeight
@@ -1356,6 +1367,8 @@ onMounted(() => {
 
   sceneCleanup = () => {
     document.removeEventListener('visibilitychange', onVisibility)
+    unsubPause()
+    unsubResume()
     clearTimeout(contextLostTimer)
     window.removeEventListener('resize', onResize)
     water.dispose()
@@ -1393,6 +1406,7 @@ onUnmounted(() => {
   unsubMessage1?.()
   unsubMessage2?.()
   unsubAuth()
+  document.removeEventListener('contextmenu', preventContextMenu)
   document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   sceneCleanup?.()
   sceneCleanup = null
@@ -1411,7 +1425,7 @@ onUnmounted(() => {
   <Transition name="rc">
     <div v-if="contextLost" class="reconnect-overlay" style="cursor:pointer" @click="onContextReload">
       <div class="reconnect-card">
-        <div class="reconnect-text">Display error — tap to reload</div>
+        <div class="reconnect-text">{{ t('app.contextLost') }}</div>
       </div>
     </div>
   </Transition>
@@ -1421,7 +1435,7 @@ onUnmounted(() => {
     <div v-if="showReconnecting" class="reconnect-overlay">
       <div class="reconnect-card">
         <div class="reconnect-spinner" />
-        <div class="reconnect-text">Reconnecting...</div>
+        <div class="reconnect-text">{{ t('app.reconnecting') }}</div>
       </div>
     </div>
   </Transition>
@@ -1430,7 +1444,7 @@ onUnmounted(() => {
   <Transition name="od">
     <div v-if="showOpponentDisconnected" class="opponent-dc-banner">
       <div class="opponent-dc-dot" />
-      Opponent disconnected — waiting for reconnect...
+      {{ t('app.opponentDc') }}
     </div>
   </Transition>
 
@@ -1528,11 +1542,11 @@ onUnmounted(() => {
     <div v-if="introShowLabels" class="intro-labels">
       <div class="intro-label intro-you" :style="{ left: introYouPos.x + 'px', top: introYouPos.y + 'px' }">
         <div class="intro-label-dot" />
-        <span>You</span>
+        <span>{{ t('app.you') }}</span>
       </div>
       <div class="intro-label intro-opp" :style="{ left: introOpponentPos.x + 'px', top: introOpponentPos.y + 'px' }">
         <div class="intro-label-dot" />
-        <span>Opponent</span>
+        <span>{{ t('app.opponent') }}</span>
       </div>
     </div>
   </Transition>
@@ -1547,7 +1561,7 @@ onUnmounted(() => {
               <path d="M24 4l5.5 11.2L42 17l-9 8.8L35.1 38 24 32.2 12.9 38 15 25.8 6 17l12.5-1.8z" fill="currentColor" opacity="0.85"/>
             </svg>
           </div>
-          <div class="wp-text">Winner predicted</div>
+          <div class="wp-text">{{ t('app.winnerPredicted') }}</div>
           <div class="wp-points">+{{ winnerPopup.points }}</div>
         </div>
       </div>

@@ -2,6 +2,10 @@
 import { ref, onMounted } from 'vue'
 import type { PlayerLeaderboardEntry, WatcherLeaderboardEntry, Paginated } from '@wheee/shared'
 import { API_BASE } from '../lib/config'
+import { t } from '../lib/i18n'
+import { usePlatform } from '../lib/platform'
+
+const platform = usePlatform()
 
 const PAGE_SIZE = 10
 
@@ -84,12 +88,12 @@ onMounted(fetchLeaderboard)
         class="lb-tab"
         :class="{ active: activeTab === 'players' }"
         @click="activeTab = 'players'"
-      >Players</button>
+      >{{ t('leaderboard.players') }}</button>
       <button
         class="lb-tab"
         :class="{ active: activeTab === 'watchers' }"
         @click="activeTab = 'watchers'"
-      >Watchers</button>
+      >{{ t('leaderboard.watchers') }}</button>
     </div>
 
     <div class="lb-list" v-if="activeTab === 'players'">
@@ -106,8 +110,8 @@ onMounted(fetchLeaderboard)
         class="lb-more"
         :disabled="loadingMore"
         @click="loadMore('players')"
-      >{{ loadingMore ? '···' : `${playersTotal - players.length} more` }}</button>
-      <div v-if="players.length === 0" class="lb-empty">No ranked players yet</div>
+      >{{ loadingMore ? '···' : t('leaderboard.more', playersTotal - players.length) }}</button>
+      <div v-if="players.length === 0" class="lb-empty">{{ t('leaderboard.noPlayers') }}</div>
     </div>
 
     <div class="lb-list" v-if="activeTab === 'watchers'">
@@ -123,11 +127,12 @@ onMounted(fetchLeaderboard)
         class="lb-more"
         :disabled="loadingMore"
         @click="loadMore('watchers')"
-      >{{ loadingMore ? '···' : `${watchersTotal - watchers.length} more` }}</button>
-      <div v-if="watchers.length === 0" class="lb-empty">No watcher scores yet</div>
+      >{{ loadingMore ? '···' : t('leaderboard.more', watchersTotal - watchers.length) }}</button>
+      <div v-if="watchers.length === 0" class="lb-empty">{{ t('leaderboard.noWatchers') }}</div>
     </div>
 
     <a
+      v-if="platform.type !== 'yandex'"
       href="https://t.me/wheeeio"
       target="_blank"
       rel="noopener"
@@ -136,7 +141,7 @@ onMounted(fetchLeaderboard)
       <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
         <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
       </svg>
-      <span>Chat</span>
+      <span>{{ t('leaderboard.chat') }}</span>
     </a>
   </div>
 </template>

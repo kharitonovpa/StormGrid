@@ -2,6 +2,7 @@
 import { computed, ref, watch, inject } from 'vue'
 import type { PlayerId, WatcherPrediction, GamePhase } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
+import { t } from '../lib/i18n'
 
 const props = defineProps<{
   phase: GamePhase | 'watching'
@@ -55,7 +56,7 @@ const recentPredictions = computed(() =>
     <!-- Score -->
     <div class="wh-score">
       <span class="wh-score-num">{{ score }}</span>
-      <span class="wh-score-pts">pts</span>
+      <span class="wh-score-pts">{{ t('watcher.pts') }}</span>
     </div>
 
     <!-- Predict Winner -->
@@ -68,9 +69,9 @@ const recentPredictions = computed(() =>
           @click="pickWinner('A')"
         >
           <span class="wh-pick-letter">A</span>
-          <span class="wh-pick-label">wins</span>
+          <span class="wh-pick-label">{{ t('watcher.wins') }}</span>
         </button>
-        <span class="wh-or" :class="{ 'or-dimmed': winnerPredicted }">or</span>
+        <span class="wh-or" :class="{ 'or-dimmed': winnerPredicted }">{{ t('watcher.or') }}</span>
         <button
           class="wh-pick wh-pick-b"
           :class="{ chosen: winnerPick === 'B', dimmed: winnerPick === 'A' }"
@@ -78,7 +79,7 @@ const recentPredictions = computed(() =>
           @click="pickWinner('B')"
         >
           <span class="wh-pick-letter">B</span>
-          <span class="wh-pick-label">wins</span>
+          <span class="wh-pick-label">{{ t('watcher.wins') }}</span>
         </button>
       </div>
     </div>
@@ -102,7 +103,7 @@ const recentPredictions = computed(() =>
               <path d="M10 8l4 6-3 4 5 6" stroke="rgba(220,90,60,0.7)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>
-          <span class="wh-brk-text">Vane</span>
+          <span class="wh-brk-text">{{ t('watcher.vane') }}</span>
         </button>
         <button
           class="wh-brk"
@@ -122,7 +123,7 @@ const recentPredictions = computed(() =>
               <path d="M10 8l4 6-3 4 5 6" stroke="rgba(220,90,60,0.7)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>
-          <span class="wh-brk-text">Baro</span>
+          <span class="wh-brk-text">{{ t('watcher.baro') }}</span>
         </button>
       </div>
     </div>

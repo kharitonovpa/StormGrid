@@ -1,12 +1,13 @@
 import { ref, shallowRef } from 'vue'
 import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, ClientMessage, ServerMessage } from '@wheee/shared'
-import { WS_URL, IS_TELEGRAM } from '../lib/config'
+import { WS_URL } from '../lib/config'
 import { getAuthToken } from './useAuth'
 
 export type MessageHandler = (msg: ServerMessage) => void
 
 const MAX_RECONNECT_DELAY = 8_000
 const BASE_RECONNECT_DELAY = 500
+const MAX_RECONNECT_ATTEMPTS = 20
 
 export function useGameSocket() {
   const connected = ref(false)
@@ -25,7 +26,6 @@ export function useGameSocket() {
   }
 
   function buildWsUrl(): string {
-    if (!IS_TELEGRAM) return WS_URL
     const token = getAuthToken()
     return token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL
   }
@@ -65,6 +65,10 @@ export function useGameSocket() {
 
   function scheduleReconnect() {
     if (reconnectTimer) return
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      reconnecting.value = false
+      return
+    }
     reconnecting.value = true
     const delay = Math.min(BASE_RECONNECT_DELAY * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY)
     reconnectAttempts++
@@ -140,12 +144,17 @@ export function useGameSocket() {
   }
 
   function refreshConnection() {
-    if (!ws.value || ws.value.readyState > WebSocket.OPEN) return
-    intentionalClose = true
-    ws.value.close()
+    if (!ws.value || ws.value.readyState > WebSocket.OPEN) {
+      createSocket()
+      return
+    }
+    const old = ws.value
+    old.onclose = null
+    old.onerror = null
+    old.onmessage = null
+    old.close()
     ws.value = null
     connected.value = false
-    intentionalClose = false
     createSocket()
   }
 
