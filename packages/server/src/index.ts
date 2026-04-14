@@ -91,11 +91,22 @@ function broadcastLobbyStatus() {
   }, 500)
 }
 
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:5173']
+const ALLOWED_ORIGINS = new Set(
+  process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+    : ['http://localhost:5173'],
+)
 
-app.use('/api/*', cors({ origin: ALLOWED_ORIGINS, credentials: true }))
+const YANDEX_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?yandex\.(ru|com|net)$/
+
+app.use('/api/*', cors({
+  origin: (origin) => {
+    if (ALLOWED_ORIGINS.has(origin)) return origin
+    if (YANDEX_ORIGIN_RE.test(origin)) return origin
+    return null as unknown as string
+  },
+  credentials: true,
+}))
 
 app.use('/api/*', async (c, next) => {
   const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
