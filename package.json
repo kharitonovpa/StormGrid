@@ -10,6 +10,11 @@
     "dev:server": "bun run --cwd packages/server dev",
     "build": "bun run --filter '*' build",
     "test": "bun test --cwd packages/server",
-    "test:watch": "bun test --cwd packages/server --watch"
+    "test:watch": "bun test --cwd packages/server --watch",
+    "deploy": "bash deploy/deploy-all.sh",
+    "deploy:server": "bash deploy/deploy-all.sh --server",
+    "deploy:ru": "bash deploy/deploy-all.sh --ru",
+    "deploy:archives": "bash deploy/deploy-all.sh --archives",
+    "deploy:env": "bash deploy/deploy-all.sh --env-only"
   }
 }

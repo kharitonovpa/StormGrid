@@ -20,9 +20,11 @@ dist-ssr
 # Environment
 .env
 deploy/.env
+deploy/.deploy.env
 
 # Build artifacts
 wheee-yandex.zip
+wheee-gamepush.zip
 
 # Editor directories and files
 .vscode/*

@@ -13,25 +13,39 @@ function stripExternalMeta(html: string): string {
   return html
 }
 
+function stripTelegramSdk(html: string): string {
+  html = html.replace(/\s*<!-- Telegram Mini App SDK[^]*?<\/script>\s*\n?/g, '')
+  return html
+}
+
+if (platform === 'gamepush') {
+  if (!GP_PROJECT_ID || !GP_PUBLIC_TOKEN) {
+    throw new Error('VITE_GP_PROJECT_ID and VITE_GP_PUBLIC_TOKEN must be set for gamepush builds')
+  }
+}
+
 function platformHtmlPlugin(): Plugin {
   return {
     name: 'platform-html',
     transformIndexHtml(html) {
+      if (platform === 'yandex' || platform === 'gamepush') {
+        html = stripExternalMeta(html)
+        html = stripTelegramSdk(html)
+      }
+
       if (platform === 'yandex') {
         html = html.replace(
-          '<!-- Telegram Mini App SDK',
-          '<script src="/sdk.js"></script>\n    <!-- Telegram Mini App SDK',
+          '</head>',
+          '    <script src="/sdk.js"></script>\n  </head>',
         )
-        html = stripExternalMeta(html)
       }
 
       if (platform === 'gamepush') {
         const gpScript = `<script async src="https://gamepush.com/sdk/game-score.js?projectId=${GP_PROJECT_ID}&publicToken=${GP_PUBLIC_TOKEN}&callback=onGPInit"></script>`
         html = html.replace(
-          '<!-- Telegram Mini App SDK',
-          `${gpScript}\n    <!-- Telegram Mini App SDK`,
+          '</head>',
+          `    ${gpScript}\n  </head>`,
         )
-        html = stripExternalMeta(html)
       }
 
       return html

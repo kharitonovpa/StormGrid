@@ -214,6 +214,128 @@ authRoutes.post('/telegram', async (c) => {
   return c.json({ token: jwt, user: { id: userId, name: finalName, avatar: finalAvatar } })
 })
 
+/* ── Platform auth: origin verification + rate-limit ── */
+
+const YANDEX_SECRET_KEY = process.env.YANDEX_SECRET_KEY || ''
+
+const YANDEX_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?yandex\.(ru|com|net)$/
+const GAMEPUSH_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?(gamepush\.com|pikabu\.ru|eponesh\.com)$/
+
+function isPlatformOriginAllowed(origin: string | undefined, pattern: RegExp): boolean {
+  if (!origin) return false
+  if (origin === 'http://localhost:5173') return true
+  return pattern.test(origin)
+}
+
+const platformAuthBuckets = new Map<string, { count: number; resetAt: number }>()
+const PLATFORM_AUTH_LIMIT = 10
+const PLATFORM_AUTH_WINDOW = 60_000
+
+function platformAuthRateLimit(key: string): boolean {
+  const now = Date.now()
+  const bucket = platformAuthBuckets.get(key)
+  if (!bucket || bucket.resetAt < now) {
+    platformAuthBuckets.set(key, { count: 1, resetAt: now + PLATFORM_AUTH_WINDOW })
+    return true
+  }
+  bucket.count++
+  return bucket.count <= PLATFORM_AUTH_LIMIT
+}
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [k, v] of platformAuthBuckets) {
+    if (v.resetAt < now) platformAuthBuckets.delete(k)
+  }
+}, 120_000)
+
+/* ── Yandex Games ────────────────────────────────── */
+
+async function verifyYandexSignature(signature: string, secretKey: string): Promise<Record<string, unknown> | null> {
+  const dotIdx = signature.indexOf('.')
+  if (dotIdx < 0) return null
+  const signB64 = signature.slice(0, dotIdx)
+  const dataB64 = signature.slice(dotIdx + 1)
+
+  const dataStr = new TextDecoder().decode(Uint8Array.from(atob(dataB64), c => c.charCodeAt(0)))
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(secretKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const computed = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(dataStr)))
+  let binary = ''
+  for (const b of computed) binary += String.fromCharCode(b)
+  const expectedB64 = btoa(binary)
+
+  if (!timingSafeEqual(expectedB64, signB64)) return null
+  try { return JSON.parse(dataStr) as Record<string, unknown> } catch { return null }
+}
+
+authRoutes.post('/yandex', async (c) => {
+  const origin = c.req.header('origin')
+  if (!isPlatformOriginAllowed(origin, YANDEX_ORIGIN_RE)) {
+    return c.json({ error: 'Forbidden origin' }, 403)
+  }
+
+  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (!platformAuthRateLimit(`yandex:${ip}`)) {
+    return c.json({ error: 'Too many requests' }, 429)
+  }
+
+  const body = await c.req.json<{
+    signature?: string
+    uniqueId?: string
+    name?: string
+    avatar?: string | null
+  }>().catch(() => null)
+
+  if (!body?.uniqueId) return c.json({ error: 'Missing uniqueId' }, 400)
+
+  if (YANDEX_SECRET_KEY && body.signature) {
+    const verified = await verifyYandexSignature(body.signature, YANDEX_SECRET_KEY)
+    if (!verified) return c.json({ error: 'Invalid signature' }, 401)
+  }
+
+  const name = body.name || 'Player'
+  const avatar = body.avatar ?? null
+  const providerId = body.uniqueId
+
+  const { userId, finalName, finalAvatar } = upsertUser('yandex', providerId, name, avatar)
+  const jwt = await signJwt(userId, finalName, finalAvatar)
+
+  return c.json({ token: jwt, user: { id: userId, name: finalName, avatar: finalAvatar } })
+})
+
+/* ── GamePush ────────────────────────────────────── */
+
+authRoutes.post('/gamepush', async (c) => {
+  const origin = c.req.header('origin')
+  if (!isPlatformOriginAllowed(origin, GAMEPUSH_ORIGIN_RE)) {
+    return c.json({ error: 'Forbidden origin' }, 403)
+  }
+
+  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (!platformAuthRateLimit(`gamepush:${ip}`)) {
+    return c.json({ error: 'Too many requests' }, 429)
+  }
+
+  const body = await c.req.json<{
+    playerId?: number | string
+    name?: string
+    avatar?: string | null
+  }>().catch(() => null)
+
+  if (!body?.playerId) return c.json({ error: 'Missing playerId' }, 400)
+
+  const providerId = String(body.playerId)
+  const name = body.name || 'Player'
+  const avatar = body.avatar ?? null
+
+  const { userId, finalName, finalAvatar } = upsertUser('gamepush', providerId, name, avatar)
+  const jwt = await signJwt(userId, finalName, finalAvatar)
+
+  return c.json({ token: jwt, user: { id: userId, name: finalName, avatar: finalAvatar } })
+})
+
 /* ── /me and /logout ──────────────────────────────── */
 
 authRoutes.get('/me', async (c) => {

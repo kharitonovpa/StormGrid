@@ -5,8 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CLIENT_DIR="$PROJECT_ROOT/packages/client"
 
-GP_PROJECT_ID="27646"
-GP_PUBLIC_TOKEN="j27miVT4RNJTTRXRGJj6AQxQfsl16rsA"
+if [[ -f "$SCRIPT_DIR/.deploy.env" ]]; then
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/.deploy.env"
+fi
+
+GP_PROJECT_ID="${GP_PROJECT_ID:-27646}"
+GP_PUBLIC_TOKEN="${GP_PUBLIC_TOKEN:-j27miVT4RNJTTRXRGJj6AQxQfsl16rsA}"
 
 echo "==> Building client for GamePush (Pikabu Games)..."
 cd "$CLIENT_DIR"

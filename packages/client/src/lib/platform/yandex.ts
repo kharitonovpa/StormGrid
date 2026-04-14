@@ -1,12 +1,33 @@
 import type { UserInfo } from '@wheee/shared'
 import type { PlatformAdapter } from './types'
+import { API_BASE } from '../config'
 
 const AD_TIMEOUT_MS = 15_000
 
 let ysdk: YandexGamesSDK | null = null
 let user: UserInfo | null = null
+let token: string | null = null
 const pauseCbs = new Set<() => void>()
 const resumeCbs = new Set<() => void>()
+
+async function authenticateWithServer(player: YandexGamesPlayer, signature?: string): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/yandex`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uniqueId: player.getUniqueID(),
+        name: player.getName() || 'Player',
+        avatar: player.getPhoto('medium') || null,
+        signature: signature ?? undefined,
+      }),
+    })
+    if (!res.ok) return
+    const data = await res.json() as { token: string; user: UserInfo }
+    token = data.token
+    user = data.user
+  } catch { /* server unreachable — continue as anonymous */ }
+}
 
 export default class YandexAdapter implements PlatformAdapter {
   readonly type = 'yandex' as const
@@ -20,13 +41,9 @@ export default class YandexAdapter implements PlatformAdapter {
     ysdk.on('game_api_resume', () => { for (const cb of resumeCbs) cb() })
 
     try {
-      const player = await ysdk.getPlayer()
+      const player = await ysdk.getPlayer({ signed: true })
       if (player.isAuthorized()) {
-        user = {
-          id: player.getUniqueID(),
-          name: player.getName() || 'Player',
-          avatar: player.getPhoto('medium') || null,
-        }
+        await authenticateWithServer(player, player.signature)
       }
     } catch { /* anonymous */ }
   }
@@ -51,13 +68,9 @@ export default class YandexAdapter implements PlatformAdapter {
     if (!ysdk) return null
     try {
       await ysdk.auth.openAuthDialog()
-      const player = await ysdk.getPlayer()
+      const player = await ysdk.getPlayer({ signed: true })
       if (player.isAuthorized()) {
-        user = {
-          id: player.getUniqueID(),
-          name: player.getName() || 'Player',
-          avatar: player.getPhoto('medium') || null,
-        }
+        await authenticateWithServer(player, player.signature)
       }
     } catch { /* user cancelled */ }
     return user
@@ -66,7 +79,7 @@ export default class YandexAdapter implements PlatformAdapter {
   async logout(): Promise<void> { /* no logout on Yandex */ }
 
   getAuthToken(): string | null {
-    return null
+    return token
   }
 
   async showInterstitial(): Promise<boolean> {

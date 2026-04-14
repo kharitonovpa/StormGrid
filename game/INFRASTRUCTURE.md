@@ -4,8 +4,9 @@
 
 wheee runs on a two-server setup designed to serve both international and Russian
 users from a single game server while bypassing Russian DPI (ТСПУ) filtering.
-The client also targets **Telegram Mini App** and **Yandex Games** as additional
-platforms — all from the same codebase via a platform adapter layer.
+The client also targets **Telegram Mini App**, **Yandex Games**, and **GamePush
+(Pikabu Games)** as additional platforms — all from the same codebase via a
+platform adapter layer.
 
 ```
                          ┌──────────────────────────────────┐
@@ -89,49 +90,75 @@ deploy/
 ├── docker-compose.yml   # Polish server: app + nginx + certbot containers
 ├── nginx.conf           # Polish server nginx: api.wheee.io proxy + static
 ├── nginx-ru.conf        # Russian VPS nginx: static + /api/ + /ws proxy to Poland
-├── deploy.sh            # Polish server deploy: docker compose up --build
+├── deploy-all.sh        # One-command deploy: env sync → server → RU → archives
+├── deploy.sh            # Polish server deploy via SSH (git pull + docker compose)
 ├── deploy-ru.sh         # Russian VPS deploy: vite build + rsync dist/
 ├── deploy-yandex.sh     # Yandex Games build: vite build + zip archive
+├── deploy-gamepush.sh   # GamePush build: vite build + zip archive
+├── sync-env.sh          # Sync .env.example keys to remote .env on Polish VPS
 ├── setup-ru-vps.sh      # One-time Russian VPS provisioning (nginx, certbot, SSL)
-└── .env.example         # Environment variables template
+├── .env.example         # Environment variables template
+└── .deploy.env          # (git-ignored) Local VPS host/user overrides
 ```
 
 
 ## Deploy Procedures
 
-### Polish Server (main game server)
+### One-command deploy
 
-SSH into `root@64.176.71.39`, then:
+The recommended way to deploy everything:
 
 ```bash
-cd /opt/wheee
-git pull
-cd deploy
-bash deploy.sh
+bun run deploy          # all: env sync → server PL → static RU → archives
+bun run deploy:server   # env sync + Polish VPS only
+bun run deploy:ru       # Russian VPS static only
+bun run deploy:archives # Yandex + GamePush zips only
+bun run deploy:env      # only sync .env keys to Polish VPS
 ```
 
-This runs `docker compose up -d --build` which:
+Or directly:
+
+```bash
+bash deploy/deploy-all.sh [--server] [--ru] [--archives] [--env-only]
+```
+
+Without flags, `deploy-all.sh` runs all steps in order. It performs pre-flight
+checks before starting:
+
+1. **Uncommitted changes** — warns and asks to continue (aborts in non-interactive)
+2. **Unpushed commits** — offers to `git push` before server deploy (auto-pushes in
+   non-interactive)
+3. **Env sync** — downloads `.env` from Polish VPS, compares with `.env.example`,
+   appends missing keys with empty values, uploads back
+4. **Server deploy** — SSH to Polish VPS: `git pull --ff-only` + `docker compose up -d --build`
+5. **Russian static** — local `vite build` + `rsync` to Russian VPS
+6. **Archives** — Yandex zip + GamePush zip
+
+### Polish Server (main game server)
+
+`deploy/deploy.sh` connects via SSH remotely (no need to be on the VPS):
+
+```bash
+bash deploy/deploy.sh
+```
+
+This SSHs into `root@64.176.71.39` and runs `git pull --ff-only` + `docker compose
+up -d --build`, which:
 1. Builds the server (`packages/server`) with Bun
 2. Builds the client (`packages/client`) with Vite (`VITE_API_URL=https://api.wheee.io`)
 3. Copies client dist into nginx container
 4. Restarts both `app` and `nginx` containers
 
-The client build on the Polish server points to `api.wheee.io` for API/WS — this is
-used by `wheee.io` (international users via Cloudflare Pages).
+VPS host/user can be overridden via `deploy/.deploy.env` or env vars:
+
+```bash
+PL_VPS_HOST=64.176.71.39 PL_VPS_USER=root bash deploy/deploy.sh
+```
 
 ### Russian VPS (reverse proxy)
 
-From your local machine (requires SSH key on VPS):
-
 ```bash
-cd deploy
-bash deploy-ru.sh
-```
-
-Or with explicit host:
-
-```bash
-RU_VPS_HOST=185.39.206.229 bash deploy/deploy-ru.sh
+bash deploy/deploy-ru.sh
 ```
 
 This:
@@ -145,48 +172,68 @@ it must use same-origin API routing (not `api.wheee.io`, which is blocked in Rus
 
 ### Yandex Games
 
-From your local machine:
-
 ```bash
 bash deploy/deploy-yandex.sh
 ```
 
 This:
-1. Sets `VITE_PLATFORM=yandex` and `VITE_API_URL=""`
-2. Runs `vite build`, which triggers the `platformHtmlPlugin` in `vite.config.ts`:
-   - Injects `<script src="/sdk.js"></script>` (Yandex Games SDK)
-   - Strips Google Fonts `<link>` tags (external resources forbidden)
-   - Strips `hreflang` alternate links
-3. Creates `wheee-yandex.zip` from the `dist/` directory
+1. Sets `VITE_PLATFORM=yandex` and `VITE_API_URL=https://api.wheee.io`
+2. Runs `vite build` with `base: './'` (relative asset paths), which triggers
+   the `platformHtmlPlugin`:
+   - Injects `<script src="/sdk.js"></script>` (Yandex Games SDK, absolute from CDN root)
+   - Strips Google Fonts, hreflang links, Telegram SDK inline script
+3. Creates `wheee-yandex.zip` from `dist/`
 4. Upload the zip to [Yandex Games Console](https://games.yandex.ru/console)
 
-The Yandex build is a self-contained static bundle — there is no server-side proxy.
-API/WS URLs resolve to same-origin (`""`) but on Yandex the game currently runs
-without a server connection (anonymous play).
+### GamePush (Pikabu Games)
+
+```bash
+bash deploy/deploy-gamepush.sh
+```
+
+This:
+1. Sets `VITE_PLATFORM=gamepush`, `VITE_API_URL=https://api.wheee.io`,
+   `VITE_GP_PROJECT_ID`, `VITE_GP_PUBLIC_TOKEN`
+2. Runs `vite build` with `base: './'`, which:
+   - Injects `<script async src="https://gamepush.com/sdk/game-score.js?..."></script>`
+   - Strips Google Fonts, hreflang links, Telegram SDK inline script
+3. Creates `wheee-gamepush.zip` from `dist/`
+4. Upload the zip to GamePush panel → Settings → Source code
+
+GP credentials default to hardcoded values but can be overridden in
+`deploy/.deploy.env`:
+
+```bash
+GP_PROJECT_ID=27646
+GP_PUBLIC_TOKEN=j27miVT4RNJTTRXRGJj6AQxQfsl16rsA
+```
+
+### Env sync
+
+When adding new env variables (e.g. `YANDEX_SECRET_KEY`):
+
+1. Add the key to `deploy/.env.example`
+2. Run `bash deploy/sync-env.sh` (or `bun run deploy:env`)
+3. The script downloads the remote `.env`, finds missing keys, appends them with
+   empty values, shows a diff, and uploads back
+4. SSH into the VPS to fill in the actual values
 
 ### When to deploy where
 
-| Change | Polish server | Russian VPS | Yandex archive |
-|--------|:------------:|:-----------:|:--------------:|
-| Server code (engine, API, WS) | Yes | No | No |
-| Client code (Vue, Three.js) | Yes | Yes | Yes (re-upload) |
-| Shared types | Yes | Yes | Yes |
-| nginx config (Polish) | Yes | No | No |
-| nginx config (Russian) | No | scp + reload | No |
-| i18n translations | Yes | Yes | Yes |
-| Platform adapter logic | Yes | Yes | Yes |
+| Change | Polish server | Russian VPS | Yandex | GamePush |
+|--------|:------------:|:-----------:|:------:|:--------:|
+| Server code (engine, API, WS) | Yes | No | No | No |
+| Client code (Vue, Three.js) | Yes | Yes | Yes | Yes |
+| Shared types | Yes | Yes | Yes | Yes |
+| nginx config (Polish) | Yes | No | No | No |
+| nginx config (Russian) | No | scp + reload | No | No |
+| i18n translations | Yes | Yes | Yes | Yes |
+| Platform adapter logic | Yes | Yes | Yes | Yes |
 
-After client changes, always deploy to **both** servers:
+After client changes, deploy everything in one command:
 
 ```bash
-# Polish
-ssh root@64.176.71.39 "cd /opt/wheee && git pull && cd deploy && bash deploy.sh"
-
-# Russian
-bash deploy/deploy-ru.sh
-
-# Yandex (only if platform/i18n/visual changes)
-bash deploy/deploy-yandex.sh
+bun run deploy
 ```
 
 
@@ -198,9 +245,10 @@ a single codebase. Each platform has its own adapter implementing a shared inter
 ### Platform detection
 
 ```
-VITE_PLATFORM=yandex  →  YandexAdapter  (build-time flag)
-window.Telegram       →  TelegramAdapter (runtime detection)
-otherwise             →  WebAdapter      (default)
+VITE_PLATFORM=yandex    →  YandexAdapter    (build-time flag)
+VITE_PLATFORM=gamepush  →  GamePushAdapter  (build-time flag)
+window.Telegram         →  TelegramAdapter  (runtime detection)
+otherwise               →  WebAdapter       (default)
 ```
 
 Detection runs once at app startup in `main.ts` via `initPlatform()`.
@@ -210,19 +258,24 @@ The `usePlatform()` function returns the singleton adapter synchronously after i
 
 ```
 packages/client/src/lib/platform/
-├── types.ts     # PlatformAdapter interface, PlatformType union
-├── detect.ts    # detectPlatform() — returns 'yandex' | 'telegram' | 'web'
-├── index.ts     # initPlatform() factory + usePlatform() singleton
-├── web.ts       # WebAdapter — OAuth popups, cookie auth, visibility
-├── telegram.ts  # TelegramAdapter — initData auth, TG WebApp SDK
-└── yandex.ts    # YandexAdapter — YaGames SDK, ads, gameplay lifecycle
+├── types.ts      # PlatformAdapter interface, PlatformType union
+├── detect.ts     # detectPlatform() — returns 'yandex' | 'gamepush' | 'telegram' | 'web'
+├── index.ts      # initPlatform() factory + usePlatform() singleton
+├── web.ts        # WebAdapter — OAuth popups, cookie auth, visibility
+├── telegram.ts   # TelegramAdapter — initData auth, TG WebApp SDK
+├── yandex.ts     # YandexAdapter — YaGames SDK, ads, gameplay lifecycle
+└── gamepush.ts   # GamePushAdapter — GamePush SDK, ads, platform auth
+
+packages/client/src/
+├── yandex-games.d.ts   # TypeScript types for Yandex Games SDK
+└── gamepush.d.ts       # TypeScript types for GamePush SDK
 ```
 
 ### PlatformAdapter interface
 
 ```typescript
 interface PlatformAdapter {
-  readonly type: 'web' | 'telegram' | 'yandex'
+  readonly type: 'web' | 'telegram' | 'yandex' | 'gamepush'
 
   init(): Promise<void>       // SDK initialization, initial auth
   ready(): void               // signal SDK that loading is complete
@@ -232,10 +285,10 @@ interface PlatformAdapter {
   getUser(): Promise<UserInfo | null>
   login(provider?: string): Promise<UserInfo | null>
   logout(): Promise<void>
-  getAuthToken(): string | null
+  getAuthToken(): string | null   // JWT token for WebSocket auth
 
-  showInterstitial(): Promise<boolean>   // fullscreen ad (Yandex only)
-  showRewarded(): Promise<boolean>       // rewarded ad (Yandex only)
+  showInterstitial(): Promise<boolean>   // fullscreen ad
+  showRewarded(): Promise<boolean>       // rewarded video ad
 
   onPause(cb: () => void): () => void    // tab hidden / ad playing / SDK pause
   onResume(cb: () => void): () => void   // tab visible / ad closed / SDK resume
@@ -246,14 +299,15 @@ interface PlatformAdapter {
 
 ### Platform-specific behaviors
 
-| Feature | Web | Telegram | Yandex |
-|---------|-----|----------|--------|
-| Auth | Google/GitHub OAuth popup | `initData` → `/api/auth/telegram` | `ysdk.auth.openAuthDialog()` |
-| Token | Cookie (`HttpOnly`, `COOKIE_DOMAIN=.wheee.io`) | JWT in memory | None (anonymous) |
-| Language | `navigator.language` | `initDataUnsafe.user.language_code` | `ysdk.environment.i18n.lang` |
-| Ads | No-op | No-op | `showFullscreenAdv` / `showRewardedVideo` |
-| Pause | `visibilitychange` | `visibilitychange` | `game_api_pause` + `visibilitychange` |
-| SDK injection | None | Conditional `document.write` in HTML | `<script src="/sdk.js">` via Vite plugin |
+| Feature | Web | Telegram | Yandex | GamePush |
+|---------|-----|----------|--------|----------|
+| Auth | Google/GitHub OAuth popup | `initData` → `/api/auth/telegram` | `getPlayer({signed:true})` → `/api/auth/yandex` | `gp.player.login()` → `/api/auth/gamepush` |
+| Token | Cookie (`HttpOnly`) | JWT in memory | JWT in memory | JWT in memory |
+| Language | `navigator.language` | `initDataUnsafe.user.language_code` | `ysdk.environment.i18n.lang` | `gp.language` |
+| Ads | No-op | No-op | `showFullscreenAdv` / `showRewardedVideo` | `gp.ads.showFullscreen()` / `showRewardedVideo()` |
+| Pause | `visibilitychange` | `visibilitychange` | `game_api_pause` + `visibilitychange` | `gp.ads.on('start'/'close')` + `visibilitychange` |
+| SDK injection | None | Conditional `document.write` | `<script src="/sdk.js">` via Vite | `<script async src="gamepush.com/sdk/...">` via Vite |
+| SDK init | — | `WebApp.ready()` | `YaGames.init()` | `window.onGPInit` callback (10s timeout) |
 
 ### Startup flow
 
@@ -347,12 +401,40 @@ signature using `TG_BOT_TOKEN`. On success, a JWT is returned in the response bo
 The `TelegramAdapter` retries auth up to 3 times with increasing delays (1s, 2s, 3s).
 If all attempts fail, the user plays as anonymous and a warning is logged.
 
+### Yandex Games auth
+
+On init, the `YandexAdapter` calls `getPlayer({ signed: true })` to get the player's
+data with a cryptographic signature. It sends `uniqueId`, `name`, `avatar`, and
+`signature` to `POST /api/auth/yandex`. The server:
+
+1. Validates the `Origin` header against Yandex domain patterns
+2. Applies per-IP rate-limit (10 req/min)
+3. If `YANDEX_SECRET_KEY` is configured, verifies the signature via HMAC-SHA256
+4. Upserts user (provider: `yandex`) and returns a JWT
+
+The JWT is stored in memory and sent as a query param on WebSocket connections.
+
+### GamePush auth
+
+On init, the `GamePushAdapter` waits for `window.onGPInit` callback (10s timeout),
+then `await gp.player.ready`. If the player is logged in (`gp.player.isLoggedIn`),
+it sends `playerId`, `name`, `avatar` to `POST /api/auth/gamepush`. The server:
+
+1. Validates the `Origin` header against GamePush/Pikabu/Eponesh domain patterns
+2. Applies per-IP rate-limit (10 req/min)
+3. Upserts user (provider: `gamepush`) and returns a JWT
+
+Login/logout promises have a 30s timeout to prevent hanging if the SDK doesn't
+fire its callback.
+
 ### JWT
 
 - Signed with HMAC-SHA256 using `JWT_SECRET`
 - 30-day expiration
 - Contains: `sub` (user ID), `name`, `avatar`, `iat`, `exp`
 - If `JWT_SECRET` is not set, a dev fallback is used with a console warning
+- For platform auth (Telegram, Yandex, GamePush): returned in response body,
+  stored in memory, sent as `?token=` query param on WebSocket URL
 
 
 ## Client Build Variants
@@ -368,22 +450,30 @@ export const API_BASE = dev
 export const WS_URL = API_BASE.replace(/^http(s?)/, 'ws$1') + '/ws'
 ```
 
-| Build target | VITE_API_URL | VITE_PLATFORM | API_BASE | WS_URL |
-|-------------|--------------|---------------|----------|--------|
-| Polish (docker-compose) | `https://api.wheee.io` | — | `https://api.wheee.io` | `wss://api.wheee.io/ws` |
-| Russian VPS (deploy-ru.sh) | `""` (empty) | — | `https://ru.wheee.io` | `wss://ru.wheee.io/ws` |
-| Yandex Games (deploy-yandex.sh) | `""` (empty) | `yandex` | `https://<yandex-host>` | `wss://<yandex-host>/ws` |
-| Local dev | — (DEV=true) | — | `http://localhost:3001` | `ws://localhost:3001/ws` |
+| Build target | VITE_API_URL | VITE_PLATFORM | base | API_BASE |
+|-------------|--------------|---------------|------|----------|
+| Polish (docker-compose) | `https://api.wheee.io` | — | `/` | `https://api.wheee.io` |
+| Russian VPS (deploy-ru.sh) | `""` (empty) | — | `/` | `https://ru.wheee.io` |
+| Yandex Games | `https://api.wheee.io` | `yandex` | `./` | `https://api.wheee.io` |
+| GamePush | `https://api.wheee.io` | `gamepush` | `./` | `https://api.wheee.io` |
+| Local dev | — (DEV=true) | — | `/` | `http://localhost:3001` |
+
+Yandex and GamePush builds use `base: './'` (relative asset paths) because these
+platforms serve the game from subdirectories on their CDNs.
 
 ### Vite `platformHtmlPlugin`
 
-When `VITE_PLATFORM=yandex`, the Vite build transforms `index.html`:
-- Injects `<script src="/sdk.js"></script>` before the Telegram SDK comment
-- Removes Google Fonts preconnect and stylesheet links
-- Removes `hreflang` alternate links
-- Removes the `<!-- i18n alternate -->` comment
+When `VITE_PLATFORM` is `yandex` or `gamepush`, the Vite build transforms `index.html`:
+- Strips Google Fonts preconnect and stylesheet links
+- Strips `hreflang` alternate links and `<!-- i18n alternate -->` comment
+- Strips the Telegram Mini App SDK inline `<script>` block
 
-This ensures the Yandex build has no external resource dependencies (a requirement).
+Additionally:
+- **Yandex**: injects `<script src="/sdk.js"></script>` (absolute from Yandex CDN root)
+- **GamePush**: injects `<script async src="https://gamepush.com/sdk/game-score.js?projectId=...&publicToken=...&callback=onGPInit"></script>`
+
+If `VITE_PLATFORM=gamepush` but `VITE_GP_PROJECT_ID` or `VITE_GP_PUBLIC_TOKEN` are
+not set, the build fails with a clear error message.
 
 
 ## SEO
@@ -408,7 +498,7 @@ In `index.html` `<head>`:
 <link rel="alternate" hreflang="x-default" href="https://wheee.io/" />
 ```
 
-These are stripped in Yandex builds by the Vite plugin.
+These are stripped in Yandex and GamePush builds by the Vite plugin.
 
 ### Search engine registration
 
@@ -484,15 +574,35 @@ See `deploy/.env.example` for the full list. Key variables:
 | `PORT` | Server | HTTP/WS listen port (default: 3001) |
 | `ALLOWED_ORIGINS` | Server | CORS origins (include both `wheee.io` and `ru.wheee.io`) |
 | `VITE_API_URL` | Client build | API base URL (empty for same-origin) |
-| `VITE_PLATFORM` | Client build | Target platform: `yandex` or empty |
+| `VITE_PLATFORM` | Client build | Target platform: `yandex`, `gamepush`, or empty |
+| `VITE_GP_PROJECT_ID` | Client build | GamePush project ID (required for gamepush builds) |
+| `VITE_GP_PUBLIC_TOKEN` | Client build | GamePush public token (required for gamepush builds) |
 | `JWT_SECRET` | Server | Authentication token signing |
 | `DB_PATH` | Server | SQLite database file path |
 | `TG_BOT_TOKEN` | Server | Telegram Mini App authentication |
+| `YANDEX_SECRET_KEY` | Server | Yandex Games player signature verification (optional) |
 | `GOOGLE_CLIENT_ID/SECRET` | Server | Google OAuth |
 | `GITHUB_CLIENT_ID/SECRET` | Server | GitHub OAuth |
 | `AUTH_CALLBACK_URL` | Server | OAuth callback URL |
 | `CLIENT_ORIGIN` | Server | Redirect target after OAuth |
 | `COOKIE_DOMAIN` | Server | Shared cookie domain (`.wheee.io` for multi-subdomain auth) |
+
+CORS for Yandex (`*.yandex.ru/com/net`) and GamePush (`*.gamepush.com`, `*.pikabu.ru`,
+`*.eponesh.com`) origins are accepted dynamically via regex — no need to list them in
+`ALLOWED_ORIGINS`.
+
+### Deploy-local overrides (`deploy/.deploy.env`)
+
+Git-ignored file for local VPS connection settings:
+
+```bash
+PL_VPS_HOST=64.176.71.39
+PL_VPS_USER=root
+RU_VPS_HOST=185.39.206.229
+RU_VPS_USER=root
+GP_PROJECT_ID=27646
+GP_PUBLIC_TOKEN=j27miVT4RNJTTRXRGJj6AQxQfsl16rsA
+```
 
 
 ## First-Time Russian VPS Setup
@@ -531,18 +641,49 @@ Produces `wheee-yandex.zip` at the project root (git-ignored).
 - Yandex Games SDK loaded via `<script src="/sdk.js">`
 - `YaGames.init()` called; `LoadingAPI.ready()` signals load completion
 - `GameplayAPI.start()` / `stop()` called at gameplay boundaries
-- Authentication via `ysdk.auth.openAuthDialog()` + `getPlayer()`
+- Authentication via `ysdk.auth.openAuthDialog()` + `getPlayer({ signed: true })`
+- Server-side auth: signed player data sent to `/api/auth/yandex` for JWT issuance
 - Fullscreen and rewarded ads supported (with 15s timeout safety)
 - `game_api_pause` / `game_api_resume` events handled
 - Audio muted on pause, unmuted on resume
 - Language from `ysdk.environment.i18n.lang` (Russian/English UI)
-- No external resources (Google Fonts stripped, no external links)
+- No external resources (Google Fonts stripped, Telegram SDK stripped)
 - `user-select: none` globally, context menu disabled
-- No `target="_blank"` links in Yandex builds (Telegram chat link hidden)
 
 ### Console
 
 Upload the zip at: https://games.yandex.ru/console
+
+Add `api.wheee.io` to **External resources → Allowed domains** in the Yandex Games
+Console for API/WebSocket access.
+
+
+## GamePush (Pikabu Games) Submission
+
+### Build
+
+```bash
+bash deploy/deploy-gamepush.sh
+```
+
+Produces `wheee-gamepush.zip` at the project root (git-ignored).
+
+### SDK integration
+
+- GamePush SDK loaded via `<script async>` with project ID and public token
+- SDK initializes via `window.onGPInit` callback (10s timeout)
+- `gp.player.ready` awaited before gameplay
+- Authentication via `gp.player.login()` with server-side JWT issuance
+- Fullscreen ads via `gp.ads.showFullscreen()` (15s timeout)
+- Rewarded video via `gp.ads.showRewardedVideo()` (15s timeout)
+- Pause/resume via `gp.ads.on('start'/'close')` + `visibilitychange`
+- Language from `gp.language`
+
+### Console
+
+- GamePush panel: https://gamepush.com/panel
+- Project ID: 27646
+- Add `api.wheee.io` to **Allowed origins** in GamePush settings
 
 
 ## Troubleshooting
@@ -579,19 +720,39 @@ ssh root@185.39.206.229 "certbot renew && systemctl reload nginx"
 ssh root@64.176.71.39 "cd /opt/wheee/deploy && docker compose build --no-cache && docker compose up -d"
 ```
 
-**Yandex build includes Google Fonts / hreflang links**
+**Yandex/GamePush build includes Google Fonts / hreflang / Telegram SDK**
 Make sure `VITE_PLATFORM` is not set in your shell environment from a previous run.
 The env var persists across commands. Use a clean shell or explicitly unset it:
 ```bash
 unset VITE_PLATFORM
 ```
 
+**GamePush build fails with "must be set" error**
+Ensure `VITE_GP_PROJECT_ID` and `VITE_GP_PUBLIC_TOKEN` are set. The `deploy-gamepush.sh`
+script sets them automatically, but manual `vite build` with `VITE_PLATFORM=gamepush`
+requires them explicitly.
+
 **White screen on startup**
-If `initPlatform()` fails (e.g. Yandex SDK not available), a fallback error overlay
-with a Reload button is shown. Check the browser console for `[init] Platform
-initialization failed:` errors.
+If `initPlatform()` fails (e.g. Yandex SDK not available, GamePush timeout), a
+fallback error overlay with a Reload button is shown. Check the browser console for
+`[init] Platform initialization failed:` errors.
 
 **WebSocket reconnection stops after 20 attempts**
 The client caps reconnection at 20 attempts with exponential backoff (500ms → 8s).
 If the server is unreachable after 20 tries, the client stops reconnecting.
 Refresh the page to retry.
+
+**CORS errors on GamePush (s3.eponesh.com)**
+The server dynamically allows origins matching `*.gamepush.com`, `*.pikabu.ru`, and
+`*.eponesh.com`. If a new CDN domain appears, add it to `GAMEPUSH_ORIGIN_RE` in
+`packages/server/src/index.ts` and `packages/server/src/auth/oauth.ts`.
+
+**Platform auth returns 403 "Forbidden origin"**
+The `/api/auth/yandex` and `/api/auth/gamepush` endpoints validate the `Origin`
+header. Requests from unexpected origins are rejected. This is intentional — these
+endpoints are only meant to be called from within platform iframes.
+
+**`bun run deploy` hangs on prompt**
+The deploy scripts detect non-interactive mode (`[[ -t 0 ]]`). When run via
+`bun run`, stdin is piped, so interactive prompts are skipped with safe defaults:
+uncommitted changes abort the deploy, unpushed commits trigger auto-push.

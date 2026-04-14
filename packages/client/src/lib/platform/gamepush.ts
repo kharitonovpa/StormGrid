@@ -1,20 +1,33 @@
 import type { UserInfo } from '@wheee/shared'
 import type { PlatformAdapter } from './types'
+import { API_BASE } from '../config'
 
 const AD_TIMEOUT_MS = 15_000
+const AUTH_TIMEOUT_MS = 30_000
 
 let gp: GamePushInstance | null = null
 let user: UserInfo | null = null
+let token: string | null = null
 const pauseCbs = new Set<() => void>()
 const resumeCbs = new Set<() => void>()
 
-function extractUser(): UserInfo | null {
-  if (!gp || !gp.player.isLoggedIn) return null
-  return {
-    id: String(gp.player.id),
-    name: gp.player.name || 'Player',
-    avatar: gp.player.avatar || null,
-  }
+async function authenticateWithServer(): Promise<void> {
+  if (!gp || !gp.player.isLoggedIn) return
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/gamepush`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerId: gp.player.id,
+        name: gp.player.name || 'Player',
+        avatar: gp.player.avatar || null,
+      }),
+    })
+    if (!res.ok) return
+    const data = await res.json() as { token: string; user: UserInfo }
+    token = data.token
+    user = data.user
+  } catch { /* server unreachable — continue as anonymous */ }
 }
 
 export default class GamePushAdapter implements PlatformAdapter {
@@ -35,7 +48,10 @@ export default class GamePushAdapter implements PlatformAdapter {
     })
 
     await gp.player.ready
-    user = extractUser()
+
+    if (gp.player.isLoggedIn) {
+      await authenticateWithServer()
+    }
 
     gp.ads.on('start', () => { for (const cb of pauseCbs) cb() })
     gp.ads.on('close', () => { for (const cb of resumeCbs) cb() })
@@ -53,11 +69,19 @@ export default class GamePushAdapter implements PlatformAdapter {
   async login(): Promise<UserInfo | null> {
     if (!gp) return null
     return new Promise<UserInfo | null>((resolve) => {
-      const onLogin = (success: boolean) => {
+      let settled = false
+      const finish = (u: UserInfo | null) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
         gp!.player.off('login', onLogin)
-        if (success) user = extractUser()
-        resolve(user)
+        resolve(u)
       }
+      const onLogin = async (success: boolean) => {
+        if (success) await authenticateWithServer()
+        finish(user)
+      }
+      const timer = setTimeout(() => finish(user), AUTH_TIMEOUT_MS)
       gp!.player.on('login', onLogin)
       gp!.player.login()
     })
@@ -66,18 +90,25 @@ export default class GamePushAdapter implements PlatformAdapter {
   async logout(): Promise<void> {
     if (!gp || !gp.platform.isLogoutAvailable) return
     return new Promise<void>((resolve) => {
-      const onLogout = () => {
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
         gp!.player.off('logout', onLogout)
         user = null
+        token = null
         resolve()
       }
+      const onLogout = () => finish()
+      const timer = setTimeout(finish, AUTH_TIMEOUT_MS)
       gp!.player.on('logout', onLogout)
       gp!.player.logout()
     })
   }
 
   getAuthToken(): string | null {
-    return null
+    return token
   }
 
   async showInterstitial(): Promise<boolean> {
