@@ -14,9 +14,11 @@ export async function initPlatform(): Promise<PlatformAdapter> {
     const type = detectPlatform()
     const mod = type === 'yandex'
       ? await import('./yandex')
-      : type === 'telegram'
-        ? await import('./telegram')
-        : await import('./web')
+      : type === 'gamepush'
+        ? await import('./gamepush')
+        : type === 'telegram'
+          ? await import('./telegram')
+          : await import('./web')
 
     if (!mod.default || typeof mod.default !== 'function') {
       throw new Error(`Platform module "${type}" has no default export`)

@@ -1,8 +1,19 @@
 import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+const platform = process.env.VITE_PLATFORM ?? ''
+const GP_PROJECT_ID = process.env.VITE_GP_PROJECT_ID ?? ''
+const GP_PUBLIC_TOKEN = process.env.VITE_GP_PUBLIC_TOKEN ?? ''
+
+function stripExternalMeta(html: string): string {
+  html = html.replace(/\s*<link rel="preconnect"[^>]*fonts[^>]*\/?>(\s*\n?)?/g, '')
+  html = html.replace(/\s*<link[^>]*fonts\.googleapis\.com[^>]*\/?>(\s*\n?)?/g, '')
+  html = html.replace(/\s*<link rel="alternate"[^>]*hreflang[^>]*\/?>(\s*\n?)?/g, '')
+  html = html.replace(/\s*<!-- i18n alternate -->\s*\n?/g, '')
+  return html
+}
+
 function platformHtmlPlugin(): Plugin {
-  const platform = process.env.VITE_PLATFORM ?? ''
   return {
     name: 'platform-html',
     transformIndexHtml(html) {
@@ -11,19 +22,26 @@ function platformHtmlPlugin(): Plugin {
           '<!-- Telegram Mini App SDK',
           '<script src="/sdk.js"></script>\n    <!-- Telegram Mini App SDK',
         )
-        html = html.replace(/\s*<link rel="preconnect"[^>]*fonts[^>]*\/?>(\s*\n?)?/g, '')
-        html = html.replace(/\s*<link[^>]*fonts\.googleapis\.com[^>]*\/?>(\s*\n?)?/g, '')
-        html = html.replace(/\s*<link rel="alternate"[^>]*hreflang[^>]*\/?>(\s*\n?)?/g, '')
-        html = html.replace(/\s*<!-- i18n alternate -->\s*\n?/g, '')
+        html = stripExternalMeta(html)
       }
+
+      if (platform === 'gamepush') {
+        const gpScript = `<script async src="https://gamepush.com/sdk/game-score.js?projectId=${GP_PROJECT_ID}&publicToken=${GP_PUBLIC_TOKEN}&callback=onGPInit"></script>`
+        html = html.replace(
+          '<!-- Telegram Mini App SDK',
+          `${gpScript}\n    <!-- Telegram Mini App SDK`,
+        )
+        html = stripExternalMeta(html)
+      }
+
       return html
     },
   }
 }
 
-const isYandex = (process.env.VITE_PLATFORM ?? '') === 'yandex'
+const useRelativeBase = platform === 'yandex' || platform === 'gamepush'
 
 export default defineConfig({
-  base: isYandex ? './' : '/',
+  base: useRelativeBase ? './' : '/',
   plugins: [vue(), platformHtmlPlugin()],
 })

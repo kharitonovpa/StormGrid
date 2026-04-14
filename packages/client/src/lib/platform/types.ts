@@ -1,6 +1,6 @@
 import type { UserInfo } from '@wheee/shared'
 
-export type PlatformType = 'web' | 'telegram' | 'yandex'
+export type PlatformType = 'web' | 'telegram' | 'yandex' | 'gamepush'
 
 export interface PlatformAdapter {
   readonly type: PlatformType
