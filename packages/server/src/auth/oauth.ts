@@ -218,8 +218,8 @@ authRoutes.post('/telegram', async (c) => {
 
 const YANDEX_SECRET_KEY = process.env.YANDEX_SECRET_KEY || ''
 
-const YANDEX_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?yandex\.(ru|com|net)$/
-const GAMEPUSH_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?(gamepush\.com|pikabu\.ru|eponesh\.com)$/
+const YANDEX_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*yandex\.(ru|com|net)$/
+const GAMEPUSH_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*(gamepush\.com|pikabu\.ru|eponesh\.com)$/
 
 function isPlatformOriginAllowed(origin: string | undefined, pattern: RegExp): boolean {
   if (!origin) return false
