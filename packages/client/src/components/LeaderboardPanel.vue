@@ -4,6 +4,7 @@ import type { PlayerLeaderboardEntry, WatcherLeaderboardEntry, Paginated } from 
 import { API_BASE } from '../lib/config'
 import { t } from '../lib/i18n'
 import { usePlatform } from '../lib/platform'
+import UserAvatar from './UserAvatar.vue'
 
 const platform = usePlatform()
 
@@ -17,11 +18,6 @@ const watchers = ref<WatcherLeaderboardEntry[]>([])
 const watchersTotal = ref(0)
 const loaded = ref(false)
 const loadingMore = ref(false)
-
-function isValidAvatar(url: string | null): url is string {
-  if (!url) return false
-  try { return new URL(url).protocol === 'https:' } catch { return false }
-}
 
 function isPaginated<T>(v: unknown, check: (e: unknown) => boolean): v is Paginated<T> {
   return typeof v === 'object' && v !== null && 'items' in v && 'total' in v
@@ -99,8 +95,7 @@ onMounted(fetchLeaderboard)
     <div class="lb-list" v-if="activeTab === 'players'">
       <div v-for="(p, i) in players" :key="p.userId" class="lb-row">
         <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
-        <img v-if="isValidAvatar(p.avatar)" :src="p.avatar" class="lb-avatar" alt="" referrerpolicy="no-referrer" />
-        <span v-else class="lb-avatar lb-avatar-placeholder" />
+        <UserAvatar :src="p.avatar" :name="p.name" :size="20" />
         <span class="lb-name">{{ p.name }}</span>
         <span class="lb-stat lb-wins">{{ p.wins }}W</span>
         <span class="lb-stat lb-losses">{{ p.losses }}L</span>
@@ -117,8 +112,7 @@ onMounted(fetchLeaderboard)
     <div class="lb-list" v-if="activeTab === 'watchers'">
       <div v-for="(w, i) in watchers" :key="w.userId" class="lb-row">
         <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
-        <img v-if="isValidAvatar(w.avatar)" :src="w.avatar" class="lb-avatar" alt="" referrerpolicy="no-referrer" />
-        <span v-else class="lb-avatar lb-avatar-placeholder" />
+        <UserAvatar :src="w.avatar" :name="w.name" :size="20" />
         <span class="lb-name">{{ w.name }}</span>
         <span class="lb-stat lb-score">{{ w.watcherScore }}pts</span>
       </div>
@@ -236,18 +230,6 @@ onMounted(fetchLeaderboard)
 .lb-gold { color: #ffd700; }
 .lb-silver { color: #c0c0c0; }
 .lb-bronze { color: #cd7f32; }
-
-.lb-avatar {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.lb-avatar-placeholder {
-  display: block;
-  background: rgba(255, 255, 255, 0.08);
-}
 
 .lb-name {
   flex: 1;

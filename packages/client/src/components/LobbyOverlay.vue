@@ -7,6 +7,7 @@ import { fetchReplayList } from '../lib/replayPlayer'
 import { useAuth } from '../composables/useAuth'
 import CharacterPreview from './CharacterPreview.vue'
 import LeaderboardPanel from './LeaderboardPanel.vue'
+import UserAvatar from './UserAvatar.vue'
 import { t, TAGLINES } from '../lib/i18n'
 
 const props = defineProps<{
@@ -172,7 +173,7 @@ onUnmounted(() => {
               <template v-if="platformType === 'web'">
                 <!-- Auth: logged-in user chip -->
                 <div v-if="user" class="user-chip" @click="showAuthMenu = !showAuthMenu">
-                  <img v-if="user.avatar" :src="user.avatar" class="user-avatar" alt="" referrerpolicy="no-referrer" />
+                  <UserAvatar :src="user.avatar" :name="user.name" :size="28" />
                   <span class="user-name">{{ user.name }}</span>
                   <div v-if="showAuthMenu" class="auth-dropdown" @click.stop>
                     <button class="auth-dropdown-item" @click="handleLogout">{{ t('lobby.signOut') }}</button>
@@ -550,11 +551,6 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.07);
 }
 
-.user-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-}
 
 .user-name {
   font-size: 13px;
