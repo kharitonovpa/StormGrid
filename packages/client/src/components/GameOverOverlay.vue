@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, inject } from 'vue'
+import { onMounted, onUnmounted, computed, inject, ref } from 'vue'
 import type { DeathCause, PlayerId } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
@@ -14,10 +14,12 @@ const props = defineProps<{
   myPlayerId: PlayerId | null
   roomId: string | null
   deathCauses?: Partial<Record<PlayerId, DeathCause>> | null
+  showRewardedButton?: boolean
 }>()
 
 const emit = defineEmits<{
   playAgain: []
+  rewardedPlayAgain: []
   watchReplay: [roomId: string]
   backToLobby: []
 }>()
@@ -85,6 +87,15 @@ const resultClass = computed(() => {
   return 'lose'
 })
 
+const rewardedLoading = ref(false)
+
+function onRewardedClick() {
+  if (rewardedLoading.value) return
+  rewardedLoading.value = true
+  audio?.play('ui-click')
+  emit('rewardedPlayAgain')
+}
+
 let fireworkInterval = 0
 const fireworkTimeouts: number[] = []
 
@@ -146,6 +157,18 @@ onUnmounted(() => {
             <path d="M23 4v6h-6M1 20v-6h6" />
             <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
           </svg>
+        </button>
+
+        <button v-if="showRewardedButton" class="btn-rewarded" :class="{ loading: rewardedLoading }" :disabled="rewardedLoading" @click="onRewardedClick">
+          <svg v-if="!rewardedLoading" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="8" width="18" height="13" rx="2" />
+            <path d="M12 8V21" />
+            <path d="M3 12h18" />
+            <path d="M12 8c-2-3-6-4-6-1s4 1 6 1" />
+            <path d="M12 8c2-3 6-4 6-1s-4 1-6 1" />
+          </svg>
+          <div v-else class="rewarded-spinner" />
+          <span>{{ t('gameover.rewardedPlay') }}</span>
         </button>
 
         <button v-if="roomId" class="btn-replay" @click="audio?.play('ui-click'); emit('watchReplay', roomId!)">
@@ -357,6 +380,45 @@ onUnmounted(() => {
   gap: 12px;
   justify-content: center;
   animation: fadeUp 0.5s 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.btn-rewarded {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(52, 211, 153, 0.2);
+  background: rgba(52, 211, 153, 0.06);
+  color: rgba(110, 231, 183, 0.8);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.btn-rewarded:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(110, 231, 183, 0.35);
+  transform: translateY(-2px);
+}
+.btn-rewarded.loading {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.rewarded-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(110, 231, 183, 0.2);
+  border-top-color: rgba(110, 231, 183, 0.8);
+  border-radius: 50%;
+  animation: rc-spin 0.8s linear infinite;
+}
+
+@keyframes rc-spin {
+  to { transform: rotate(360deg); }
 }
 
 .btn-replay {

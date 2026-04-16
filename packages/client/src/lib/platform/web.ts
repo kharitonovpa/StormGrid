@@ -90,6 +90,8 @@ export default class WebAdapter implements PlatformAdapter {
     return null
   }
 
+  isRewardedAvailable(): boolean { return false }
+  async showPreloader(): Promise<boolean> { return false }
   async showInterstitial(): Promise<boolean> { return false }
   async showRewarded(): Promise<boolean> { return false }
 

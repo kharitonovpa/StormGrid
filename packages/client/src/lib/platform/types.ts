@@ -15,6 +15,8 @@ export interface PlatformAdapter {
   logout(): Promise<void>
   getAuthToken(): string | null
 
+  isRewardedAvailable(): boolean
+  showPreloader(): Promise<boolean>
   showInterstitial(): Promise<boolean>
   showRewarded(): Promise<boolean>
 

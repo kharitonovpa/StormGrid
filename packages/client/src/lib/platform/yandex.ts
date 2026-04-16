@@ -82,6 +82,10 @@ export default class YandexAdapter implements PlatformAdapter {
     return token
   }
 
+  isRewardedAvailable(): boolean { return !!ysdk }
+
+  async showPreloader(): Promise<boolean> { return false }
+
   async showInterstitial(): Promise<boolean> {
     if (!ysdk) return false
     const sdk = ysdk

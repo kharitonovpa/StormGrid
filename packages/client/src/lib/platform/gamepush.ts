@@ -3,6 +3,7 @@ import type { PlatformAdapter } from './types'
 import { API_BASE } from '../config'
 
 const AD_TIMEOUT_MS = 15_000
+const PRELOADER_TIMEOUT_MS = 8_000
 const AUTH_TIMEOUT_MS = 30_000
 
 let gp: GamePushInstance | null = null
@@ -49,6 +50,11 @@ export default class GamePushAdapter implements PlatformAdapter {
 
     await gp.player.ready
 
+    await Promise.race([
+      gp.ads.showPreloader(),
+      new Promise<boolean>((r) => setTimeout(() => r(false), PRELOADER_TIMEOUT_MS)),
+    ]).catch(() => {})
+
     if (gp.player.isLoggedIn) {
       await authenticateWithServer()
     }
@@ -57,10 +63,10 @@ export default class GamePushAdapter implements PlatformAdapter {
     gp.ads.on('close', () => { for (const cb of resumeCbs) cb() })
   }
 
-  ready(): void { /* GP handles loading state internally */ }
+  ready(): void { gp?.gameStart() }
 
-  gameplayStart(): void { /* noop */ }
-  gameplayStop(): void { /* noop */ }
+  gameplayStart(): void { gp?.gameplayStart() }
+  gameplayStop(): void { gp?.gameplayStop() }
 
   async getUser(): Promise<UserInfo | null> {
     return user
@@ -109,6 +115,18 @@ export default class GamePushAdapter implements PlatformAdapter {
 
   getAuthToken(): string | null {
     return token
+  }
+
+  isRewardedAvailable(): boolean {
+    return gp?.ads.isRewardedAvailable ?? false
+  }
+
+  async showPreloader(): Promise<boolean> {
+    if (!gp) return false
+    return Promise.race([
+      gp.ads.showPreloader(),
+      new Promise<boolean>((r) => setTimeout(() => r(false), PRELOADER_TIMEOUT_MS)),
+    ])
   }
 
   async showInterstitial(): Promise<boolean> {

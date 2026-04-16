@@ -38,6 +38,8 @@ export default class TelegramAdapter implements PlatformAdapter {
     return token
   }
 
+  isRewardedAvailable(): boolean { return false }
+  async showPreloader(): Promise<boolean> { return false }
   async showInterstitial(): Promise<boolean> { return false }
   async showRewarded(): Promise<boolean> { return false }
 

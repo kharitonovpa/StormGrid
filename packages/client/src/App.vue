@@ -121,6 +121,7 @@ unsubMessage1 = socket.onMessage((msg) => {
   if (msg.type === 'game:start') {
     lastRoomId = msg.roomId
     socket.setReconnectToken(msg.reconnectToken)
+    platform.gameplayStart()
     audio.enterMatch()
     audio.play('match-found')
   }
@@ -129,6 +130,7 @@ unsubMessage1 = socket.onMessage((msg) => {
   }
   if (msg.type === 'game:end') {
     socket.setReconnectToken(null)
+    platform.gameplayStop()
     if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
       return
@@ -255,7 +257,9 @@ function onStartBonusPlace(bonusType: import('@wheee/shared').BonusType) {
   pendingBonusType.value = bonusType
 }
 
-function onPlayAgain() {
+const hasRewardedAds = computed(() => platform.isRewardedAvailable())
+
+function doPlayAgain() {
   pendingGameEnd = null
   socket.setReconnectToken(null)
   const lastCharacter = game.selectedCharacter.value ?? 'wheat'
@@ -267,7 +271,19 @@ function onPlayAgain() {
   })
 }
 
-function onBackToLobby() {
+async function onRewardedPlayAgain() {
+  const rewarded = await platform.showRewarded().catch(() => false)
+  if (!rewarded) return
+  doPlayAgain()
+}
+
+async function onPlayAgain() {
+  await platform.showInterstitial().catch(() => {})
+  doPlayAgain()
+}
+
+async function onBackToLobby() {
+  await platform.showInterstitial().catch(() => {})
   pendingGameEnd = null
   socket.setReconnectToken(null)
   game.reset()
@@ -763,6 +779,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       }
       switchToOrbit()
       startAnimating()
+      platform.gameplayStart()
       audio.enterMatch()
       break
     }
@@ -792,6 +809,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       switchToTrackball()
       applyGameState(msg.state)
       startAnimating()
+      platform.gameplayStart()
       audio.enterMatch()
       audio.play('match-found')
       break
@@ -812,6 +830,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       switchToTrackball()
       applyGameState(msg.state)
       startAnimating()
+      platform.gameplayStart()
       audio.enterMatch()
       audio.play('match-found')
       break
@@ -821,6 +840,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       break
     }
     case 'watcher:redirect': {
+      platform.gameplayStop()
       resetVisuals()
       audio.stopWeather()
       socket.joinWatch()
@@ -1522,7 +1542,9 @@ onUnmounted(() => {
     :my-player-id="game.myPlayerId.value"
     :room-id="lastRoomId"
     :death-causes="game.deathCauses.value"
+    :show-rewarded-button="hasRewardedAds"
     @play-again="onPlayAgain"
+    @rewarded-play-again="onRewardedPlayAgain"
     @watch-replay="startReplay"
     @back-to-lobby="onBackToLobby"
   />

@@ -57,6 +57,7 @@ const messages: Record<string, Record<string, string>> = {
     'gameover.youBlown': 'Wind blew you off the {0} edge',
     'gameover.youDrowned': 'You drowned in a flooded basin',
     'gameover.playAgain': 'Play Again',
+    'gameover.rewardedPlay': 'Watch Ad & Play',
     'gameover.replay': 'Replay',
     'gameover.backToLobby': 'Back to lobby',
 
@@ -180,6 +181,7 @@ const messages: Record<string, Record<string, string>> = {
     'gameover.youBlown': 'Ветер сдул тебя с {0} края',
     'gameover.youDrowned': 'Ты утонул в затопленной впадине',
     'gameover.playAgain': 'Ещё раз',
+    'gameover.rewardedPlay': 'Реклама и играть',
     'gameover.replay': 'Повтор',
     'gameover.backToLobby': 'В лобби',
 

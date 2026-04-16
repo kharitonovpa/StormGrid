@@ -46,6 +46,9 @@ interface GamePushInstance {
   changeLanguage(lang: string): void
   isDev: boolean
   isReady: boolean
+  gameStart(): void
+  gameplayStart(): void
+  gameplayStop(): void
 }
 
 declare interface Window {
