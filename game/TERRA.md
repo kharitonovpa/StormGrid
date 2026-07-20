@@ -1,3 +1,14 @@
+# TERRA — Terrain System Design Prompt (archive)
+
+> **Статус: архивный документ.** Это исходный промпт, по которому проектировалась
+> гибридная система террейна (скрытая логическая сетка 7×7 + гладкий непрерывный
+> меш). Система реализована в `packages/client/src/lib/terrain.ts` (меш, кэш высот,
+> flood BFS, анимация) и `packages/client/src/lib/noise.ts` (value noise / fbm).
+> Логическая истина живёт на сервере (`packages/server/src/engine/`).
+> Документ сохранён как контекст дизайн-решений; не является актуальной спецификацией.
+
+---
+
 You are a senior gameplay engineer and technical 3D systems architect.
 
 I am building a **3D game map system** in **TypeScript + Three.js**.

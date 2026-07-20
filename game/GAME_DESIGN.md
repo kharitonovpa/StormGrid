@@ -32,6 +32,7 @@ PvP тактическая игра 1v1 на сетке 7×7.
 * Может сразу нажать «Играть» → попадает в матч как анонимный игрок
 * Может авторизоваться → становится Player
 * Прогресс/статистика не сохраняются
+* Отображается под случайной фамилией из «Войны и мира» (`WAR_AND_PEACE_SURNAMES` в `@wheee/shared`) и случайным флагом (или флагом по геолокации/Accept-Language)
 
 ### 3.2 Player (авторизован)
 
@@ -46,16 +47,29 @@ PvP тактическая игра 1v1 на сетке 7×7.
 * Система автоматически назначает на активный матч
 * По окончании матча автоматически перекидывается на другой начавшийся матч (авто-ротация)
 * Имеет собственные механики и челленджи (не влияют на ход игры игроков):
-    * **Predict Winner** — предсказать победителя до начала раунда → очки
-    * **Predict Move** — предсказать ход конкретного игрока в тике → очки
-    * **Break Instruments** — раз за игру может «сломать» один прибор прогноза (флюгер или барометр) одному игроку на 1 раунд, лишая его подсказки
+    * **Predict Winner** — в фазе прогноза предсказать, кто выиграет раунд → +10 очков, если в этот катаклизм погиб именно предсказанный проигравшим соперник
+    * **Predict Move** — предсказать ход конкретного игрока в тике → +5 очков за точное совпадение
+    * **Break Instruments** — раз за матч может «сломать» один прибор прогноза (флюгер или барометр); поломка действует на **обоих** игроков до конца раунда (см. §11.3)
+* Очки авторизованных наблюдателей копятся в лидерборде watchers
 
 ### 3.4 Architect (особая роль)
 
-* Управляет катаклизмами матча: вручную выставляет тип погоды, направление ветра, интенсивность дождя
-* Вместо рандома — ручной выбор перед каждым раундом
-* Может размещать бонусные точки на карте (см. §10)
+* Управляет катаклизмами матча: вручную выставляет тип погоды и направление ветра
+* Вместо рандома — ручной выбор перед каждым раундом (окно решения `ARCHITECT_DECISION_MS` = 8 с; если не ответил — игра продолжается со случайной погодой)
+* Может размещать бонусные точки на карте (см. §10), 1 бонус за раунд
 * Видит полное состояние игры (оба игрока, все высоты)
+* Максимум 1 архитектор на матч
+
+### 3.5 Bot (системный игрок)
+
+* Если игрок ждёт в очереди дольше `BOT_MATCH_DELAY_MS` (по умолчанию 30 с) — матч создаётся с ботом
+* Бот играет каноническим состоянием на стороне своего игрока, эвристика (`engine/bot.ts`):
+  1. 5% — пропустить тик, 15% — случайное действие
+  2. Если прогноз ветра опасен — уйти в безопасную клетку / поднять укрытие с наветренной стороны
+  3. Если вероятность дождя > 0.4 и клетка в низине — сбежать вверх / поднять свою клетку
+  4. 30% — агрессия: lower под оппонентом или рядом с ним
+  5. Иначе — движение к центру или raise своей клетки
+* Отвечает с человекоподобной задержкой 1–4 с, получает случайное имя/флаг как гость
 
 ---
 
@@ -99,15 +113,17 @@ PvP тактическая игра 1v1 на сетке 7×7.
 
 ## 6. Time System (Ticks)
 
-* `tickDuration`: 5–7 секунд
-* `ticksPerRound`: 5
+* `TICK_DURATION_MS`: 6000 (6 секунд)
+* `TICKS_PER_ROUND`: 5
+* Показ прогноза: `FORECAST_DISPLAY_MS` = 3 с (или 8 с, если в матче архитектор)
+* Показ катаклизма перед следующим раундом: `WEATHER_DISPLAY_MS` = 4 с
 
 Цикл:
 
-1. Tick (игроки делают действия)
-2. ...
-3. Tick (5-й)
-4. Weather (катаклизм)
+1. Forecast (3–8 с)
+2. Tick ×5 (по 6 с; тик завершается досрочно, если оба игрока сдали действие)
+3. Weather (катаклизм)
+4. Если никто не погиб — новый раунд
 
 ---
 
@@ -167,10 +183,15 @@ PvP тактическая игра 1v1 на сетке 7×7.
 | Intel | Показать, что выбрал противник в текущем тике (после того как оба сделали ход) |
 | Clear Sky | Убрать неопределённость прогноза на 1 раунд |
 
+> **Статус реализации:** размещение и подбор бонуса реализованы (engine возвращает
+> `activatedBonus` в `TickResult`, бонус снимается с карты). Сами **эффекты**
+> (Time Extend / Intel / Clear Sky) пока не применяются — это задел на будущее.
+
 ### 10.3 Ограничения
 
 * Максимум 1 бонус на карте одновременно
-* Бонус не появляется на клетке, где стоит игрок
+* Бонус не размещается на клетке, где стоит живой игрок
+* Если оба игрока одновременно встали на бонус — он исчезает без активации
 * Не влияет на механики ветра/дождя/смерти
 
 ---
@@ -196,22 +217,24 @@ PvP тактическая игра 1v1 на сетке 7×7.
 
 ### 11.3 Breaking Instruments
 
-* Наблюдатель (Watcher) может 1 раз за матч «сломать» один инструмент одному игроку
-* Сломанный прибор показывает хаотичные данные 1 раунд, затем восстанавливается
+* Наблюдатель (Watcher) может 1 раз за матч «сломать» один инструмент (флюгер или барометр)
+* Поломка применяется **обоим игрокам сразу** (реализация в `Room.watcherBreakInstrument`)
+* Сломанный прибор показывает хаотичные данные; флаг сбрасывается при генерации нового прогноза в следующем раунде
 
 ---
 
 ## 12. Weather System
 
-Типы:
+Типы при случайной генерации (`randomWeatherDecision`):
 
 * Wind (55%)
 * Wind + Rain (45%)
 
-**Ветер дует каждый катаклизм** — разница только в направлении. Дождь может добавляться к ветру, но не бывает дождя без ветра.
+**Ветер дует каждый случайный катаклизм** — разница только в направлении. Дождь может добавляться к ветру.
 
-Если есть Architect — он выбирает тип и параметры.
-Если Architect отсутствует — система генерирует по вероятностному распределению.
+Если есть Architect — он выбирает тип и направление вручную. Архитектору доступен
+также чистый тип `rain` (дождь без ветра) — случайная генерация его не выдаёт,
+но движок поддерживает.
 
 ---
 
@@ -276,6 +299,9 @@ PvP тактическая игра 1v1 на сетке 7×7.
 
 * его сдуло за карту (wind)
 * он утонул (rain)
+* он отключился и не вернулся за grace-период (`RECONNECT_GRACE_MS` = 30 с) — победа оппоненту (forfeit, `deathCause: disconnect`)
+
+Если оба погибли в один катаклизм — ничья (draw).
 
 ---
 
@@ -297,9 +323,16 @@ PvP тактическая игра 1v1 на сетке 7×7.
 
 ## 17. Matchmaking
 
-* **Play**: нажал «Играть» → попал в очередь → система подбирает пару → матч начинается
-* **Watch**: нажал «Наблюдать» (или перешёл по ссылке) → назначается на активный матч → авто-ротация после финиша
-* **Architect**: назначается на матч вручную (через лобби) или автоматически при нехватке
+* **Play**: нажал «Играть» → попал в очередь → система подбирает пару → матч начинается.
+  Если пара не нашлась за `BOT_MATCH_DELAY_MS` (30 с) — матч с ботом (см. §3.5)
+* **Watch**: нажал «Наблюдать» → назначается на первый активный матч → авто-ротация после финиша (`watcher:redirect`)
+* **Architect**: нажал «Architect» в лобби → назначается на активный матч (макс 1 на комнату); если активных матчей нет — `architect:no_match`
+
+### 17.1 Reconnect
+
+* При `game:start` игрок получает `reconnectToken`
+* При обрыве WS у игрока есть `RECONNECT_GRACE_MS` (30 с) на возврат; все таймеры матча ставятся на паузу, оппонент видит «opponent disconnected»
+* Возврат по токену → `reconnect:ok` с полным состоянием; истечение grace → forfeit
 
 ---
 
@@ -314,16 +347,17 @@ PvP тактическая игра 1v1 на сетке 7×7.
 
 ---
 
-## 19. MVP Scope
+## 19. Scope
 
-В MVP нет:
+В игре нет (осознанно):
 
 * высот > +1 / < -1
 * особых клеток
 * уникальных способностей персонажей
 * мульти-юнитов
+* эффектов бонусов (только размещение/подбор, см. §10.2)
 
-В MVP **есть**:
+Реализовано:
 
 * 8-directional movement (как король в шахматах)
 * Изменение ландшафта под игроком
@@ -332,26 +366,34 @@ PvP тактическая игра 1v1 на сетке 7×7.
 * Upwind shielding (укрытие за возвышенностью)
 * Wind push animation (игрока сносит визуально)
 * Action preview (превью raise/lower/move перед подтверждением тика)
-* Guest/Player/Watcher роли
-* Авторизация
-* Matchmaking (автоподбор пары)
-* Серверный game engine
+* Guest/Player/Watcher/Architect роли + бот
+* Авторизация: Google/GitHub OAuth, Telegram Mini App, Yandex Games, GamePush
+* Matchmaking (автоподбор пары + бот-фоллбек)
+* Серверный game engine + reconnect + rate limiting
 * WebSocket real-time sync
-* Forecast instruments (флюгер + барометр)
-* Базовый Watcher mode (наблюдение + предсказания)
+* Forecast instruments (флюгер + барометр) + поломка наблюдателем
+* Watcher mode (наблюдение + предсказания + очки)
+* Architect mode (ручная погода + бонусы)
+* Реплеи (снапшоты состояний, просмотр из лобби)
+* Лидерборды (players / watchers), история матчей
+* Мультиплатформенность: web, Telegram Mini App, Yandex Games, GamePush
+* i18n (en/ru), звук (Howler), мобильный ввод
 
 ---
 
-## 20. Tech Target
+## 20. Tech Stack
 
 * Language: TypeScript (фронт и бэк)
 * Runtime: Bun (backend + package manager + test runner)
 * Framework: Vue 3 (frontend), Hono (backend HTTP)
 * Render: Three.js
 * Real-time: Bun native WebSocket
-* Auth: OAuth2 (Google/GitHub) + JWT sessions
-* DB: PostgreSQL (users, stats, match history) + Redis (matchmaking queue, live state cache)
-* Monorepo: shared types between client and server
+* Auth: OAuth2 (Google/GitHub) + Telegram/Yandex/GamePush platform auth + JWT (HS256, 30 дней)
+* DB: SQLite (`bun:sqlite`) + Drizzle ORM — users, stats, match history, replays.
+  Matchmaking-очередь и live-состояние комнат — in-memory (single instance).
+  Redis не используется; миграция на PostgreSQL при необходимости — смена драйвера Drizzle
+* Audio: Howler.js
+* Monorepo: Bun workspaces, shared types в `@wheee/shared`
 
 ---
 
@@ -360,20 +402,23 @@ PvP тактическая игра 1v1 на сетке 7×7.
 ```
 ┌──────────────┐    WebSocket     ┌────────────────┐
 │   Browser     │◄──────────────►│   Game Server   │
-│  Vue 3 + Three│                 │  (Bun)          │
+│  Vue 3 + Three│      /ws        │  (Bun + Hono)   │
 │               │    REST/HTTP    │                  │
-│  - Renderer   │◄──────────────►│  - Auth          │
-│  - HUD        │                 │  - Matchmaking   │
-│  - Input      │                 │  - GameEngine    │
-│               │                 │  - Room Manager  │
-└──────────────┘                 │  - Watcher Mgr   │
+│  - Renderer   │◄──────────────►│  - Auth (OAuth + │
+│  - HUD        │     /api/*      │    platform)     │
+│  - Input      │                 │  - Matchmaking   │
+│  - Platform   │                 │  - GameEngine    │
+│    adapters   │                 │  - Rooms + Bot   │
+└──────────────┘                 │  - ReplayStore   │
                                   └───────┬──────────┘
                                           │
                                   ┌───────▼──────────┐
-                                  │   PostgreSQL      │
-                                  │   + Redis         │
+                                  │  SQLite (bun)     │
+                                  │  + Drizzle ORM    │
                                   └──────────────────┘
 ```
+
+Деплой и мультиплатформенность (web / Telegram / Yandex Games / GamePush) — см. `INFRASTRUCTURE.md`.
 
 ### Принцип: Server-Authoritative
 
@@ -384,34 +429,33 @@ PvP тактическая игра 1v1 на сетке 7×7.
 
 ---
 
-## 22. Required Engine API (high-level)
+## 22. Engine API (`packages/server/src/engine/GameEngine.ts`)
 
 ```ts
-initGame(): GameState
-
-applyTick(actions: {
-  A?: Action
-  B?: Action
-}): GameState
-
-applyWeather(type: WeatherType, dir?: WindDir): GameState
-
-getState(): GameState
-
-getForecast(): ForecastData
+class GameEngine {
+  constructor(spawn?: SpawnPair)                      // случайная пара спавнов по умолчанию
+  setCharacters(a: CharacterType, b: CharacterType)   // до старта
+  startRound(): GameState                             // генерирует WeatherDecision + forecast, phase='forecast'
+  setWeatherDecision(type: WeatherType, dir: WindDir) // Architect override (до тиков)
+  beginTicking(): GameState                           // phase='ticking'
+  submitTick(actions: Partial<Record<PlayerId, Action>>): TickResult
+  executeWeather(): WeatherResult                     // wind/rain, resolveWinner, round++
+  breakInstrument(target: PlayerId, instrument: 'vane' | 'barometer')
+  placeBonus(x: number, y: number, type: BonusType): boolean
+  getState(): GameState                               // deep clone
+}
 ```
 
 ---
 
-## 23. Data Structures
+## 23. Data Structures (`@wheee/shared`)
+
+Актуальный источник истины — `packages/shared/src/types.ts`. Ключевые типы:
 
 ```ts
 type Height = -1 | 0 | 1
 
-type Cell = {
-  height: Height
-  bonus?: BonusType | null
-}
+type Cell = { height: Height; bonus: BonusType | null }
 
 type CharacterType = 'wheat' | 'rice' | 'corn'
 
@@ -425,13 +469,12 @@ type Player = {
 
 type Role = 'guest' | 'player' | 'watcher' | 'architect'
 
+type GamePhase = 'waiting' | 'forecast' | 'ticking' | 'weather' | 'finished'
+
 type ForecastData = {
-  windCandidates: WindDir[]   // 0-2 направления
-  rainProbability: number     // 0..1
-  instrumentsBroken: {
-    A: { vane: boolean; barometer: boolean }
-    B: { vane: boolean; barometer: boolean }
-  }
+  windCandidates: WindDir[]   // 1-2 направления (реальное — среди них), пусто без ветра
+  rainProbability: number     // 0 | 0.25 | 0.75 | 1.0
+  instrumentsBroken: Record<'A' | 'B', { vane: boolean; barometer: boolean }>
 }
 
 type BonusType = 'time_extend' | 'intel' | 'clear_sky'
@@ -441,13 +484,32 @@ type GameState = {
   players: Record<'A' | 'B', Player>
   tick: number
   round: number
+  phase: GamePhase
   forecast: ForecastData
-  activeBonus: { x: number; y: number; type: BonusType } | null
+  activeBonus: BonusCell | null
+  weather: { type: WeatherType; dir: WindDir } | null
+  winner: 'A' | 'B' | 'draw' | null
+}
+
+type DeathCause =
+  | { type: 'wind'; dir: WindDir }
+  | { type: 'rain' }
+  | { type: 'disconnect' }
+
+type WeatherResult = {
+  state: GameState
+  deaths: PlayerId[]
+  deathCauses: Partial<Record<PlayerId, DeathCause>>
+  windPath: Record<PlayerId, { x: number; y: number }[]>
+  floodedCells: { x: number; y: number }[]    // сторона A (для B сервер подменяет на его сторону)
+  floodedCellsB: { x: number; y: number }[]
 }
 
 type WatcherState = {
-  score: number
+  score: number                 // +10 за угаданного победителя, +5 за угаданный ход
   predictions: WatcherPrediction[]
   breakUsed: boolean
 }
 ```
+
+WS-протокол (все `ClientMessage` / `ServerMessage`) описан в `packages/shared/src/protocol.ts`.

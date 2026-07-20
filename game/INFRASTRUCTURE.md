@@ -245,10 +245,10 @@ a single codebase. Each platform has its own adapter implementing a shared inter
 ### Platform detection
 
 ```
-VITE_PLATFORM=yandex    →  YandexAdapter    (build-time flag)
-VITE_PLATFORM=gamepush  →  GamePushAdapter  (build-time flag)
-window.Telegram         →  TelegramAdapter  (runtime detection)
-otherwise               →  WebAdapter       (default)
+VITE_PLATFORM=yandex               →  YandexAdapter    (build-time flag)
+VITE_PLATFORM=gamepush             →  GamePushAdapter  (build-time flag)
+window.Telegram.WebApp.initData    →  TelegramAdapter  (runtime detection, non-empty initData)
+otherwise                          →  WebAdapter       (default)
 ```
 
 Detection runs once at app startup in `main.ts` via `initPlatform()`.
@@ -287,6 +287,8 @@ interface PlatformAdapter {
   logout(): Promise<void>
   getAuthToken(): string | null   // JWT token for WebSocket auth
 
+  isRewardedAvailable(): boolean         // whether rewarded ads exist on this platform
+  showPreloader(): Promise<boolean>      // preloader ad before game start (GamePush)
   showInterstitial(): Promise<boolean>   // fullscreen ad
   showRewarded(): Promise<boolean>       // rewarded video ad
 
@@ -296,6 +298,9 @@ interface PlatformAdapter {
   getLanguage(): string                  // 2-letter code (en, ru, etc.)
 }
 ```
+
+Note: leaderboards and replays are **not** part of the adapter — they go through
+the game's own REST API (`/api/leaderboard/*`, `/api/replays`) on every platform.
 
 ### Platform-specific behaviors
 
@@ -586,6 +591,8 @@ See `deploy/.env.example` for the full list. Key variables:
 | `AUTH_CALLBACK_URL` | Server | OAuth callback URL |
 | `CLIENT_ORIGIN` | Server | Redirect target after OAuth |
 | `COOKIE_DOMAIN` | Server | Shared cookie domain (`.wheee.io` for multi-subdomain auth) |
+| `RECONNECT_GRACE_MS` | Server | Player reconnect grace period (default: 30000) |
+| `BOT_MATCH_DELAY_MS` | Server | Queue wait before matching with a bot (default: 30000) |
 
 CORS for Yandex (`*.yandex.ru/com/net`) and GamePush (`*.gamepush.com`, `*.pikabu.ru`,
 `*.eponesh.com`) origins are accepted dynamically via regex — no need to list them in
@@ -618,7 +625,9 @@ If setting up a new Russian VPS from scratch:
    scp deploy/setup-ru-vps.sh root@<VPS_IP>:/tmp/
    ssh root@<VPS_IP> "bash /tmp/setup-ru-vps.sh"
    ```
-6. Copy production nginx config:
+6. Copy production nginx config (**required** — the config embedded in
+   `setup-ru-vps.sh` is a bootstrap-only version that proxies `/ws` directly to
+   port 3001; the production `nginx-ru.conf` proxies through Polish nginx :443):
    ```bash
    scp deploy/nginx-ru.conf root@<VPS_IP>:/etc/nginx/sites-available/ru.wheee.io
    ssh root@<VPS_IP> "nginx -t && systemctl reload nginx"
@@ -699,10 +708,15 @@ echo '{}' | websocat -1 wss://ru.wheee.io/ws
 ```
 Should receive a JSON response from the game server.
 
-**API returns 502 on ru.wheee.io**
+**API returns 502 on ru.wheee.io / api.wheee.io not responding**
 The Polish server might be down. Check:
 ```bash
-curl -s https://api.wheee.io/api/leaderboard/players?limit=1
+curl -s 'https://api.wheee.io/api/leaderboard/players?limit=1'
+```
+If the connection times out entirely (not a 502), check the Vultr billing status —
+an unpaid instance gets suspended. Then verify the containers:
+```bash
+ssh root@64.176.71.39 "cd /opt/wheee/deploy && docker compose ps"
 ```
 
 **Google/GitHub OAuth not working on ru.wheee.io**

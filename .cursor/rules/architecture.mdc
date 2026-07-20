@@ -8,48 +8,94 @@ alwaysApply: true
 
 ## Monorepo layout
 
-- `packages/shared/` — `@wheee/shared`: game types (`GameState`, `Action`, `Player`, etc.) and constants (`BOARD_SIZE`, `DIRECTIONS`, etc.)
-- `packages/server/` — `@wheee/server`: game engine, (future) HTTP + WebSocket server
-- `packages/client/` — `@wheee/client`: Vue 3 + Three.js frontend
-- `game/` — design docs: `GAME_DESIGN.md`, `PLAN.md`, `TERRA.md`
+- `packages/shared/` — `@wheee/shared`: game types (`GameState`, `Action`, `Player`, etc.), constants (`BOARD_SIZE`, `DIRECTIONS`, etc.), WS protocol types (`ClientMessage` / `ServerMessage`), anonymous name pool (`names.ts`)
+- `packages/server/` — `@wheee/server`: game engine, Hono HTTP API, Bun WebSocket server, SQLite persistence
+- `packages/client/` — `@wheee/client`: Vue 3 + Three.js frontend, platform adapters (web/Telegram/Yandex/GamePush)
+- `game/` — docs: `GAME_DESIGN.md`, `PLAN.md`, `INFRASTRUCTURE.md`, `TERRA.md` (archived design prompt)
+- `deploy/` — deploy scripts, docker-compose, nginx configs (see `game/INFRASTRUCTURE.md`)
 
-## Server: engine modules
+## Server modules
+
+### Engine (pure logic, no I/O)
 
 - `packages/server/src/engine/board.ts` — board creation, cloning, bounds checks, `stateForPlayer()` (height inversion for B), `resultForPlayer()`
-- `packages/server/src/engine/tick.ts` — tick resolution: 8-dir king movement, terrain changes (including under player), bonus activation
+- `packages/server/src/engine/tick.ts` — tick resolution: 8-dir king movement, terrain changes (including under player), raise/lower conflict cancellation, bonus pickup
 - `packages/server/src/engine/wind.ts` — upwind shielding scan, downwind push, two-sided height perception (§13 of GAME_DESIGN)
 - `packages/server/src/engine/rain.ts` — basin detection BFS, separate flooding per player side (floodedCellsA/B), drowning (§14)
-- `packages/server/src/engine/forecast.ts` — weather decision generation (wind every cataclysm), forecast hints
-- `packages/server/src/Room.ts` — game room: GameEngine + tick timer + player slots + per-player state broadcast + action inversion for B
-- `packages/server/src/RoomManager.ts` — room registry, create/get/cleanup
-- `packages/server/src/matchmaking.ts` — in-memory queue, auto-pair
-- `packages/server/src/engine/GameEngine.ts` — orchestrator class: round lifecycle, phase management
+- `packages/server/src/engine/forecast.ts` — weather decision generation (wind every cataclysm, 55% wind / 45% wind+rain), forecast hints
+- `packages/server/src/engine/GameEngine.ts` — orchestrator class: round lifecycle, phase management, architect overrides (`setWeatherDecision`, `placeBonus`), watcher `breakInstrument`
+- `packages/server/src/engine/bot.ts` — `chooseBotAction()`: heuristic bot (wind safety > rain escape > aggression > center pull), operates on canonical state
 
-## Client: visual modules
+### Network / rooms
 
-- `packages/client/src/lib/constants.ts` — shared grid/world constants (CELLS, SIZE, HALF, etc.)
+- `packages/server/src/protocol.ts` — `parseClientMessage()` validation, `send()`, `WsData` connection state
+- `packages/server/src/Room.ts` — game room: GameEngine + timers (tick/forecast/architect/bot/disconnect) + player slots + per-player state broadcast + action inversion for B + watcher predictions + replay frame recording + reconnect with pause/resume
+- `packages/server/src/RoomManager.ts` — room registry, reconnect-token map, active-room lookup
+- `packages/server/src/matchmaking.ts` — in-memory FIFO queue, auto-pair, bot match after `BOT_MATCH_DELAY_MS` (default 30 s)
+- `packages/server/src/ratelimit.ts` — `ConnectionLimiter`: token bucket (25 burst / 15 per sec), 1 KB message cap, invalid-message streak disconnect
+- `packages/server/src/ReplayStore.ts` — in-memory replay cache (last 50)
+- `packages/server/src/index.ts` — entry: Hono routes (`/api/*`, `/health`), Bun WS at `/ws`, message routing, lobby status broadcast, HTTP rate limiting, country detection
+
+### Auth & persistence
+
+- `packages/server/src/auth/jwt.ts` — HS256 JWT sign/verify (30-day TTL), cookie/header/query token extraction
+- `packages/server/src/auth/oauth.ts` — `authRoutes`: Google/GitHub OAuth (popup + postMessage), Telegram initData validation, Yandex/GamePush platform auth (origin check + per-IP rate limit), `/me`, `/logout`
+- `packages/server/src/db/schema.ts` — Drizzle tables: `users`, `matches`, `user_stats`, `replays`
+- `packages/server/src/db/index.ts` — bun:sqlite + Drizzle setup (WAL mode), `DB_PATH`
+- `packages/server/src/db/migrate.ts` — runs migrations from `packages/server/drizzle/`
+- `packages/server/src/db/matchStore.ts` — match/replay persistence, player & watcher stats, leaderboards (`Paginated<T>`)
+
+## Client modules
+
+### Visual systems (`lib/`)
+
+- `packages/client/src/lib/constants.ts` — shared grid/world constants (CELLS, SIZE, HALF, HEIGHT_SCALE, etc.)
 - `packages/client/src/lib/noise.ts` — pure math: clamp, hash, noise2d, fbm, sstep, mix
-- `packages/client/src/lib/terrain.ts` — terrain state, height cache, mesh rebuild, paintColors, flood BFS, stepAnimation; exports `terrainState`
-- `packages/client/src/lib/water.ts` — water body rendering and animation
-- `packages/client/src/lib/wind.ts` — wind streamlines and dust particles
-- `packages/client/src/lib/rain.ts` — rain drops and splash rings
-- `packages/client/src/lib/player.ts` — two players (A + B) as flame meshes, 8-dir movement highlights, wind slide animation
-- `packages/client/src/lib/preview.ts` — action preview: displacement-line grid (raise/lower), gradient ribbon (move)
-- `packages/client/src/lib/compass.ts` — 3D compass system
-- `packages/client/src/lib/interaction.ts` — raycasting, cell click/hover handling
+- `packages/client/src/lib/terrain.ts` — terrain state singleton (`terrainState`), height cache, mesh rebuild (top/bottom/skirt), paintColors, flood BFS, stepAnimation
+- `packages/client/src/lib/water.ts` — water body rendering and animation (both surfaces)
+- `packages/client/src/lib/wind.ts` — wind streamlines and dust particles, `setDirection()`
+- `packages/client/src/lib/rain.ts` — rain drops and splash rings (top + bottom)
+- `packages/client/src/lib/player.ts` — two players (A + B) as GLB characters, 8-dir movement highlights, wind slide animation, surface flip for bottom side
+- `packages/client/src/lib/preview.ts` — action preview: ribbon shaders (raise/lower), gradient arc (move)
+- `packages/client/src/lib/compass.ts` — static 3D compass rose
+- `packages/client/src/lib/interaction.ts` — raycasting on both surfaces, cell click/hover, touch handling
+- `packages/client/src/lib/nameplate.ts` — billboard name + flag sprites above players
+- `packages/client/src/lib/models.ts` — GLB preload/cache for wheat/rice/corn characters
+- `packages/client/src/lib/celebrate.ts` — DOM canvas particle overlay (watcher score fly-to-HUD, fireworks)
+- `packages/client/src/lib/lobbyDemo.ts` — cinematic lobby background demo (sculpt/flip/wind/flood phases)
+- `packages/client/src/lib/replayPlayer.ts` — replay fetch (`/api/replays`, `/api/replay/:id`) + frame-stepping player
+- `packages/client/src/lib/audio.ts` — Howler audio system: ambient/music/sfx layers, localStorage persistence
+- `packages/client/src/lib/i18n.ts` — minimal i18n (en/ru), `t()`, `setLanguage()`, reactive `TAGLINES`
+- `packages/client/src/lib/config.ts` — `API_BASE` / `WS_URL` from `VITE_API_URL` / dev mode
 
-## Client: composables
+### Platform adapters (`lib/platform/`)
 
-- `packages/client/src/composables/useGameSocket.ts` — typed WebSocket connection, action submission
-- `packages/client/src/composables/useGameState.ts` — reactive game state store (phase, tick, players, board)
+- `types.ts` — `PlatformAdapter` interface, `PlatformType`
+- `detect.ts` — build-time (`VITE_PLATFORM`) + runtime (Telegram WebApp) detection
+- `index.ts` — `initPlatform()` factory (dynamic import) + `usePlatform()` singleton
+- `web.ts`, `telegram.ts`, `yandex.ts`, `gamepush.ts` — per-platform auth, ads, pause/resume, language
 
-## Client: UI components
+### Composables
 
-- `packages/client/src/components/LobbyOverlay.vue` — character select + Play button
-- `packages/client/src/components/GameHud.vue` — tick countdown, round info, phase display
-- `packages/client/src/components/GameOverOverlay.vue` — win/lose/draw + Play Again
-- `packages/client/src/components/ForecastPanel.vue` — wind direction + rain probability
-- `packages/client/src/App.vue` — thin orchestrator: scene/camera/renderer setup, animation loop, event handlers
+- `packages/client/src/composables/useGameSocket.ts` — typed WebSocket connection, reconnect with backoff (max 20 attempts), action submission
+- `packages/client/src/composables/useGameState.ts` — reactive game state store (client phase, tick, players, board, watcher/architect state)
+- `packages/client/src/composables/useAuth.ts` — platform-delegated auth: `login()` / `logout()` / `fetchMe()`, reactive user
+
+### UI components
+
+- `LobbyOverlay.vue` — character select, Play/Watch/Architect buttons, auth, online count, leaderboard, recent replays
+- `GameHud.vue` — tick countdown, round info, phase display, flip-view button
+- `GameOverOverlay.vue` — win/lose/draw + death causes + Play Again / rewarded ad
+- `ForecastPanel.vue` — wind vane + rain barometer (SVG compass), broken-instrument states
+- `WatcherHud.vue` — watcher score, predict winner/move, break instrument, prediction history
+- `ArchitectHud.vue` — weather type/direction picker, decision countdown, bonus placement
+- `ReplayOverlay.vue` — replay playback controls
+- `StoriesOverlay.vue` — tutorial slides (stories-style intro)
+- `LeaderboardPanel.vue` — players/watchers tabs, paginated REST leaderboards
+- `UserAvatar.vue` — avatar with colored-initial fallback (CSP-restricted platforms)
+- `VolumeControl.vue` — mute + music/sfx sliders (injected audio system)
+- `CharacterPreview.vue` — mini WebGL canvas with spinning character model
+- `App.vue` — orchestrator: scene/camera/renderer setup, animation loop, mode switching (lobby/play/watch/architect/replay), event handlers
 
 ## Rules
 
@@ -57,8 +103,9 @@ alwaysApply: true
 2. **Game logic lives in `packages/server/src/engine/`.** The client NEVER computes game rules — it only renders state received from server.
 3. **GameEngine is pure logic.** No I/O, no Three.js, no side effects. Fully testable.
 4. **Each visual system lives in its own `packages/client/src/lib/*.ts` module.** Do not add system logic directly to App.vue.
-5. **Visual modules export factory functions.** Pattern: `export function create*System(scene: THREE.Scene, terrain: TerrainState) { ... }`.
+5. **Visual modules export factory functions.** Pattern: `export function create*System(scene: THREE.Scene, terrain: TerrainState) { ... }`. (Exceptions: `terrain.ts` is a module singleton; `models.ts`/`celebrate.ts` are utility modules.)
 6. **Factory return type is `{ update(dt: number): void; dispose(): void }` at minimum.**
 7. **App.vue is orchestration only** — scene setup, animation loop, event handlers, disposal.
 8. **Terrain is the shared visual dependency.** Other client systems receive a `TerrainState` object.
-9. **Tests live next to the code they test** in `__tests__/` directories. Use bun:test.
+9. **Platform-specific behavior goes through `lib/platform/` adapters.** Never call platform SDKs (Telegram/Yandex/GamePush) directly from components.
+10. **Tests live next to the code they test** in `__tests__/` directories. Use bun:test. Engine/unit tests run standalone; integration tests (`integration`, `watcher`, `architect`, `reconnect` suites) require a locally running server: `RECONNECT_GRACE_MS=2000 BOT_MATCH_DELAY_MS=600000 bun src/index.ts`.

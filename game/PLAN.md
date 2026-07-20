@@ -148,6 +148,24 @@
 
 ---
 
+## Phase 8 — Multi-Platform & Growth ✅ DONE
+
+> Цель: дистрибуция на нескольких платформах из одной кодовой базы
+
+- ✅ **Platform Adapter layer** — `lib/platform/`: единый интерфейс `PlatformAdapter` (auth, ads, pause/resume, language), адаптеры Web / Telegram / Yandex / GamePush, детекция через `VITE_PLATFORM` + runtime
+- ✅ **Telegram Mini App** — условная загрузка TG SDK в `index.html`, auth через `initData` (HMAC-проверка на сервере, `TG_BOT_TOKEN`), JWT в памяти + `?token=` для WS
+- ✅ **Yandex Games** — `deploy-yandex.sh` → `wheee-yandex.zip`; YaGames SDK, LoadingAPI/GameplayAPI, fullscreen + rewarded ads (15s timeout), auth `getPlayer({signed:true})` → `/api/auth/yandex` (опц. проверка подписи `YANDEX_SECRET_KEY`)
+- ✅ **GamePush (Pikabu Games)** — `deploy-gamepush.sh` → `wheee-gamepush.zip`; SDK через `onGPInit` callback, preloader/fullscreen/rewarded ads, auth `gp.player` → `/api/auth/gamepush`
+- ✅ **Бот-матчмейкинг** — `engine/bot.ts` + авто-матч с ботом через `BOT_MATCH_DELAY_MS` (30 с) ожидания в очереди; человекоподобные задержки 1–4 с
+- ✅ **i18n** — `lib/i18n.ts` (en/ru), язык из платформы, реактивные строки
+- ✅ **Russian mirror** — `ru.wheee.io` (Timeweb VPS, reverse proxy в Варшаву, обход ТСПУ), multi-domain cookie `.wheee.io`
+- ✅ **SEO** — robots.txt, sitemap.xml, hreflang, OG/Twitter meta, Yandex Webmaster verification
+- ✅ **Onboarding & polish** — StoriesOverlay (туториал-слайды), lobby demo-синематик, nameplates с флагами, UserAvatar fallback для CSP-платформ, HTTP rate limiting, платформенные origin-проверки auth
+
+Подробности деплоя и платформ — в `INFRASTRUCTURE.md`.
+
+---
+
 ## Execution Order & Dependencies
 
 ```
@@ -157,22 +175,18 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
                                      Phase 5 ◄── Phase 6
                                         │
                                         ▼
-                                     Phase 7
+                                     Phase 7 ──► Phase 8
 ```
 
 * **Phase 0 + 1** можно делать параллельно (monorepo setup + engine в отдельном пакете)
 * **Phase 4, 5, 6** можно частично параллелить после Phase 3
-* **Phase 7** — финальная полировка
+* **Phase 7** — полировка, **Phase 8** — платформы и дистрибуция
 
 ---
 
 ## Status: All Phases Complete
 
-Все фазы (0–7 + 2b) завершены:
-- ✅ **Character visuals** — GLB-модели, матовые материалы, 3D-превью в лобби
-- ✅ **Reconnect handling** — восстановление при потере WS
-- ✅ **Rate limiting & anti-cheat** — token bucket, message size, invalid flood
-- ✅ **Mobile-friendly** — touch events, responsive UI, viewport clamping, flood BFS bugfix
-- ✅ **Sound design** — Howler.js audio system, 25 placeholder sounds, VolumeControl UI, all trigger points wired
-- ✅ **Replay system** — snapshot-based replay, HTTP API, step/play/pause, cataclysm animation
-- ✅ **Deploy** — Docker compose (Bun + nginx), dual frontend (Cloudflare + direct), api.wheee.io direct to Warsaw
+Все фазы (0–8 + 2b) завершены. Игра в проде: `wheee.io`, `ru.wheee.io`, Telegram Mini App, Yandex Games, GamePush.
+
+Тесты: `bun test` в `packages/server` — 104 теста в 13 файлах (unit: engine/bot/auth/db/ratelimit; integration-сьюты `integration`/`watcher`/`architect`/`reconnect` требуют запущенного локально сервера:
+`RECONNECT_GRACE_MS=2000 BOT_MATCH_DELAY_MS=600000 bun src/index.ts`).

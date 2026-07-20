@@ -223,7 +223,7 @@ describe('matchStore leaderboard functions', () => {
     updatePlayerStats(uA, uB, 'A')
     updatePlayerStats(uA, uB, 'draw')
 
-    const rows = getPlayerLeaderboard()
+    const rows = getPlayerLeaderboard().items
     const alice = rows.find(r => r.userId === uA)!
     const bob = rows.find(r => r.userId === uB)!
 
@@ -241,21 +241,21 @@ describe('matchStore leaderboard functions', () => {
     updateWatcherStats([{ userId: uW, score: 15 }])
     updateWatcherStats([{ userId: uW, score: 10 }])
 
-    const rows = getWatcherLeaderboard()
+    const rows = getWatcherLeaderboard().items
     const w = rows.find(r => r.userId === uW)!
     expect(w.watcherScore).toBe(25)
     expect(w.name).toBe('Watcher')
   })
 
   test('getPlayerLeaderboard — sorted by wins descending', () => {
-    const rows = getPlayerLeaderboard()
+    const rows = getPlayerLeaderboard().items
     expect(rows.length).toBeGreaterThanOrEqual(2)
     expect(rows[0].userId).toBe(uA)
   })
 
   test('updatePlayerStats — skips null userIds', () => {
     updatePlayerStats(null, null, 'A')
-    const rows = getPlayerLeaderboard()
+    const rows = getPlayerLeaderboard().items
     expect(rows.find(r => r.userId === 'null')).toBeUndefined()
   })
 })
