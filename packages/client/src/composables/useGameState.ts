@@ -34,6 +34,8 @@ export function useGameState() {
   const forecastDeadline = ref(0)
   const currentTick = ref(0)
   const actionSubmitted = ref(false)
+  /** True while playing the tutorial (practice) match vs bot. */
+  const isPractice = ref(false)
 
   const playerInfo = ref<Record<PlayerId, PlayerInfo> | null>(null)
 
@@ -112,6 +114,7 @@ export function useGameState() {
         playerInfo.value = msg.playerInfo
         phase.value = 'forecast'
         isWatcher.value = false
+        isPractice.value = msg.practice === true
         break
 
       case 'round:start':
@@ -251,6 +254,7 @@ export function useGameState() {
     forecastDeadline.value = 0
     currentTick.value = 0
     actionSubmitted.value = false
+    isPractice.value = false
     isWatcher.value = false
     watcherScore.value = 0
     watcherPredictions.value = []
@@ -276,6 +280,7 @@ export function useGameState() {
     forecastDeadline,
     currentTick,
     actionSubmitted,
+    isPractice,
     myPlayer,
     opponentPlayer,
     forecast,

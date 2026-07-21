@@ -55,6 +55,10 @@ const ARCHITECT_DECISION_MS = 8_000
 const WEATHER_DISPLAY_MS = 4_000
 const CLEANUP_DELAY_MS = 10_000
 
+/* Practice (tutorial) mode: longer forecast to read hints, untimed ticks, dumber bot */
+const PRACTICE_FORECAST_MS = 6_000
+const PRACTICE_BOT_SKIP_CHANCE = 0.3
+
 const POINTS_WINNER = 10
 const POINTS_MOVE = 5
 
@@ -80,8 +84,14 @@ export type RoomCallbacks = {
   onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
 }
 
+export type RoomOpts = {
+  /** Tutorial match vs bot: ticks wait for the player's action, no replays/stats, no spectators. */
+  practice?: boolean
+}
+
 export class Room {
   readonly id: string
+  readonly practice: boolean
   private engine: GameEngine
   private players: Partial<Record<PlayerId, PlayerSlot>> = {}
   private watchers = new Map<string, WatcherSlot>()
@@ -115,8 +125,9 @@ export class Room {
     B: { displayName: '', flag: '' },
   }
 
-  constructor(id: string, callbacks: RoomCallbacks) {
+  constructor(id: string, callbacks: RoomCallbacks, opts?: RoomOpts) {
     this.id = id
+    this.practice = opts?.practice ?? false
     this.engine = new GameEngine()
     this.callbacks = callbacks
   }
@@ -209,9 +220,20 @@ export class Room {
     if (state.phase !== 'ticking') return
     if (slot.action !== null) return
 
-    slot.action = pid === 'B' && (action.kind === 'raise' || action.kind === 'lower')
-      ? { ...action, kind: action.kind === 'raise' ? 'lower' : 'raise' }
-      : action
+    slot.action = invertForB(pid, action)
+
+    if (this.practice && !slot.isBot) {
+      // Untimed tick: the human's action drives the game — pick the bot's
+      // reply now (occasionally skipping, to go easy on the newcomer) and resolve.
+      const botPid: PlayerId = pid === 'A' ? 'B' : 'A'
+      const botSlot = this.players[botPid]
+      if (botSlot?.isBot && botSlot.action === null && Math.random() >= PRACTICE_BOT_SKIP_CHANCE) {
+        const botAction = chooseBotAction(this.engine.getState(), botPid)
+        if (botAction) botSlot.action = invertForB(botPid, botAction)
+      }
+      this.resolveTick()
+      return
+    }
 
     if (this.players.A && this.players.B
       && this.players.A.action !== null && this.players.B.action !== null) {
@@ -236,6 +258,12 @@ export class Room {
   handleDisconnect(pid: PlayerId): void {
     const slot = this.players[pid]
     if (!slot || this.ended) return
+
+    if (this.practice) {
+      // Tutorial has no reconnect: the player left, tear the room down.
+      this.dispose()
+      return
+    }
 
     slot.ws = null
     slot.disconnectedAt = Date.now()
@@ -511,6 +539,7 @@ export class Room {
           reconnectToken: slot.reconnectToken,
           roomId: this.id,
           playerInfo: this.playerInfoCache,
+          ...(this.practice ? { practice: true } : {}),
         })
       }
     }
@@ -522,7 +551,9 @@ export class Room {
     this.architectDecisionReceived = false
     this.architectBonusPlaced = false
     const state = this.engine.startRound()
-    const waitMs = this.architect ? ARCHITECT_DECISION_MS : FORECAST_DISPLAY_MS
+    const waitMs = this.architect ? ARCHITECT_DECISION_MS
+      : this.practice ? PRACTICE_FORECAST_MS
+      : FORECAST_DISPLAY_MS
     const forecastDeadline = Date.now() + waitMs
     this.sendEach((pid) => ({ type: 'round:start', state: stateForPlayer(state, pid), forecastDeadline }))
     this.broadcastWatchers({ type: 'round:start', state, forecastDeadline })
@@ -535,7 +566,7 @@ export class Room {
         this.proceedToTicking()
       })
     } else {
-      this.setTickTimer(FORECAST_DISPLAY_MS, () => this.proceedToTicking())
+      this.setTickTimer(waitMs, () => this.proceedToTicking())
     }
   }
 
@@ -562,6 +593,13 @@ export class Room {
     }
 
     const state = this.engine.getState()
+
+    if (this.practice) {
+      // Untimed tick: no deadline, no bot scheduling — the game waits for the player.
+      this.broadcast({ type: 'tick:start', tick: state.tick, deadline: 0 })
+      return
+    }
+
     const deadline = Date.now() + TICK_DURATION_MS
 
     const msg: ServerMessage = { type: 'tick:start', tick: state.tick, deadline }
@@ -624,6 +662,8 @@ export class Room {
   }
 
   private saveReplay(winner: PlayerId | 'draw'): void {
+    if (this.practice) return // tutorial matches don't count: no replay, no stats
+
     const charA = this.players.A?.character ?? this.engine.getState().players.A.character
     const charB = this.players.B?.character ?? this.engine.getState().players.B.character
     const replay: ReplayData = {
@@ -912,6 +952,13 @@ export class Room {
       if (slot?.ws) send(slot.ws, msgFn(pid))
     }
   }
+}
+
+/** Player B's raise/lower are expressed in B's inverted frame — convert to canonical. */
+function invertForB(pid: PlayerId, action: Action): Action {
+  return pid === 'B' && (action.kind === 'raise' || action.kind === 'lower')
+    ? { ...action, kind: action.kind === 'raise' ? 'lower' : 'raise' }
+    : action
 }
 
 function actionsMatch(a: Action, b: Action): boolean {

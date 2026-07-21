@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { CHARACTERS } from '@wheee/shared'
 import { RoomManager } from './RoomManager.js'
 import { Matchmaking } from './matchmaking.js'
 import { ReplayStore } from './ReplayStore.js'
@@ -243,6 +244,19 @@ const server = Bun.serve<WsData>({
         case 'queue:leave': {
           matchmaking.dequeue(ws)
           broadcastLobbyStatus()
+          break
+        }
+
+        case 'practice:start': {
+          if (ws.data.roomId) {
+            send(ws, { type: 'error', message: 'Already in a game' })
+            return
+          }
+          matchmaking.dequeue(ws)
+          const botCharacter = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
+          const room = roomManager.createRoom({ practice: true })
+          room.join(ws, msg.character)
+          room.joinBot(botCharacter)
           break
         }
 

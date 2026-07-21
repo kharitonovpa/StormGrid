@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 import type { PlayerId, PlayerInfo } from '@wheee/shared'
 import type { TerrainState } from './terrain'
-import { HALF, CELL_SIZE, THICKNESS } from './constants'
 
 const CANVAS_SCALE = 3
 const CANVAS_W = 512
@@ -133,9 +132,10 @@ type PlayerRef = {
   surface: 'top' | 'bottom'
 }
 
+// _terrain is unused here but kept for the standard visual-system factory signature (architecture rule 8)
 export function createNameplateSystem(
   scene: THREE.Scene,
-  terrain: TerrainState,
+  _terrain: TerrainState,
 ) {
   const plateA = createPlate(scene)
   const plateB = createPlate(scene)

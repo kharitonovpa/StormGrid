@@ -1,6 +1,6 @@
 import type { PlayerId } from '@wheee/shared'
 import { Room } from './Room.js'
-import type { MatchEndData } from './Room.js'
+import type { MatchEndData, RoomOpts } from './Room.js'
 import type { ReplayStore } from './ReplayStore.js'
 import type { ReplayData } from '@wheee/shared'
 
@@ -26,7 +26,7 @@ export class RoomManager {
     this.onMatchEnd = opts?.onMatchEnd
   }
 
-  createRoom(): Room {
+  createRoom(opts?: RoomOpts): Room {
     const id = `room-${nextId++}`
     const room = new Room(id, {
       onDispose: (rid) => this.removeRoom(rid),
@@ -36,7 +36,7 @@ export class RoomManager {
       gracePeriodMs: this.gracePeriodMs,
       replayStore: this.replayStore,
       onMatchEnd: this.onMatchEnd,
-    })
+    }, opts)
     this.rooms.set(id, room)
     return room
   }
@@ -73,6 +73,7 @@ export class RoomManager {
 
   getActiveRoomId(excludeId?: string): string | null {
     for (const [id, room] of this.rooms) {
+      if (room.practice) continue // tutorials are private — no watchers/architects
       if (id !== excludeId && room.isActive) return id
     }
     return null

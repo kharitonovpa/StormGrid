@@ -90,6 +90,10 @@ export function useGameSocket() {
     return send({ type: 'queue:join', character })
   }
 
+  function startPractice(character: CharacterType = 'wheat') {
+    return send({ type: 'practice:start', character })
+  }
+
   function leaveQueue() {
     send({ type: 'queue:leave' })
   }
@@ -178,6 +182,7 @@ export function useGameSocket() {
     setReconnectToken,
     joinQueue,
     leaveQueue,
+    startPractice,
     submitAction,
     joinWatch,
     leaveWatch,

@@ -29,7 +29,7 @@ alwaysApply: true
 ### Network / rooms
 
 - `packages/server/src/protocol.ts` — `parseClientMessage()` validation, `send()`, `WsData` connection state
-- `packages/server/src/Room.ts` — game room: GameEngine + timers (tick/forecast/architect/bot/disconnect) + player slots + per-player state broadcast + action inversion for B + watcher predictions + replay frame recording + reconnect with pause/resume
+- `packages/server/src/Room.ts` — game room: GameEngine + timers (tick/forecast/architect/bot/disconnect) + player slots + per-player state broadcast + action inversion for B + watcher predictions + replay frame recording + reconnect with pause/resume + practice (tutorial) mode: untimed ticks vs bot, no replays/stats/spectators
 - `packages/server/src/RoomManager.ts` — room registry, reconnect-token map, active-room lookup
 - `packages/server/src/matchmaking.ts` — in-memory FIFO queue, auto-pair, bot match after `BOT_MATCH_DELAY_MS` (default 30 s)
 - `packages/server/src/ratelimit.ts` — `ConnectionLimiter`: token bucket (25 burst / 15 per sec), 1 KB message cap, invalid-message streak disconnect
@@ -90,7 +90,7 @@ alwaysApply: true
 - `WatcherHud.vue` — watcher score, predict winner/move, break instrument, prediction history
 - `ArchitectHud.vue` — weather type/direction picker, decision countdown, bonus placement
 - `ReplayOverlay.vue` — replay playback controls
-- `StoriesOverlay.vue` — tutorial slides (stories-style intro)
+- `TutorialHud.vue` — contextual step hints during the tutorial (practice) match vs bot
 - `LeaderboardPanel.vue` — players/watchers tabs, paginated REST leaderboards
 - `UserAvatar.vue` — avatar with colored-initial fallback (CSP-restricted platforms)
 - `VolumeControl.vue` — mute + music/sfx sliders (injected audio system)

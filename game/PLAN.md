@@ -160,7 +160,7 @@
 - ✅ **i18n** — `lib/i18n.ts` (en/ru), язык из платформы, реактивные строки
 - ✅ **Russian mirror** — `ru.wheee.io` (Timeweb VPS, reverse proxy в Варшаву, обход ТСПУ), multi-domain cookie `.wheee.io`
 - ✅ **SEO** — robots.txt, sitemap.xml, hreflang, OG/Twitter meta, Yandex Webmaster verification
-- ✅ **Onboarding & polish** — StoriesOverlay (туториал-слайды), lobby demo-синематик, nameplates с флагами, UserAvatar fallback для CSP-платформ, HTTP rate limiting, платформенные origin-проверки auth
+- ✅ **Onboarding & polish** — обучающий practice-матч с ботом (untimed-тики + TutorialHud, заменил StoriesOverlay-слайды), lobby demo-синематик, nameplates с флагами, UserAvatar fallback для CSP-платформ, HTTP rate limiting, платформенные origin-проверки auth
 
 Подробности деплоя и платформ — в `INFRASTRUCTURE.md`.
 

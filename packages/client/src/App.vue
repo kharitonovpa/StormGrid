@@ -32,7 +32,7 @@ import WatcherHud from './components/WatcherHud.vue'
 import ArchitectHud from './components/ArchitectHud.vue'
 import ReplayOverlay from './components/ReplayOverlay.vue'
 import VolumeControl from './components/VolumeControl.vue'
-import StoriesOverlay from './components/StoriesOverlay.vue'
+import TutorialHud from './components/TutorialHud.vue'
 import { t } from './lib/i18n'
 
 const container = ref<HTMLElement | null>(null)
@@ -131,6 +131,7 @@ unsubMessage1 = socket.onMessage((msg) => {
   if (msg.type === 'game:end') {
     socket.setReconnectToken(null)
     platform.gameplayStop()
+    if (game.isPractice.value) storageSet(TUTORIAL_STORAGE_KEY, '1')
     if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
       return
@@ -166,11 +167,9 @@ const lobbyCharacterLocked = computed(
 )
 const lobbyCommittedCharacter = computed(() => game.selectedCharacter.value)
 const showHud = computed(() =>
-  !showStories.value && (
-    game.phase.value === 'forecast' ||
-    game.phase.value === 'ticking' ||
-    game.phase.value === 'weather'
-  ),
+  game.phase.value === 'forecast' ||
+  game.phase.value === 'ticking' ||
+  game.phase.value === 'weather',
 )
 const showGameOver = computed(() => game.phase.value === 'finished')
 const showWatcher = computed(() => game.isWatcher.value && game.gameState.value !== null)
@@ -215,7 +214,11 @@ function onPlay(character: CharacterType) {
   audio.play('queue-enter')
   stopLobbyDemo()
   ensureConnected(() => {
-    if (socket.joinQueue(character)) game.queueJoinPending.value = true
+    // First Play ever → tutorial match vs bot instead of the real queue
+    const ok = hasDoneTutorial()
+      ? socket.joinQueue(character)
+      : socket.startPractice(character)
+    if (ok) game.queueJoinPending.value = true
   })
 }
 
@@ -494,18 +497,13 @@ function updateDemoOrbit(dt: number) {
   }
 }
 
-/* ── Stories onboarding (every game until user taps Skip) ── */
-const STORIES_STORAGE_KEY = 'wheee:stories_skipped'
-const showStories = ref(false)
+/* ── Tutorial (practice match vs bot on first Play) ── */
+const TUTORIAL_STORAGE_KEY = 'wheee:tutorial_done'
+/** Legacy key from the old slide-based onboarding — don't force veterans through the tutorial. */
+const LEGACY_STORIES_KEY = 'wheee:stories_skipped'
 
-function onStoriesDone() {
-  showStories.value = false
-  startIntroAnimation()
-}
-
-function onStoriesSkip() {
-  showStories.value = false
-  storageSet(STORIES_STORAGE_KEY, '1')
+function hasDoneTutorial(): boolean {
+  return storageGet(TUTORIAL_STORAGE_KEY) !== null || storageGet(LEGACY_STORIES_KEY) !== null
 }
 
 /* ── Intro fly-around (first game only) ── */
@@ -749,11 +747,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       }
       switchToOrbit()
       startAnimating()
-      if (!storageGet(STORIES_STORAGE_KEY)) {
-        showStories.value = true
-      } else {
-        startIntroAnimation()
-      }
+      startIntroAnimation()
       break
     }
     case 'reconnect:ok': {
@@ -1555,7 +1549,13 @@ onUnmounted(() => {
     @exit="exitReplay"
   />
 
-  <StoriesOverlay v-if="showStories" @done="onStoriesDone" @skip="onStoriesSkip" />
+  <TutorialHud
+    v-if="game.isPractice.value && showHud"
+    :phase="(game.phase.value as 'forecast' | 'ticking' | 'weather')"
+    :tick="game.currentTick.value"
+    :round="game.gameState.value?.round ?? 1"
+    :action-submitted="game.actionSubmitted.value"
+  />
 
   <VolumeControl />
 

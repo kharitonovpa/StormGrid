@@ -4,6 +4,7 @@ import type { Action, BonusType, CharacterType, DeathCause, GameState, PlayerId,
 
 export type QueueJoinMsg = { type: 'queue:join'; character: CharacterType }
 export type QueueLeaveMsg = { type: 'queue:leave' }
+export type PracticeStartMsg = { type: 'practice:start'; character: CharacterType }
 export type ActionSubmitMsg = { type: 'action:submit'; action: Action }
 
 export type WatchJoinMsg = { type: 'watch:join' }
@@ -22,6 +23,7 @@ export type ReconnectMsg = { type: 'reconnect'; token: string }
 export type ClientMessage =
   | QueueJoinMsg
   | QueueLeaveMsg
+  | PracticeStartMsg
   | ActionSubmitMsg
   | WatchJoinMsg
   | WatchLeaveMsg
@@ -37,8 +39,9 @@ export type ClientMessage =
 /* ── Server → Client ── */
 
 export type QueueWaitingMsg = { type: 'queue:waiting'; maxWaitMs: number }
-export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string; roomId: string; playerInfo: Record<PlayerId, PlayerInfo> }
+export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string; roomId: string; playerInfo: Record<PlayerId, PlayerInfo>; practice?: boolean }
 export type RoundStartMsg = { type: 'round:start'; state: GameState; forecastDeadline: number }
+/** `deadline: 0` means the tick is untimed (practice mode — waits for the player's action). */
 export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number }
 export type TickResolveMsg = { type: 'tick:resolve'; state: GameState }
 export type WeatherResultMsg = { type: 'weather:result'; result: WeatherResult }

@@ -7,6 +7,7 @@ export type {
   ServerMessage,
   QueueJoinMsg,
   QueueLeaveMsg,
+  PracticeStartMsg,
   ActionSubmitMsg,
   WatchJoinMsg,
   WatchLeaveMsg,
@@ -73,6 +74,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
     switch (msg.type) {
       case 'queue:join':
+      case 'practice:start':
         if (!VALID_CHARACTERS.has(msg.character)) return null
         return msg
       case 'queue:leave':

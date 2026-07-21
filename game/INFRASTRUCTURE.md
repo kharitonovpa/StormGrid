@@ -355,7 +355,7 @@ Every Vue component uses `t()` for user-facing text:
 - `ArchitectHud.vue` — weather controls
 - `LeaderboardPanel.vue` — tab labels, empty states
 - `VolumeControl.vue` — tooltips
-- `StoriesOverlay.vue` — tutorial slides
+- `TutorialHud.vue` — tutorial step hints (practice match)
 - `ReplayOverlay.vue` — replay controls
 - `App.vue` — reconnect banners, action menu (Move/Raise/Lower)
 

@@ -37,6 +37,9 @@ onUnmounted(() => {
   if (chooseFlashTimer) clearTimeout(chooseFlashTimer)
 })
 
+/** Practice mode sends deadline 0 — the tick waits for the player, no countdown. */
+const untimed = computed(() => props.phase === 'ticking' && props.tickDeadline === 0)
+
 const remaining = computed(() => {
   if (props.phase !== 'ticking' || !props.tickDeadline) return 0
   return Math.max(0, (props.tickDeadline - now.value) / 1000)
@@ -46,6 +49,7 @@ const remainingInt = computed(() => Math.ceil(remaining.value))
 
 const progress = computed(() => {
   if (props.phase !== 'ticking') return 1
+  if (untimed.value) return 1
   return remaining.value / TICK_SECONDS
 })
 
@@ -120,7 +124,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
               stroke-linecap="round"
             />
           </svg>
-          <span class="ring-num">{{ remainingInt }}</span>
+          <span class="ring-num" :class="{ 'ring-num-untimed': untimed }">{{ untimed ? '∞' : remainingInt }}</span>
         </div>
 
         <!-- Tick dots + round -->
@@ -271,6 +275,11 @@ watch(() => props.phase, (newPhase, oldPhase) => {
 
 .timer-ring.done .ring-num {
   color: #4ade80;
+}
+
+.ring-num-untimed {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 @keyframes pulse-num {
