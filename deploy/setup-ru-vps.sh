@@ -3,7 +3,7 @@
 # Usage: bash setup-ru-vps.sh <POLISH_SERVER_IP>
 set -euo pipefail
 
-POLISH_IP="${1:-64.176.71.39}"
+POLISH_IP="${1:-64.176.74.237}"
 
 echo "==> [1/5] Installing nginx + certbot..."
 apt update && apt upgrade -y

@@ -9,7 +9,7 @@ if [[ -f "$SCRIPT_DIR/.deploy.env" ]]; then
   source "$SCRIPT_DIR/.deploy.env"
 fi
 
-export PL_VPS_HOST="${PL_VPS_HOST:-64.176.71.39}"
+export PL_VPS_HOST="${PL_VPS_HOST:-64.176.74.237}"
 export PL_VPS_USER="${PL_VPS_USER:-root}"
 export RU_VPS_HOST="${RU_VPS_HOST:-185.39.206.229}"
 export RU_VPS_USER="${RU_VPS_USER:-root}"

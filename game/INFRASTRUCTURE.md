@@ -18,7 +18,7 @@ platform adapter layer.
             │                         │                         │
     ┌───────▼────────┐    ┌───────────▼──────────┐    ┌────────▼─────────┐
     │ International  │    │   Russian VPS        │    │  Polish Server   │
-    │ users          │    │   185.39.206.229     │    │  64.176.71.39    │
+    │ users          │    │   185.39.206.229     │    │  64.176.74.237    │
     │                │    │   Timeweb, Moscow    │    │  Vultr, Warsaw   │
     │ wheee.io       │    │   ru.wheee.io        │    │  api.wheee.io    │
     │ (CF Pages)     │    │   nginx + static     │    │  Docker: app +   │
@@ -35,7 +35,7 @@ to Poland over datacenter-to-datacenter links that are not filtered by ТСПУ.
 
 ## Servers
 
-### Polish Server (64.176.71.39)
+### Polish Server (64.176.74.237)
 
 **Provider**: Vultr, Warsaw
 **Role**: Game server + API + WebSocket + DB
@@ -50,7 +50,7 @@ Runs three Docker containers via `deploy/docker-compose.yml`:
 | `certbot` | certbot/certbot | SSL certificate renewal | — |
 
 **DNS records** (Cloudflare):
-- `api.wheee.io` → `64.176.71.39` (DNS only, gray cloud)
+- `api.wheee.io` → `64.176.74.237` (DNS only, gray cloud)
 - `wheee.io` → `wheee-5ou.pages.dev` (CNAME, proxied, orange cloud)
 
 **Volumes**:
@@ -142,7 +142,7 @@ checks before starting:
 bash deploy/deploy.sh
 ```
 
-This SSHs into `root@64.176.71.39` and runs `git pull --ff-only` + `docker compose
+This SSHs into `root@64.176.74.237` and runs `git pull --ff-only` + `docker compose
 up -d --build`, which:
 1. Builds the server (`packages/server`) with Bun
 2. Builds the client (`packages/client`) with Vite (`VITE_API_URL=https://api.wheee.io`)
@@ -152,7 +152,7 @@ up -d --build`, which:
 VPS host/user can be overridden via `deploy/.deploy.env` or env vars:
 
 ```bash
-PL_VPS_HOST=64.176.71.39 PL_VPS_USER=root bash deploy/deploy.sh
+PL_VPS_HOST=64.176.74.237 PL_VPS_USER=root bash deploy/deploy.sh
 ```
 
 ### Russian VPS (reverse proxy)
@@ -550,15 +550,15 @@ Two server blocks:
 1. **HTTP redirect** (port 80) → HTTPS
 2. **`ru.wheee.io`** (port 443):
    - Static files from `/var/www/wheee` with SPA fallback
-   - `/api/*` → proxied to `https://64.176.71.39:443/api/` with `Host: api.wheee.io`
-   - `/ws` → proxied to `https://64.176.71.39:443/ws` with WebSocket upgrade headers
+   - `/api/*` → proxied to `https://64.176.74.237:443/api/` with `Host: api.wheee.io`
+   - `/ws` → proxied to `https://64.176.74.237:443/ws` with WebSocket upgrade headers
 
 The proxy uses HTTPS to the Polish server (port 443, not 3001 directly) because
 port 3001 is only exposed within the Docker network. Traffic flows:
 
 ```
 Russian user → ru.wheee.io (RU VPS :443)
-    → https://64.176.71.39:443 (Polish nginx, Host: api.wheee.io)
+    → https://64.176.74.237:443 (Polish nginx, Host: api.wheee.io)
         → http://app:3001 (game server inside Docker)
 ```
 
@@ -603,7 +603,7 @@ CORS for Yandex (`*.yandex.ru/com/net`) and GamePush (`*.gamepush.com`, `*.pikab
 Git-ignored file for local VPS connection settings:
 
 ```bash
-PL_VPS_HOST=64.176.71.39
+PL_VPS_HOST=64.176.74.237
 PL_VPS_USER=root
 RU_VPS_HOST=185.39.206.229
 RU_VPS_USER=root
@@ -716,7 +716,7 @@ curl -s 'https://api.wheee.io/api/leaderboard/players?limit=1'
 If the connection times out entirely (not a 502), check the Vultr billing status —
 an unpaid instance gets suspended. Then verify the containers:
 ```bash
-ssh root@64.176.71.39 "cd /opt/wheee/deploy && docker compose ps"
+ssh root@64.176.74.237 "cd /opt/wheee/deploy && docker compose ps"
 ```
 
 **Google/GitHub OAuth not working on ru.wheee.io**
@@ -731,7 +731,7 @@ ssh root@185.39.206.229 "certbot renew && systemctl reload nginx"
 
 **Need to force-rebuild Polish server (Docker cache issues)**
 ```bash
-ssh root@64.176.71.39 "cd /opt/wheee/deploy && docker compose build --no-cache && docker compose up -d"
+ssh root@64.176.74.237 "cd /opt/wheee/deploy && docker compose build --no-cache && docker compose up -d"
 ```
 
 **Yandex/GamePush build includes Google Fonts / hreflang / Telegram SDK**

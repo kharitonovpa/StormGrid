@@ -9,7 +9,7 @@ if [[ -f "$SCRIPT_DIR/.deploy.env" ]]; then
   source "$SCRIPT_DIR/.deploy.env"
 fi
 
-PL_VPS_HOST="${PL_VPS_HOST:-64.176.71.39}"
+PL_VPS_HOST="${PL_VPS_HOST:-64.176.74.237}"
 PL_VPS_USER="${PL_VPS_USER:-root}"
 PL_REMOTE="$PL_VPS_USER@$PL_VPS_HOST"
 PL_PROJECT_DIR="/opt/wheee"
