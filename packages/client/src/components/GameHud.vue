@@ -627,9 +627,25 @@ watch(() => props.phase, (newPhase, oldPhase) => {
 
 .flip-btn.flip-bounce {
   animation: flip-nudge 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
-  color: rgba(220, 225, 235, 0.85);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 0 12px rgba(165, 180, 252, 0.2);
+  color: #e8c547;
+  border-color: rgba(232, 197, 71, 0.55);
+  background: rgba(232, 197, 71, 0.12);
+  box-shadow: 0 0 16px rgba(232, 197, 71, 0.35);
+}
+
+.flip-btn.flip-bounce::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid rgba(232, 197, 71, 0.7);
+  animation: flip-ring 1.2s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes flip-ring {
+  0% { transform: scale(0.85); opacity: 0.9; }
+  100% { transform: scale(1.8); opacity: 0; }
 }
 
 @keyframes flip-nudge {

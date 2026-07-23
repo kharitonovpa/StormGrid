@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch, onUnmounted } from 'vue'
 import { t } from '../lib/i18n'
 
 const props = defineProps<{
@@ -9,6 +9,10 @@ const props = defineProps<{
   actionSubmitted: boolean
 }>()
 
+const emit = defineEmits<{
+  (e: 'hint', key: string | null): void
+}>()
+
 const hintKey = computed<string | null>(() => {
   // The engine bumps `round` right after a survived cataclysm, so during the
   // first storm the client may already see round 2 — hence `round <= 2` here.
@@ -16,8 +20,9 @@ const hintKey = computed<string | null>(() => {
 
   if (props.round === 1) {
     if (props.phase === 'forecast') return 'tutorial.forecast'
-    if (props.tick === 0) return props.actionSubmitted ? 'tutorial.submitted' : 'tutorial.raise'
-    if (props.tick === 1) return props.actionSubmitted ? 'tutorial.submitted' : 'tutorial.move'
+    if (props.actionSubmitted) return 'tutorial.submitted'
+    if (props.tick === 0) return 'tutorial.raise'
+    if (props.tick === 1) return 'tutorial.move'
     if (props.tick === 2) return 'tutorial.flip'
     if (props.tick === 3) return 'tutorial.shelter'
     return 'tutorial.lastTick'
@@ -26,11 +31,22 @@ const hintKey = computed<string | null>(() => {
   return null
 })
 
-const hintHtml = computed(() =>
-  hintKey.value
-    ? t(hintKey.value).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    : '',
+/**
+ * Ticks only resolve after the player acts (practice mode is untimed), so the
+ * observational steps (flip / shelter / last tick) need an explicit reminder
+ * that making a move is what advances the tutorial.
+ */
+const showActReminder = computed(() =>
+  props.phase === 'ticking' && props.round === 1 && !props.actionSubmitted && props.tick >= 2,
 )
+
+watch(hintKey, (k) => emit('hint', k), { immediate: true })
+onUnmounted(() => emit('hint', null))
+
+const md = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+
+const hintHtml = computed(() => (hintKey.value ? md(t(hintKey.value)) : ''))
+const reminderHtml = computed(() => md(t('tutorial.actToContinue')))
 </script>
 
 <template>
@@ -40,6 +56,8 @@ const hintHtml = computed(() =>
         <div class="tut-badge">{{ t('tutorial.badge') }}</div>
         <!-- eslint-disable-next-line vue/no-v-html — content comes from our own i18n table -->
         <div class="tut-text" v-html="hintHtml" />
+        <!-- eslint-disable-next-line vue/no-v-html — content comes from our own i18n table -->
+        <div v-if="showActReminder" class="tut-reminder" v-html="reminderHtml" />
       </div>
     </Transition>
   </div>
@@ -94,6 +112,20 @@ const hintHtml = computed(() =>
 
 .tut-text :deep(strong) {
   color: #e8c547;
+  font-weight: 700;
+}
+
+.tut-reminder {
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(200, 210, 225, 0.55);
+  letter-spacing: 0.2px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tut-reminder :deep(strong) {
+  color: rgba(232, 197, 71, 0.85);
   font-weight: 700;
 }
 

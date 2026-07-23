@@ -514,6 +514,9 @@ const introOpponentPos = ref({ x: 0, y: 0 })
 const introShowLabels = ref(false)
 const introBounceFlip = ref(false)
 
+/* Active tutorial hint key (practice mode) — used to highlight the flip button. */
+const tutorialHint = ref<string | null>(null)
+
 let introElapsed = 0
 let introBasePos: THREE.Vector3 | null = null
 
@@ -1496,7 +1499,7 @@ onUnmounted(() => {
     :forecast-deadline="game.forecastDeadline.value"
     :action-submitted="game.actionSubmitted.value"
     :my-player-id="game.myPlayerId.value ?? 'A'"
-    :bounce-flip="introBounceFlip"
+    :bounce-flip="introBounceFlip || tutorialHint === 'tutorial.flip'"
     @flip="onFlipView"
   />
 
@@ -1555,6 +1558,7 @@ onUnmounted(() => {
     :tick="game.currentTick.value"
     :round="game.gameState.value?.round ?? 1"
     :action-submitted="game.actionSubmitted.value"
+    @hint="tutorialHint = $event"
   />
 
   <VolumeControl />
