@@ -59,7 +59,8 @@ export type ArchitectPromptMsg = { type: 'architect:prompt'; deadline: number }
 
 export type ForecastUpdateMsg = { type: 'forecast:update'; state: GameState }
 
-export type LobbyStatusMsg = { type: 'lobby:status'; online: number; inQueue: number }
+/** `liveMatches` counts rooms a watcher could actually be dropped into. */
+export type LobbyStatusMsg = { type: 'lobby:status'; online: number; inQueue: number; liveMatches: number }
 
 export type ReconnectOkMsg = { type: 'reconnect:ok'; playerId: PlayerId; state: GameState; tick: number; deadline: number; forecastDeadline: number; playerInfo?: Record<PlayerId, PlayerInfo> }
 export type ReconnectFailMsg = { type: 'reconnect:fail' }

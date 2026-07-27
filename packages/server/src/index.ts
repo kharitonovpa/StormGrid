@@ -52,6 +52,7 @@ const replayStore = new ReplayStore()
 const roomManager = new RoomManager({
   gracePeriodMs,
   replayStore,
+  onRoomsChanged() { broadcastLobbyStatus() },
   onMatchEnd(data, replay) {
     try {
       saveMatch({
@@ -73,6 +74,9 @@ const roomManager = new RoomManager({
     try {
       updateWatcherStats(data.watcherScores)
     } catch (e) { console.error('[db] updateWatcherStats failed:', e) }
+
+    // The room lingers on the result screen, but there is nothing left to watch.
+    broadcastLobbyStatus()
   },
 })
 const matchmaking = new Matchmaking(roomManager)
@@ -85,7 +89,12 @@ function broadcastLobbyStatus() {
   if (lobbyStatusTimer) return
   lobbyStatusTimer = setTimeout(() => {
     lobbyStatusTimer = null
-    const msg = JSON.stringify({ type: 'lobby:status', online: allClients.size, inQueue: matchmaking.queueSize })
+    const msg = JSON.stringify({
+      type: 'lobby:status',
+      online: allClients.size,
+      inQueue: matchmaking.queueSize,
+      liveMatches: roomManager.liveMatchCount,
+    })
     for (const ws of allClients) {
       try { ws.send(msg) } catch { /* closed */ }
     }

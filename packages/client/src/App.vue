@@ -118,6 +118,7 @@ unsubMessage1 = socket.onMessage((msg) => {
   if (msg.type === 'lobby:status') {
     onlineCount.value = Number.isFinite(msg.online) ? msg.online : 0
     inQueue.value = Number.isFinite(msg.inQueue) ? msg.inQueue : 0
+    liveMatches.value = Number.isFinite(msg.liveMatches) ? msg.liveMatches : 0
     return
   }
   if (msg.type === 'game:start') {
@@ -191,6 +192,7 @@ const showOpponentDisconnected = computed(() =>
 
 const onlineCount = ref(0)
 const inQueue = ref(0)
+const liveMatches = ref(0)
 let pendingAction: (() => void) | null = null
 let weatherAnimDone = false
 
@@ -1595,6 +1597,7 @@ onUnmounted(() => {
     :committed-character="lobbyCommittedCharacter"
     :online-count="onlineCount"
     :in-queue="inQueue"
+    :live-matches="liveMatches"
     :queue-countdown="game.queueCountdown.value"
     @play="onPlay"
     @watch="onWatch"

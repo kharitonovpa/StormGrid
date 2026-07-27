@@ -18,8 +18,13 @@ const props = defineProps<{
   committedCharacter: CharacterType
   onlineCount: number
   inQueue: number
+  /** Matches running right now — with none, there is nothing to watch. */
+  liveMatches: number
   queueCountdown: number
 }>()
+
+/** The architect role is off the lobby until it is worth handing to a newcomer. */
+const SHOW_ARCHITECT = false
 
 const emit = defineEmits<{
   play: [character: CharacterType]
@@ -32,6 +37,10 @@ const emit = defineEmits<{
 const audio = inject<AudioSystem>('audio')
 const { user, login, logout, fetchMe, platformType } = useAuth()
 const showAuthMenu = ref(false)
+
+// Watching only pays off with an account — the score goes to the watcher board —
+// and only while a match is actually running.
+const canWatch = computed(() => !!user.value && props.liveMatches > 0)
 
 const characters = computed(() => [
   { id: 'wheat' as CharacterType, name: t('char.wheat'), color: '#e8c547', glow: 'rgba(232, 197, 71, 0.35)' },
@@ -197,12 +206,12 @@ onUnmounted(() => {
                 </div>
               </template>
             </div>
-            <div class="actions-secondary">
-              <button class="btn-role" @click="emit('watch')">
+            <div class="actions-secondary" v-if="canWatch || SHOW_ARCHITECT">
+              <button class="btn-role" v-if="canWatch" @click="emit('watch')">
                 <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M10 3C5 3 1.7 7.1 1 10c.7 2.9 4 7 9 7s8.3-4.1 9-7c-.7-2.9-4-7-9-7zm0 11.5a4.5 4.5 0 110-9 4.5 4.5 0 010 9zm0-7a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/></svg>
                 {{ t('lobby.watch') }}
               </button>
-              <button class="btn-role btn-architect" @click="emit('architect')">
+              <button class="btn-role btn-architect" v-if="SHOW_ARCHITECT" @click="emit('architect')">
                 <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M17.4 2.6a2 2 0 00-2.8 0L3 14.2V17h2.8L17.4 5.4a2 2 0 000-2.8zM5.1 15.5H4.5V15l9.3-9.3.6.6-9.3 9.2z"/></svg>
                 {{ t('lobby.architect') }}
               </button>

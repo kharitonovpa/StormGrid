@@ -10,6 +10,8 @@ export type RoomManagerOpts = {
   gracePeriodMs?: number
   replayStore?: ReplayStore
   onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
+  /** Rooms opened or closed — the lobby shows whether anything is watchable. */
+  onRoomsChanged?: () => void
 }
 
 export class RoomManager {
@@ -19,11 +21,13 @@ export class RoomManager {
   private gracePeriodMs?: number
   replayStore?: ReplayStore
   private onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
+  private onRoomsChanged?: () => void
 
   constructor(opts?: RoomManagerOpts) {
     this.gracePeriodMs = opts?.gracePeriodMs
     this.replayStore = opts?.replayStore
     this.onMatchEnd = opts?.onMatchEnd
+    this.onRoomsChanged = opts?.onRoomsChanged
   }
 
   createRoom(opts?: RoomOpts): Room {
@@ -38,6 +42,7 @@ export class RoomManager {
       onMatchEnd: this.onMatchEnd,
     }, opts)
     this.rooms.set(id, room)
+    this.onRoomsChanged?.()
     return room
   }
 
@@ -50,6 +55,7 @@ export class RoomManager {
       if (entry.roomId === id) this.tokenMap.delete(token)
     }
     this.rooms.delete(id)
+    this.onRoomsChanged?.()
   }
 
   registerToken(token: string, roomId: string, playerId: PlayerId): void {
@@ -81,5 +87,14 @@ export class RoomManager {
 
   get roomCount(): number {
     return this.rooms.size
+  }
+
+  /** Rooms a watcher or architect could join right now. */
+  get liveMatchCount(): number {
+    let n = 0
+    for (const room of this.rooms.values()) {
+      if (!room.practice && room.isActive) n++
+    }
+    return n
   }
 }
