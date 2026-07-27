@@ -2,6 +2,15 @@ import * as THREE from 'three'
 import { CELLS, HALF, CELL_SIZE, HEIGHT_SCALE, THICKNESS } from './constants'
 import type { TerrainState, FloodBody } from './terrain'
 
+/** Seconds the decisive hollow takes to brim over. */
+const FILL_DURATION = 1.6
+/** How long the storm keeps raining once the water starts to gather. */
+export const WATER_FILL_MS = FILL_DURATION * 1000
+/** Even a single-cell puddle takes this long, so it never pops into place. */
+const MIN_FILL_DURATION = 0.3
+/** Shallowest water still worth drawing, as a share of the hollow depth. */
+const MIN_FRACTION = 0.1
+
 interface WaterBody {
   mesh: THREE.Mesh
   geo: THREE.BufferGeometry
@@ -10,6 +19,7 @@ interface WaterBody {
   allAnimVerts: number[]
   waterLevel: number
   waterTarget: number
+  riseRate: number
 }
 
 interface WaterBuildConfig {
@@ -20,8 +30,29 @@ interface WaterBuildConfig {
   faceWinding: [number, number, number, number, number, number]
   wallWinding: [number, number, number, number, number, number]
   wallCheck: (nz: number, nx: number, minH: number) => boolean
-  initLevel: (faceY: number, wallY: number) => number
-  targetLevel: (faceY: number, wallY: number) => number
+}
+
+/**
+ * Fill one hollow the way the rain fills it: every hollow takes the same water
+ * per second, so a wide one rises slowly and may never reach its brim. `volume`
+ * is the water that came down, in cell-depths (see the server rain module); a
+ * hollow of n cells ends up at min(1, volume / n) of its depth.
+ */
+function fillOf(volume: number, cells: number, faceY: number, wallY: number) {
+  const depth = faceY - wallY
+  const filled = Math.max(1, volume) / cells
+  // A hollow that never brims over keeps rising until the rain stops, so all of
+  // them come to rest together; the ones that do brim over get there sooner.
+  const seconds = filled < 1
+    ? FILL_DURATION
+    : Math.max(MIN_FILL_DURATION, FILL_DURATION / filled)
+  // A film thinner than the ripple would clip through the ground.
+  const fraction = Math.min(1, Math.max(MIN_FRACTION, filled))
+  return {
+    waterLevel: wallY,
+    waterTarget: wallY + depth * fraction,
+    riseRate: Math.abs(depth * fraction) / seconds,
+  }
 }
 
 export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
@@ -43,8 +74,6 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
     faceWinding: [0, 1, 2, 2, 1, 3],
     wallWinding: [0, 2, 1, 1, 2, 3],
     wallCheck: (nz, nx, minH) => terrain.target[nz][nx] <= minH,
-    initLevel: (_f, w) => w,
-    targetLevel: (f) => f,
   }
 
   const botWaterCfg: WaterBuildConfig = {
@@ -55,11 +84,9 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
     faceWinding: [0, 2, 1, 1, 2, 3],
     wallWinding: [0, 1, 2, 2, 1, 3],
     wallCheck: (nz, nx, minH) => (-terrain.target[nz][nx]) <= minH,
-    initLevel: (_f, w) => w,
-    targetLevel: (f) => f,
   }
 
-  function buildWaterSet(cfg: WaterBuildConfig, out: WaterBody[]) {
+  function buildWaterSet(cfg: WaterBuildConfig, out: WaterBody[], volume: number) {
     for (const wb of out) { scene.remove(wb.mesh); wb.geo.dispose() }
     out.length = 0
     cfg.computeFloodFn()
@@ -141,8 +168,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
       out.push({
         mesh, geo, posArr, posAttr,
         allAnimVerts: [...faceVerts, ...wallFaceVerts],
-        waterLevel: cfg.initLevel(fY, wY),
-        waterTarget: cfg.targetLevel(fY, wY),
+        ...fillOf(volume, cells.length, fY, wY),
       })
     }
   }
@@ -156,7 +182,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
     for (const wb of bodies) {
       const diff = wb.waterTarget - wb.waterLevel
       if (Math.abs(diff) > 0.01)
-        wb.waterLevel += Math.sign(diff) * Math.min(Math.abs(diff), dt * 3)
+        wb.waterLevel += Math.sign(diff) * Math.min(Math.abs(diff), dt * wb.riseRate)
 
       const base = wb.waterLevel
       for (const vi of wb.allAnimVerts) {
@@ -180,8 +206,9 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
   }
 
   return {
-    buildTop() { buildWaterSet(topWaterCfg, waterBodies) },
-    buildBot() { buildWaterSet(botWaterCfg, waterBodiesBot) },
+    /** volume: water that came down, in cell-depths (WeatherResult.waterVolume). */
+    buildTop(volume: number) { buildWaterSet(topWaterCfg, waterBodies, volume) },
+    buildBot(volume: number) { buildWaterSet(botWaterCfg, waterBodiesBot, volume) },
     update(dt: number) {
       waterTime += dt
       normalFrame = (normalFrame + 1) % 3

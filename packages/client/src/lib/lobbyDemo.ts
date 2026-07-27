@@ -4,7 +4,7 @@ import type { TerrainState } from './terrain'
 
 type WindSystem = { setDirection(dir: WindDir): void; setVisible(v: boolean): void }
 type RainSystem = { setVisible(v: boolean): void }
-type WaterSystem = { buildTop(): void; buildBot(): void; dispose(): void }
+type WaterSystem = { dispose(): void }
 
 interface DemoCallbacks {
   onTerrainChanged(): void

@@ -9,6 +9,8 @@ export type RainResult = {
   floodedCellsB: { x: number; y: number }[]
   /** Player the water released because the other one went under first. */
   spared: PlayerId | null
+  /** How much water came down, in cell-depths — see resolveRain. */
+  waterVolume: number
 }
 
 type Basin = { x: number; y: number }[]
@@ -20,11 +22,12 @@ type Basin = { x: number; y: number }[]
  * A uses canonical heights; B uses negated heights.
  * Basins and flooding are computed independently for each surface.
  *
- * Volume tiebreak: if both players stand in a basin, the tighter one brims over
- * first and drowns its occupant. The water stops rising at that moment, so the
- * wider hollow never fills and its occupant survives — and nothing on his side
- * had time to brim over, so his surface reports no flooding at all. Equal
- * volumes drown both.
+ * Every basin fills at the same rate by volume, so a basin of N cells needs N
+ * times as long to brim over as a single-cell puddle. `waterVolume` is how much
+ * water came down before the storm broke off, measured in cell-depths: a basin
+ * of N cells stands at min(1, waterVolume / N) of its depth. That is the whole
+ * rule — the tighter hollow brims first, drowns its occupant, and the rain stops
+ * right there, leaving every wider hollow unfinished. Equal volumes drown both.
  */
 export function resolveRain(state: GameState): RainResult {
   const basinsA = findBasins(state.board, 1)
@@ -64,12 +67,20 @@ export function resolveRain(state: GameState): RainResult {
     deathCauses.B = { type: 'rain' }
   }
 
+  const drownedBasin = drownsA ? basinA! : drownsB ? basinB! : null
+  const allBasins = [...basinsA, ...basinsB]
+
   return {
     deaths,
     deathCauses,
-    floodedCellsA: spared === 'A' ? [] : basinsA.flat(),
-    floodedCellsB: spared === 'B' ? [] : basinsB.flat(),
+    floodedCellsA: basinsA.flat(),
+    floodedCellsB: basinsB.flat(),
     spared,
+    // Nobody drowned means the rain ran its course: enough water for the widest
+    // hollow on the slab.
+    waterVolume: drownedBasin
+      ? drownedBasin.length
+      : Math.max(1, ...allBasins.map(b => b.length)),
   }
 }
 

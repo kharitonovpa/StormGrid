@@ -4,9 +4,9 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
 import type { Action, CharacterType, GameState, MoveDir } from '@wheee/shared'
-import { SIZE, HALF, CELL_SIZE, SEGMENTS } from './lib/constants'
+import { SIZE, HALF, CELL_SIZE, CELLS, SEGMENTS } from './lib/constants'
 import { terrainState } from './lib/terrain'
-import { createWaterSystem } from './lib/water'
+import { createWaterSystem, WATER_FILL_MS } from './lib/water'
 import { createWindSystem } from './lib/wind'
 import { createRainSystem } from './lib/rain'
 import { createCompassSystem } from './lib/compass'
@@ -709,7 +709,10 @@ function resetVisuals() {
   windSystem?.setVisible(false)
   rainSystem?.setVisible(false)
   waterSystem?.clear()
-  shouldBuildWater = false
+  pendingWaterVolume = null
+  // Never leave the storm waiting on water that will not come.
+  floodResolve?.()
+  floodResolve = null
   nameplateSystem?.setVisible(false)
 }
 
@@ -869,20 +872,28 @@ unsubMessage2 = socket.onMessage((msg) => {
         rainSystem?.setVisible(true)
         audio.startRain()
       }
-      if (msg.result.floodedCells.length > 0) shouldBuildWater = true
+      const flooding = msg.result.floodedCells.length > 0
+      if (flooding) pendingWaterVolume = msg.result.waterVolume
       startAnimating()
 
       if (playersSystem) {
         const paths = msg.result.windPath as Record<'A' | 'B', { x: number; y: number }[]>
         const deaths = msg.result.deaths as ('A' | 'B')[]
+        const causeOf = (pid: 'A' | 'B') => msg.result.deathCauses[pid]?.type
+        // Only the wind takes a body away with it; the water keeps the one it drowned.
+        const blownAway = deaths.filter(pid => causeOf(pid) === 'wind')
+        const drowned = deaths.filter(pid => causeOf(pid) === 'rain')
         if (paths.A.length > 1 || paths.B.length > 1) audio.play('wind-push')
         weatherAnimDone = false
-        playersSystem.animateWindPaths(paths, deaths).then(() => {
+        // The storm is over once the wind has carried everyone it could and the
+        // water has stopped rising — only then is the round decided out loud.
+        const storm: Promise<unknown>[] = [playersSystem.animateWindPaths(paths, blownAway)]
+        if (flooding) storm.push(waitForFlood())
+        Promise.all(storm).then(() => {
           if (!playersSystem) return
-          playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B)
+          playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B, drowned)
           audio.stopWeather()
           if (deaths.length > 0) audio.play('death')
-          if (shouldBuildWater && deaths.length === 0) audio.play('water-rise')
           weatherAnimDone = true
           if (pendingGameEnd) {
             nameplateSystem?.setVisible(false)
@@ -921,11 +932,19 @@ let animating = false
 let waterSystem: ReturnType<typeof createWaterSystem> | null = null
 let windSystem: ReturnType<typeof createWindSystem> | null = null
 let rainSystem: ReturnType<typeof createRainSystem> | null = null
-let shouldBuildWater = false
+/** Water that came down and still has to be built, in cell-depths. */
+let pendingWaterVolume: number | null = null
+/** Set while the storm waits for the hollows to finish filling. */
+let floodResolve: (() => void) | null = null
 let previewSystem: ReturnType<typeof createPreviewSystem> | null = null
 let pendingGameEnd: { type: 'game:end'; winner: 'A' | 'B' | 'draw' } | null = null
 let lobbyDemo: ReturnType<typeof createLobbyDemo> | null = null
 let lobbyDemoActive = false
+
+function waitForFlood(): Promise<void> {
+  floodResolve?.()
+  return new Promise<void>((resolve) => { floodResolve = resolve })
+}
 
 function startAnimating() {
   animating = true
@@ -1026,7 +1045,6 @@ onMounted(() => {
   function rebuildGrid() {
     let idx = 0
     let bidx = 0
-    const CELLS = 7
     const THICK = 1
     for (let i = 0; i <= CELLS; i++) {
       const off = -HALF + i * CELL_SIZE
@@ -1266,7 +1284,8 @@ onMounted(() => {
   let demoPairIdx = 0
   lobbyDemo = createLobbyDemo(terrainState, wind, rain, water, {
     onTerrainChanged() { animating = true },
-    onRequestFlood() { shouldBuildWater = true },
+    // The demo has no storm behind it, so let the rain fill every hollow.
+    onRequestFlood() { pendingWaterVolume = CELLS * CELLS },
     onRepositionPlayers(posA, posB) {
       const [top, bot] = demoPairs[demoPairIdx % demoPairs.length]
       demoPairIdx++
@@ -1338,12 +1357,14 @@ onMounted(() => {
       if (done) {
         animating = false
         terrainState.rebuildHeightCache()
-        if (shouldBuildWater) {
+        if (pendingWaterVolume !== null) {
           terrainState.computeFlood()
           terrainState.computeFloodBot()
-          water.buildTop()
-          water.buildBot()
-          shouldBuildWater = false
+          water.buildTop(pendingWaterVolume)
+          water.buildBot(pendingWaterVolume)
+          pendingWaterVolume = null
+          if (!lobbyDemoActive) audio.play('water-rise')
+          if (floodResolve) window.setTimeout(floodResolve, WATER_FILL_MS)
         }
       }
     }

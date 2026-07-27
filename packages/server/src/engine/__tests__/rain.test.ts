@@ -156,7 +156,7 @@ describe('rain — volume tiebreak', () => {
     expect(s.players.B.alive).toBe(true)
   })
 
-  it('the survivor surface reports no flooding at all', () => {
+  it('the survivor hollow takes water, just not enough to close over him', () => {
     const s = state()
     s.board[1][1].height = -1
     for (let x = 3; x <= 5; x++) s.board[5][x].height = 1
@@ -167,8 +167,25 @@ describe('rain — volume tiebreak', () => {
     s.players.B.y = 5
 
     const result = resolveRain(s)
-    expect(result.floodedCellsA.length).toBeGreaterThan(0)
-    expect(result.floodedCellsB).toEqual([])
+    expect(result.floodedCellsA.length).toBe(1)
+    expect(result.floodedCellsB.length).toBe(3)
+    // One cell-depth of rain: A's pit is brim-full, B's trench is a third full.
+    expect(result.waterVolume).toBe(1)
+  })
+
+  it('the rain runs its course when nobody drowns', () => {
+    const s = state()
+    // A single pit that belongs to A, with both players standing clear of water.
+    s.board[1][1].height = -1
+    s.players.A.x = 3
+    s.players.A.y = 3
+    s.players.B.x = 1
+    s.players.B.y = 1
+
+    const result = resolveRain(s)
+    expect(result.deaths).toEqual([])
+    // Enough water for the widest hollow on the slab — B's 48-cell plain.
+    expect(result.waterVolume).toBe(48)
   })
 
   it('equal volumes drown both', () => {

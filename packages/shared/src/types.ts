@@ -115,6 +115,11 @@ export type WeatherResult = {
   floodedCellsB: { x: number; y: number }[]
   /** Player the water spared because the other one went under first. */
   rainSpared: PlayerId | null
+  /**
+   * How much water came down, in cell-depths: a basin of N cells stands at
+   * min(1, waterVolume / N) of its depth. 0 means the rain never fell.
+   */
+  waterVolume: number
 }
 
 /* ── Watcher ── */

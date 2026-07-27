@@ -160,7 +160,9 @@ describe('GameEngine — the storm breaks off on the first death', () => {
     expect(result.deaths).toEqual(['A'])
     expect(result.rainSpared).toBe('B')
     expect(result.state.winner).toBe('B')
-    expect(result.floodedCellsB).toEqual([])
+    // One cell-depth of rain: B's field is barely wet, A's pit is over his head.
+    expect(result.waterVolume).toBe(1)
+    expect(result.floodedCellsB.length).toBeGreaterThan(0)
   })
 
   it('a double wind death also stops the rain', () => {

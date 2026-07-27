@@ -510,9 +510,16 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     return validMoves.some(m => m.cx === cx && m.cz === cz)
   }
 
+  /**
+   * `submerged` players stay on the board although they are dead: the water that
+   * drowned them is translucent, so they read as lying under the surface. The
+   * wind is the opposite case — it carries a body off the edge, and the slide
+   * itself hides it.
+   */
   function applyPositions(
     a: { x: number; y: number; alive: boolean; character?: CharacterType },
     b: { x: number; y: number; alive: boolean; character?: CharacterType },
+    submerged: ('A' | 'B')[] = [],
   ) {
     if (a.character) playerA.setCharacter(a.character)
     if (b.character) playerB.setCharacter(b.character)
@@ -520,12 +527,12 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     if (a.alive && (a.x !== playerA.state.cx || a.y !== playerA.state.cz)) {
       playerA.moveTo(a.x, a.y)
     }
-    playerA.mesh.visible = a.alive
+    playerA.mesh.visible = a.alive || submerged.includes('A')
 
     if (b.alive && (b.x !== playerB.state.cx || b.y !== playerB.state.cz)) {
       playerB.moveTo(b.x, b.y)
     }
-    playerB.mesh.visible = b.alive
+    playerB.mesh.visible = b.alive || submerged.includes('B')
   }
 
   function setActivePlayer(id: 'A' | 'B' | null) {
