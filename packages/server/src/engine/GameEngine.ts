@@ -89,6 +89,7 @@ export class GameEngine {
     const deaths: PlayerId[] = []
     const deathCauses: Partial<Record<PlayerId, DeathCause>> = {}
     let windPaths: Record<PlayerId, { x: number; y: number }[]> = { A: [], B: [] }
+    let windSpared: PlayerId | null = null
     let floodedCellsA: { x: number; y: number }[] = []
     let floodedCellsB: { x: number; y: number }[] = []
 
@@ -97,6 +98,7 @@ export class GameEngine {
       deaths.push(...wr.deaths)
       Object.assign(deathCauses, wr.deathCauses)
       windPaths = wr.paths
+      windSpared = wr.spared
     }
 
     if (decision.type === 'rain' || decision.type === 'wind_rain') {
@@ -118,6 +120,7 @@ export class GameEngine {
       deaths: [...new Set(deaths)],
       deathCauses,
       windPath: windPaths,
+      windSpared,
       floodedCells: floodedCellsA,
       floodedCellsB,
     }

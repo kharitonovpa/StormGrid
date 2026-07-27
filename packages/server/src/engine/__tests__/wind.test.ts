@@ -162,6 +162,102 @@ describe('wind — both players', () => {
   })
 })
 
+describe('wind — runway tiebreak', () => {
+  it('shorter runway dies, longer runway survives', () => {
+    const s = state()
+    // Wind East. A has 2 cells to the edge, B has 6.
+    s.players.A.x = 5
+    s.players.A.y = 3
+    s.players.B.x = 1
+    s.players.B.y = 5
+
+    const result = resolveWind(s, 'E')
+    expect(result.deaths).toEqual(['A'])
+    expect(result.spared).toBe('B')
+    expect(s.players.A.alive).toBe(false)
+    expect(s.players.B.alive).toBe(true)
+  })
+
+  it('survivor is carried exactly as far as the loser got', () => {
+    const s = state()
+    s.players.A.x = 5
+    s.players.A.y = 3
+    s.players.B.x = 1
+    s.players.B.y = 5
+
+    const result = resolveWind(s, 'E')
+    // A slides 5 → 6 and off; B follows for the same one step: 1 → 2.
+    expect(result.paths.A).toEqual([{ x: 5, y: 3 }, { x: 6, y: 3 }])
+    expect(result.paths.B).toEqual([{ x: 1, y: 5 }, { x: 2, y: 5 }])
+    expect(result.paths.B.length).toBe(result.paths.A.length)
+    expect(s.players.B.x).toBe(2)
+    expect(s.players.B.y).toBe(5)
+  })
+
+  it('loser already on the leeward edge → survivor does not move at all', () => {
+    const s = state()
+    s.players.A.x = 6
+    s.players.A.y = 3
+    s.players.B.x = 2
+    s.players.B.y = 5
+
+    const result = resolveWind(s, 'E')
+    expect(result.deaths).toEqual(['A'])
+    expect(result.spared).toBe('B')
+    expect(result.paths.B).toEqual([{ x: 2, y: 5 }])
+    expect(s.players.B.x).toBe(2)
+    expect(s.players.B.y).toBe(5)
+  })
+
+  it('equal runways still kill both', () => {
+    const s = state()
+    s.players.A.x = 3
+    s.players.A.y = 3
+    s.players.B.x = 3
+    s.players.B.y = 5
+
+    const result = resolveWind(s, 'E')
+    expect(result.deaths).toContain('A')
+    expect(result.deaths).toContain('B')
+    expect(result.spared).toBe(null)
+  })
+
+  it('does not trigger when only one player is carried off', () => {
+    const s = state()
+    s.players.A.x = 4
+    s.players.A.y = 3
+    s.players.B.x = 3
+    s.players.B.y = 5
+    // Wall upwind of A shields him, so only B is carried off.
+    s.board[3][2].height = 1
+
+    const result = resolveWind(s, 'E')
+    expect(result.deaths).toEqual(['B'])
+    expect(result.spared).toBe(null)
+    // B keeps his full slide — the storm only stops early on a mutual push.
+    expect(result.paths.B.length).toBe(4)
+  })
+
+  it('runways are measured on each player own side of the slab', () => {
+    const s = state()
+    // A stands on a canonical +1 plateau, B on a canonical -1 one. Each is
+    // level on its owner's side, so both players slide across and off.
+    for (let x = 3; x <= 6; x++) s.board[3][x].height = 1
+    for (let x = 5; x <= 6; x++) s.board[5][x].height = -1
+    s.players.A.x = 3
+    s.players.A.y = 3
+    s.players.B.x = 5
+    s.players.B.y = 5
+
+    const result = resolveWind(s, 'E')
+    // A runway 4 (x=3..6), B runway 2 (x=5..6) → B dies.
+    expect(result.deaths).toEqual(['B'])
+    expect(result.spared).toBe('A')
+    expect(s.players.A.x).toBe(4)
+    expect(s.players.A.alive).toBe(true)
+  })
+})
+
 describe('wind — path tracking', () => {
   it('shielded player has single-point path', () => {
     const s = state()

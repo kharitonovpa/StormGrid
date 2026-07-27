@@ -91,6 +91,9 @@ export function useGameState() {
     return gameState.value.players[oppId]
   })
 
+  /** Set when the wind carried both players but one left the board first. */
+  const windSpared = computed<PlayerId | null>(() => weatherResult.value?.windSpared ?? null)
+
   const forecast = computed<ForecastData | null>(() => gameState.value?.forecast ?? null)
 
   const myInstrumentsBroken = computed(() => {
@@ -283,6 +286,7 @@ export function useGameState() {
     isPractice,
     myPlayer,
     opponentPlayer,
+    windSpared,
     forecast,
     myInstrumentsBroken,
     isWatcher,

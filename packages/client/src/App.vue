@@ -1558,6 +1558,7 @@ onUnmounted(() => {
     :my-player-id="game.myPlayerId.value"
     :room-id="lastRoomId"
     :death-causes="game.deathCauses.value"
+    :wind-spared="game.windSpared.value"
     :show-rewarded-button="hasRewardedAds"
     @play-again="onPlayAgain"
     @rewarded-play-again="onRewardedPlayAgain"

@@ -14,6 +14,8 @@ const props = defineProps<{
   myPlayerId: PlayerId | null
   roomId: string | null
   deathCauses?: Partial<Record<PlayerId, DeathCause>> | null
+  /** Player the wind released because the other one left the board first. */
+  windSpared?: PlayerId | null
   showRewardedButton?: boolean
 }>()
 
@@ -60,6 +62,7 @@ const subtitle = computed(() => {
   if (isSpectator.value) {
     const loserId = props.winner === 'A' ? 'B' : 'A'
     const cause = causes[loserId]
+    if (props.windSpared === props.winner) return t('gameover.flewFirst', loserId)
     if (cause?.type === 'wind') return t('gameover.blownOff', loserId, dirLabel(cause.dir))
     if (cause?.type === 'rain') return t('gameover.drowned', loserId)
     if (cause?.type === 'disconnect') return t('gameover.disconnected', loserId)
@@ -68,6 +71,7 @@ const subtitle = computed(() => {
 
   if (isWin.value) {
     const oppCause = oppId ? causes[oppId] : null
+    if (props.windSpared === myId) return t('gameover.opponentFlewFirst')
     if (oppCause?.type === 'wind') return t('gameover.opponentBlown', dirLabel(oppCause.dir))
     if (oppCause?.type === 'rain') return t('gameover.opponentDrowned')
     if (oppCause?.type === 'disconnect') return t('gameover.opponentDisconnected')
@@ -75,6 +79,7 @@ const subtitle = computed(() => {
   }
 
   const myCause = myId ? causes[myId] : null
+  if (props.windSpared === oppId) return t('gameover.youFlewFirst')
   if (myCause?.type === 'wind') return t('gameover.youBlown', dirLabel(myCause.dir))
   if (myCause?.type === 'rain') return t('gameover.youDrowned')
   return t('gameover.tryAgain')

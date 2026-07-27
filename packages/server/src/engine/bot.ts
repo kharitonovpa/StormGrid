@@ -85,6 +85,19 @@ function survivesWind(
   }
 }
 
+/** Cells the wind would carry the bot across before it leaves the board. */
+function runwayTo(x: number, y: number, dir: WindDir): number {
+  const d = DIRECTIONS[dir]
+  let cx = x, cy = y
+  let cells = 1
+  while (inBounds(cx + d.dx, cy + d.dy)) {
+    cx += d.dx
+    cy += d.dy
+    cells++
+  }
+  return cells
+}
+
 function handleWind(
   state: GameState,
   me: { x: number; y: number },
@@ -113,13 +126,17 @@ function handleWind(
     })
     .map(md => {
       const m = MOVE_DIRS[md]
-      const count = candidates.filter(
-        wd => !survivesWind(board, me.x + m.dx, me.y + m.dy, wd, sign),
-      ).length
-      return { dir: md, unsafeCount: count }
+      const nx = me.x + m.dx, ny = me.y + m.dy
+      const deadly = candidates.filter(wd => !survivesWind(board, nx, ny, wd, sign))
+      const runway = deadly.length > 0
+        ? Math.min(...deadly.map(wd => runwayTo(nx, ny, wd)))
+        : Infinity
+      return { dir: md, unsafeCount: deadly.length, runway }
     })
     .filter(m => m.unsafeCount < unsafeDirs.length)
-    .sort((a, b) => a.unsafeCount - b.unsafeCount)
+    // Among equally risky cells, pick the longest runway: if the wind carries
+    // both players off, the one who leaves the board first is the one who dies.
+    .sort((a, b) => a.unsafeCount - b.unsafeCount || b.runway - a.runway)
 
   if (partialMoves.length > 0) {
     return { kind: 'move', dir: partialMoves[0].dir }

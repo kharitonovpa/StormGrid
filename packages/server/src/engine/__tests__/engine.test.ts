@@ -58,26 +58,43 @@ describe('GameEngine — full round lifecycle', () => {
     expect(() => engine.executeWeather()).toThrow()
   })
 
-  it('detects draw when both players die', () => {
+  it('runway tiebreak: the player closest to the leeward edge loses', () => {
     const engine = new GameEngine(FIXED_SPAWN)
     engine.startRound()
     engine.beginTicking()
 
-    // Move players to opposite edges on a flat board
-    // A goes to east edge, B goes to east edge too
+    // A walks to the east edge; B stays four cells away from it.
     engine.submitTick({ A: { kind: 'move', dir: 'E' } })
     engine.submitTick({ A: { kind: 'move', dir: 'E' } })
     engine.submitTick({ A: { kind: 'move', dir: 'E' } })
-    // After 3 ticks, A at (6,3). Need 2 more ticks
     engine.submitTick({})
     engine.submitTick({})
 
-    // Force wind east
     engine.setWeatherDecision('wind', 'E')
 
     const result = engine.executeWeather()
-    // Both at default positions pushed east — at least A at x=6 dies
+    expect(result.deaths).toEqual(['A'])
+    expect(result.windSpared).toBe('B')
+    expect(result.state.winner).toBe('B')
+    // A flew off on his first step, so the storm never moved B.
+    expect(result.state.players.B.x).toBe(FIXED_SPAWN.B.x)
+  })
+
+  it('detects draw when both players die with equal runways', () => {
+    const engine = new GameEngine(FIXED_SPAWN)
+    engine.startRound()
+    engine.beginTicking()
+
+    // Nobody moves: both spawn on x=3, so both have the same runway east.
+    for (let i = 0; i < TICKS_PER_ROUND; i++) engine.submitTick({})
+
+    engine.setWeatherDecision('wind', 'E')
+
+    const result = engine.executeWeather()
     expect(result.deaths).toContain('A')
+    expect(result.deaths).toContain('B')
+    expect(result.windSpared).toBe(null)
+    expect(result.state.winner).toBe('draw')
   })
 })
 

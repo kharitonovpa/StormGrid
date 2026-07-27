@@ -109,6 +109,8 @@ export type WeatherResult = {
   deaths: PlayerId[]
   deathCauses: Partial<Record<PlayerId, DeathCause>>
   windPath: Record<PlayerId, { x: number; y: number }[]>
+  /** Player the wind spared because the other one left the board first. */
+  windSpared: PlayerId | null
   floodedCells: { x: number; y: number }[]
   floodedCellsB: { x: number; y: number }[]
 }
