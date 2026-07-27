@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'bun:test'
 import { chooseBotAction } from '../bot.js'
 import { GameEngine } from '../GameEngine.js'
-import { createInitialState } from '../board.js'
-import { SPAWN_PAIRS, TICKS_PER_ROUND } from '@wheee/shared'
+import { createInitialState, cloneState } from '../board.js'
+import { applyTick } from '../tick.js'
+import { resolveWind } from '../wind.js'
+import { resolveRain } from '../rain.js'
+import { SPAWN_PAIRS, TICKS_PER_ROUND, WIND_DIRS } from '@wheee/shared'
 import type { GameState, PlayerId, Action, Height, WindDir } from '@wheee/shared'
 
 const FIXED_SPAWN = SPAWN_PAIRS[0]
@@ -13,6 +16,22 @@ function makeState(overrides?: Partial<GameState>): GameState {
 
 function setHeight(state: GameState, x: number, y: number, h: Height): void {
   state.board[y][x].height = h
+}
+
+/**
+ * The bot is judged the way the round judges it: play its action, bring the
+ * weather down, see who is still standing.
+ */
+function survivesWind(state: GameState, pid: PlayerId, action: Action | null, dir: WindDir): boolean {
+  const after = applyTick(state, action ? { [pid]: action } : {}).state
+  resolveWind(after, dir)
+  return after.players[pid].alive
+}
+
+function survivesRain(state: GameState, pid: PlayerId, action: Action | null): boolean {
+  const after = applyTick(state, action ? { [pid]: action } : {}).state
+  resolveRain(after)
+  return after.players[pid].alive
 }
 
 describe('chooseBotAction — basic', () => {
@@ -64,7 +83,9 @@ describe('chooseBotAction — wind safety', () => {
     expect(moveOrRaise).toBeGreaterThan(20)
   })
 
-  it('raises upwind cell to create shelter when no safe move exists', () => {
+  it('breaks its own runway when it is standing at the windward edge', () => {
+    // Backed against the west edge with the wind blowing east: nothing upwind can
+    // shield it, so the only way out is to put a step in the path ahead.
     const state = makeState()
     state.phase = 'ticking'
     state.players.A.x = 0
@@ -75,12 +96,33 @@ describe('chooseBotAction — wind safety', () => {
       instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } },
     }
 
-    let raiseCount = 0
+    let survived = 0
+    for (let i = 0; i < 50; i++) {
+      if (survivesWind(state, 'A', chooseBotAction(state, 'A'), 'E')) survived++
+    }
+    expect(survived).toBeGreaterThan(35)
+  })
+
+  it('defends against every direction when its vane is broken', () => {
+    // A step already stands to the east, covering the east-west axis. One more on
+    // the north-south axis makes the cell safe from all four winds.
+    const state = makeState()
+    state.phase = 'ticking'
+    state.players.A.x = 3
+    state.players.A.y = 3
+    setHeight(state, 4, 3, 1)
+    state.forecast = {
+      windCandidates: ['N'],
+      rainProbability: 0,
+      instrumentsBroken: { A: { vane: true, barometer: false }, B: { vane: false, barometer: false } },
+    }
+
+    let coveredAll = 0
     for (let i = 0; i < 50; i++) {
       const action = chooseBotAction(state, 'A')
-      if (action?.kind === 'raise') raiseCount++
+      if (WIND_DIRS.every(dir => survivesWind(state, 'A', action, dir))) coveredAll++
     }
-    expect(raiseCount).toBeGreaterThan(0)
+    expect(coveredAll).toBeGreaterThan(35)
   })
 
   it('stays calm when already shielded from wind', () => {
@@ -106,7 +148,9 @@ describe('chooseBotAction — wind safety', () => {
 })
 
 describe('chooseBotAction — rain safety', () => {
-  it('reacts to flood risk by moving up or raising terrain', () => {
+  it('gets out of a hollow before the rain fills it', () => {
+    // Walled in on all four sides at the bottom: the cell is a basin of one, and
+    // the water has nowhere to drain.
     const state = makeState()
     state.phase = 'ticking'
     state.players.A.x = 3
@@ -122,12 +166,11 @@ describe('chooseBotAction — rain safety', () => {
     setHeight(state, 3, 2, 1)
     setHeight(state, 3, 4, 1)
 
-    let escapeActions = 0
+    let survived = 0
     for (let i = 0; i < 50; i++) {
-      const action = chooseBotAction(state, 'A')
-      if (action && (action.kind === 'raise' || action.kind === 'move')) escapeActions++
+      if (survivesRain(state, 'A', chooseBotAction(state, 'A'))) survived++
     }
-    expect(escapeActions).toBeGreaterThan(30)
+    expect(survived).toBeGreaterThan(35)
   })
 })
 

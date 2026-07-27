@@ -3,7 +3,7 @@ import type { Action, BonusType, CharacterType, DeathCause, PlayerId, PlayerInfo
 import { TICK_DURATION_MS, RECONNECT_GRACE_MS, WAR_AND_PEACE_SURNAMES } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
-import { chooseBotAction } from './engine/bot.js'
+import { chooseBotAction, BOT_PRACTICE } from './engine/bot.js'
 import type { ServerMessage, WsData } from './protocol.js'
 import { send } from './protocol.js'
 import type { ReplayStore } from './ReplayStore.js'
@@ -228,7 +228,7 @@ export class Room {
       const botPid: PlayerId = pid === 'A' ? 'B' : 'A'
       const botSlot = this.players[botPid]
       if (botSlot?.isBot && botSlot.action === null && Math.random() >= PRACTICE_BOT_SKIP_CHANCE) {
-        const botAction = chooseBotAction(this.engine.getState(), botPid)
+        const botAction = chooseBotAction(this.engine.getState(), botPid, BOT_PRACTICE)
         if (botAction) botSlot.action = invertForB(botPid, botAction)
       }
       this.resolveTick()

@@ -24,7 +24,7 @@ alwaysApply: true
 - `packages/server/src/engine/rain.ts` — basin detection BFS, separate flooding per player side (floodedCellsA/B), drowning (§14)
 - `packages/server/src/engine/forecast.ts` — weather decision generation (wind every cataclysm, 55% wind / 45% wind+rain), forecast hints
 - `packages/server/src/engine/GameEngine.ts` — orchestrator class: round lifecycle, phase management, architect overrides (`setWeatherDecision`, `placeBonus`), watcher `breakInstrument`
-- `packages/server/src/engine/bot.ts` — `chooseBotAction()`: heuristic bot (wind safety > rain escape > aggression > center pull), operates on canonical state
+- `packages/server/src/engine/bot.ts` — `chooseBotAction()`: scores every legal action by replaying it through `applyTick` and running the real `resolveWind`/`resolveRain` on each weather the forecast still allows (survival > kill > centre pull); `BotStrength` presets `BOT_MATCH` / `BOT_PRACTICE`; operates on canonical state and holds no copy of the rules
 
 ### Network / rooms
 
