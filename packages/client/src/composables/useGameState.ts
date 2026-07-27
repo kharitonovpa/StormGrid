@@ -94,6 +94,9 @@ export function useGameState() {
   /** Set when the wind carried both players but one left the board first. */
   const windSpared = computed<PlayerId | null>(() => weatherResult.value?.windSpared ?? null)
 
+  /** Set when both players stood in water but one hollow filled first. */
+  const rainSpared = computed<PlayerId | null>(() => weatherResult.value?.rainSpared ?? null)
+
   const forecast = computed<ForecastData | null>(() => gameState.value?.forecast ?? null)
 
   const myInstrumentsBroken = computed(() => {
@@ -287,6 +290,7 @@ export function useGameState() {
     myPlayer,
     opponentPlayer,
     windSpared,
+    rainSpared,
     forecast,
     myInstrumentsBroken,
     isWatcher,

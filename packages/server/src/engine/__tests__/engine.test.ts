@@ -144,6 +144,25 @@ describe('GameEngine — the storm breaks off on the first death', () => {
     expect(result.floodedCells.length).toBeGreaterThan(0)
   })
 
+  it('volume tiebreak decides the match instead of drowning both', () => {
+    const engine = new GameEngine(FIXED_SPAWN)
+    engine.startRound()
+    engine.beginTicking()
+
+    // A digs a single-cell pit under himself. B is left standing on the wide
+    // level field, which is one big basin on his side too.
+    engine.submitTick({ A: { kind: 'lower', x: FIXED_SPAWN.A.x, y: FIXED_SPAWN.A.y } })
+    for (let i = 1; i < TICKS_PER_ROUND; i++) engine.submitTick({})
+
+    engine.setWeatherDecision('rain', 'E')
+
+    const result = engine.executeWeather()
+    expect(result.deaths).toEqual(['A'])
+    expect(result.rainSpared).toBe('B')
+    expect(result.state.winner).toBe('B')
+    expect(result.floodedCellsB).toEqual([])
+  })
+
   it('a double wind death also stops the rain', () => {
     const engine = new GameEngine(FIXED_SPAWN)
     engine.startRound()

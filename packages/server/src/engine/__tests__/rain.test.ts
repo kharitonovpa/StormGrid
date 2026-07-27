@@ -137,6 +137,75 @@ describe('rain — flooded cells', () => {
   })
 })
 
+describe('rain — volume tiebreak', () => {
+  it('the tighter hollow fills first and drowns its occupant', () => {
+    const s = state()
+    // A sits in a single-cell pit; B sits in a three-cell trench on his side
+    // (canonical +1 reads as -1 for B).
+    s.board[1][1].height = -1
+    for (let x = 3; x <= 5; x++) s.board[5][x].height = 1
+
+    s.players.A.x = 1
+    s.players.A.y = 1
+    s.players.B.x = 4
+    s.players.B.y = 5
+
+    const result = resolveRain(s)
+    expect(result.deaths).toEqual(['A'])
+    expect(result.spared).toBe('B')
+    expect(s.players.B.alive).toBe(true)
+  })
+
+  it('the survivor surface reports no flooding at all', () => {
+    const s = state()
+    s.board[1][1].height = -1
+    for (let x = 3; x <= 5; x++) s.board[5][x].height = 1
+
+    s.players.A.x = 1
+    s.players.A.y = 1
+    s.players.B.x = 4
+    s.players.B.y = 5
+
+    const result = resolveRain(s)
+    expect(result.floodedCellsA.length).toBeGreaterThan(0)
+    expect(result.floodedCellsB).toEqual([])
+  })
+
+  it('equal volumes drown both', () => {
+    const s = state()
+    // A in a single-cell pit, B in a single-cell pit on his own side.
+    s.board[1][1].height = -1
+    s.board[5][5].height = 1
+
+    s.players.A.x = 1
+    s.players.A.y = 1
+    s.players.B.x = 5
+    s.players.B.y = 5
+
+    const result = resolveRain(s)
+    expect(result.deaths).toContain('A')
+    expect(result.deaths).toContain('B')
+    expect(result.spared).toBe(null)
+  })
+
+  it('does not trigger when only one player stands in water', () => {
+    const s = state()
+    // A in a pit; B next to a drain on his side, so he is not in a basin.
+    s.board[1][1].height = -1
+    s.board[1][4].height = 1
+
+    s.players.A.x = 1
+    s.players.A.y = 1
+    s.players.B.x = 5
+    s.players.B.y = 1
+
+    const result = resolveRain(s)
+    expect(result.deaths).toEqual(['A'])
+    expect(result.spared).toBe(null)
+    expect(result.floodedCellsB.length).toBeGreaterThan(0)
+  })
+})
+
 describe('rain — two-sided inversion', () => {
   it('canonical -1 pit floods A surface, canonical +1 pit floods B surface', () => {
     const s = state()

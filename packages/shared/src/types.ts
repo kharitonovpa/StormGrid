@@ -113,6 +113,8 @@ export type WeatherResult = {
   windSpared: PlayerId | null
   floodedCells: { x: number; y: number }[]
   floodedCellsB: { x: number; y: number }[]
+  /** Player the water spared because the other one went under first. */
+  rainSpared: PlayerId | null
 }
 
 /* ── Watcher ── */

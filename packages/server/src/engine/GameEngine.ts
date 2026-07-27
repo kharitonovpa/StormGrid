@@ -92,6 +92,7 @@ export class GameEngine {
     let windSpared: PlayerId | null = null
     let floodedCellsA: { x: number; y: number }[] = []
     let floodedCellsB: { x: number; y: number }[] = []
+    let rainSpared: PlayerId | null = null
 
     if (decision.type === 'wind' || decision.type === 'wind_rain') {
       const wr = resolveWind(this.state, decision.dir)
@@ -111,6 +112,7 @@ export class GameEngine {
       Object.assign(deathCauses, rr.deathCauses)
       floodedCellsA = rr.floodedCellsA
       floodedCellsB = rr.floodedCellsB
+      rainSpared = rr.spared
     }
 
     this.resolveWinner()
@@ -127,6 +129,7 @@ export class GameEngine {
       windSpared,
       floodedCells: floodedCellsA,
       floodedCellsB,
+      rainSpared,
     }
   }
 
