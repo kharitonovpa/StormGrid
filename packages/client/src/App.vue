@@ -15,6 +15,7 @@ import { createPlayerSystem } from './lib/player'
 import { createNameplateSystem } from './lib/nameplate'
 import { createPreviewSystem } from './lib/preview'
 import { createInsectSystem } from './lib/insects'
+import { createGlassSystem, GLASS_ORDER } from './lib/glass'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
@@ -426,6 +427,52 @@ function switchToOrbit() {
   controls = oc
 }
 
+/**
+ * The slab is seen along its diagonal, so its widest reach on screen is that
+ * diagonal — and on a phone held upright it does not come close to fitting: both
+ * side corners, and with them the cells the storm decides, fall outside the
+ * frame. Below this aspect the camera is pulled back until the whole slab is
+ * inside; above it the composed framing stands, along with whatever zoom the
+ * player set themselves.
+ */
+const FIT_ASPECT = 1.2
+const FIT_MARGIN = 1.04
+/**
+ * The footprint at rest, not the raised extremes: a single corner cell lifted a
+ * step is worth less than the screen the slack would cost every match.
+ */
+const FIT_CORNERS: THREE.Vector3[] = []
+for (const x of [-HALF, HALF]) {
+  for (const z of [-HALF, HALF]) {
+    FIT_CORNERS.push(new THREE.Vector3(x, 0, z))
+  }
+}
+
+function fitCameraToBoard(cam: THREE.PerspectiveCamera) {
+  if (cam.aspect >= FIT_ASPECT) return
+  const dir = cam.position.clone()
+  if (dir.lengthSq() === 0) return
+  let dist = dir.length()
+  dir.divideScalar(dist)
+
+  const v = new THREE.Vector3()
+  // A corner's screen position is not linear in the distance, so close in on it.
+  for (let i = 0; i < 5; i++) {
+    cam.position.copy(dir).multiplyScalar(dist)
+    cam.lookAt(0, 0, 0)
+    cam.updateMatrixWorld()
+    let worst = 0
+    for (const corner of FIT_CORNERS) {
+      v.copy(corner).project(cam)
+      worst = Math.max(worst, Math.abs(v.x), Math.abs(v.y))
+    }
+    dist *= worst * FIT_MARGIN
+  }
+
+  cam.position.copy(dir).multiplyScalar(dist)
+  cam.lookAt(0, 0, 0)
+}
+
 let cameraAnimTarget: THREE.Vector3 | null = null
 let cameraAnimFrom: THREE.Vector3 | null = null
 let cameraAnimProgress = 0
@@ -708,6 +755,7 @@ function applyGameState(state: GameState) {
 function resetVisuals() {
   windSystem?.setVisible(false)
   rainSystem?.setVisible(false)
+  glassSystem?.close()
   waterSystem?.clear()
   pendingWaterVolume = null
   // Never leave the storm waiting on water that will not come.
@@ -872,17 +920,21 @@ unsubMessage2 = socket.onMessage((msg) => {
         rainSystem?.setVisible(true)
         audio.startRain()
       }
-      const flooding = msg.result.floodedCells.length > 0
+      const deaths = msg.result.deaths as ('A' | 'B')[]
+      const causeOf = (pid: 'A' | 'B') => msg.result.deathCauses[pid]?.type
+      // Only the wind takes a body away with it; the water keeps the one it drowned.
+      const blownAway = deaths.filter(pid => causeOf(pid) === 'wind')
+      const drowned = deaths.filter(pid => causeOf(pid) === 'rain')
+      // Own hollows aside, water has to be built for a drowning on the far side
+      // too: the player watches it through the glass.
+      const flooding = msg.result.floodedCells.length > 0 || drowned.length > 0
       if (flooding) pendingWaterVolume = msg.result.waterVolume
+      // The storm has already resolved, so showing the opponent gives nothing away.
+      if (deaths.length > 0) glassSystem?.open()
       startAnimating()
 
       if (playersSystem) {
         const paths = msg.result.windPath as Record<'A' | 'B', { x: number; y: number }[]>
-        const deaths = msg.result.deaths as ('A' | 'B')[]
-        const causeOf = (pid: 'A' | 'B') => msg.result.deathCauses[pid]?.type
-        // Only the wind takes a body away with it; the water keeps the one it drowned.
-        const blownAway = deaths.filter(pid => causeOf(pid) === 'wind')
-        const drowned = deaths.filter(pid => causeOf(pid) === 'rain')
         if (paths.A.length > 1 || paths.B.length > 1) audio.play('wind-push')
         weatherAnimDone = false
         // The storm is over once the wind has carried everyone it could and the
@@ -937,6 +989,7 @@ let pendingWaterVolume: number | null = null
 /** Set while the storm waits for the hollows to finish filling. */
 let floodResolve: (() => void) | null = null
 let previewSystem: ReturnType<typeof createPreviewSystem> | null = null
+let glassSystem: ReturnType<typeof createGlassSystem> | null = null
 let pendingGameEnd: { type: 'game:end'; winner: 'A' | 'B' | 'draw' } | null = null
 let lobbyDemo: ReturnType<typeof createLobbyDemo> | null = null
 let lobbyDemoActive = false
@@ -961,6 +1014,8 @@ onMounted(() => {
   const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 500)
   camera.position.set(30, 25, 30)
   camera.lookAt(0, 0, 0)
+  camera.updateProjectionMatrix()
+  fitCameraToBoard(camera)
   sceneCamera = camera
 
   renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -1004,12 +1059,14 @@ onMounted(() => {
   geo.rotateX(-Math.PI / 2)
   const pos = geo.attributes.position as THREE.BufferAttribute
   const topMesh = new THREE.Mesh(geo, terrainMat)
+  topMesh.renderOrder = GLASS_ORDER.nearFace
   scene.add(topMesh)
 
   const bottomGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
   bottomGeo.rotateX(-Math.PI / 2)
   const bottomPos = bottomGeo.attributes.position as THREE.BufferAttribute
   const bottomMesh = new THREE.Mesh(bottomGeo, terrainMat)
+  bottomMesh.renderOrder = GLASS_ORDER.farFace
   scene.add(bottomMesh)
 
   const perimN = terrainState.PERIMETER.length
@@ -1023,7 +1080,9 @@ onMounted(() => {
   const skirtPos = new THREE.BufferAttribute(skirtVerts, 3)
   skirtGeo.setAttribute('position', skirtPos)
   skirtGeo.setIndex(skirtIdxArr)
-  scene.add(new THREE.Mesh(skirtGeo, terrainMat))
+  const skirtMesh = new THREE.Mesh(skirtGeo, terrainMat)
+  skirtMesh.renderOrder = GLASS_ORDER.farFace
+  scene.add(skirtMesh)
 
   const gridStep = SIZE / SEGMENTS
   const gridLineCount = (7 + 1) * SEGMENTS * 4
@@ -1096,6 +1155,11 @@ onMounted(() => {
       scatter: p === 'weather',
     }
   })
+
+  // A storm that kills someone clears the slab, so the player sees the verdict
+  // instead of only being told it.
+  const glass = createGlassSystem(terrainMat)
+  glassSystem = glass
 
   const DIR_MAP: Record<string, MoveDir> = {
     '0,-1': 'N', '0,1': 'S', '1,0': 'E', '-1,0': 'W',
@@ -1377,6 +1441,7 @@ onMounted(() => {
     interaction.update(dt)
     preview.update(dt)
     insects.update(dt)
+    glass.update(dt)
     audio.update(dt)
     renderer.render(scene, camera)
   }
@@ -1417,6 +1482,8 @@ onMounted(() => {
     camera.aspect = rw / rh
     camera.updateProjectionMatrix()
     renderer.setSize(rw, rh)
+    // Turning a phone sideways changes what fits, so the framing is redone.
+    if (!introActive.value && !demoOrbitActive) fitCameraToBoard(camera)
     if (controls instanceof TrackballControls) controls.handleResize()
   }
   window.addEventListener('resize', onResize)
@@ -1436,10 +1503,12 @@ onMounted(() => {
     interaction.dispose()
     preview.dispose()
     insects.dispose()
+    glass.dispose()
     handleAction = null
     playersSystem = null
     nameplateSystem = null
     previewSystem = null
+    glassSystem = null
     waterSystem = null
     windSystem = null
     rainSystem = null

@@ -56,6 +56,7 @@ alwaysApply: true
 - `packages/client/src/lib/wind.ts` — wind streamlines and dust particles, `setDirection()`
 - `packages/client/src/lib/rain.ts` — rain drops and splash rings (top + bottom)
 - `packages/client/src/lib/player.ts` — two players (A + B) as GLB characters, 8-dir movement highlights, wind slide animation, surface flip for bottom side
+- `packages/client/src/lib/glass.ts` — decisive-cataclysm reveal: turns the whole slab to translucent jade so the opponent under the far face becomes visible; owns the render order of the slab faces and both water sets
 - `packages/client/src/lib/preview.ts` — action preview: ribbon shaders (raise/lower), gradient arc (move)
 - `packages/client/src/lib/compass.ts` — static 3D compass rose
 - `packages/client/src/lib/interaction.ts` — raycasting on both surfaces, cell click/hover, touch handling

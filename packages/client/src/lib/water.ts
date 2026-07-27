@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { CELLS, HALF, CELL_SIZE, HEIGHT_SCALE, THICKNESS } from './constants'
+import { GLASS_ORDER } from './glass'
 import type { TerrainState, FloodBody } from './terrain'
 
 /** Seconds the decisive hollow takes to brim over. */
@@ -30,6 +31,7 @@ interface WaterBuildConfig {
   faceWinding: [number, number, number, number, number, number]
   wallWinding: [number, number, number, number, number, number]
   wallCheck: (nz: number, nx: number, minH: number) => boolean
+  renderOrder: number
 }
 
 /**
@@ -74,6 +76,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
     faceWinding: [0, 1, 2, 2, 1, 3],
     wallWinding: [0, 2, 1, 1, 2, 3],
     wallCheck: (nz, nx, minH) => terrain.target[nz][nx] <= minH,
+    renderOrder: GLASS_ORDER.nearWater,
   }
 
   const botWaterCfg: WaterBuildConfig = {
@@ -84,6 +87,8 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
     faceWinding: [0, 2, 1, 1, 2, 3],
     wallWinding: [0, 1, 2, 2, 1, 3],
     wallCheck: (nz, nx, minH) => (-terrain.target[nz][nx]) <= minH,
+    // Drawn before both faces of the slab, so a glass pane can show it through.
+    renderOrder: GLASS_ORDER.farWater,
   }
 
   function buildWaterSet(cfg: WaterBuildConfig, out: WaterBody[], volume: number) {
@@ -163,6 +168,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
       geo.computeVertexNormals()
 
       const mesh = new THREE.Mesh(geo, waterMat)
+      mesh.renderOrder = cfg.renderOrder
       scene.add(mesh)
 
       out.push({
