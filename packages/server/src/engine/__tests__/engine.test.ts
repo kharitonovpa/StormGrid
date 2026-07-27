@@ -98,6 +98,69 @@ describe('GameEngine — full round lifecycle', () => {
   })
 })
 
+describe('GameEngine — the storm breaks off on the first death', () => {
+  it('a wind death cancels the rain, so the survivor is not drowned', () => {
+    const engine = new GameEngine(FIXED_SPAWN)
+    engine.startRound()
+    engine.beginTicking()
+
+    // A digs a pit under himself: it shields him from the wind and would drown
+    // him. B stays on flat ground and is carried off the east edge.
+    engine.submitTick({ A: { kind: 'lower', x: FIXED_SPAWN.A.x, y: FIXED_SPAWN.A.y } })
+    for (let i = 1; i < TICKS_PER_ROUND; i++) engine.submitTick({})
+
+    engine.setWeatherDecision('wind_rain', 'E')
+
+    const result = engine.executeWeather()
+    expect(result.deaths).toEqual(['B'])
+    expect(result.deathCauses.B?.type).toBe('wind')
+    expect(result.deathCauses.A).toBeUndefined()
+    expect(result.state.players.A.alive).toBe(true)
+    expect(result.state.winner).toBe('A')
+    // No rain at all — not even flooding.
+    expect(result.floodedCells).toEqual([])
+    expect(result.floodedCellsB).toEqual([])
+  })
+
+  it('rain stays lethal when the wind takes nobody', () => {
+    const engine = new GameEngine(FIXED_SPAWN)
+    engine.startRound()
+    engine.beginTicking()
+
+    // A digs a pit under himself; B raises a neighbour cell on the canonical
+    // board, which reads as a drain on his own side.
+    engine.submitTick({
+      A: { kind: 'lower', x: FIXED_SPAWN.A.x, y: FIXED_SPAWN.A.y },
+      B: { kind: 'raise', x: FIXED_SPAWN.B.x + 1, y: FIXED_SPAWN.B.y },
+    })
+    for (let i = 1; i < TICKS_PER_ROUND; i++) engine.submitTick({})
+
+    engine.setWeatherDecision('rain', 'E')
+
+    const result = engine.executeWeather()
+    expect(result.deaths).toEqual(['A'])
+    expect(result.deathCauses.A?.type).toBe('rain')
+    expect(result.state.winner).toBe('B')
+    expect(result.floodedCells.length).toBeGreaterThan(0)
+  })
+
+  it('a double wind death also stops the rain', () => {
+    const engine = new GameEngine(FIXED_SPAWN)
+    engine.startRound()
+    engine.beginTicking()
+
+    for (let i = 0; i < TICKS_PER_ROUND; i++) engine.submitTick({})
+
+    engine.setWeatherDecision('wind_rain', 'E')
+
+    const result = engine.executeWeather()
+    expect(result.state.winner).toBe('draw')
+    expect(result.deathCauses.A?.type).toBe('wind')
+    expect(result.deathCauses.B?.type).toBe('wind')
+    expect(result.floodedCells).toEqual([])
+  })
+})
+
 describe('GameEngine — character selection', () => {
   it('sets characters for both players', () => {
     const engine = new GameEngine(FIXED_SPAWN)

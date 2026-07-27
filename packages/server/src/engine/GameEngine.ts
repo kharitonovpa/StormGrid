@@ -101,7 +101,11 @@ export class GameEngine {
       windSpared = wr.spared
     }
 
-    if (decision.type === 'rain' || decision.type === 'wind_rain') {
+    // The storm breaks off on the first death: once the wind has taken someone,
+    // the round is decided and the rain never comes down.
+    const rains = (decision.type === 'rain' || decision.type === 'wind_rain') && deaths.length === 0
+
+    if (rains) {
       const rr = resolveRain(this.state)
       deaths.push(...rr.deaths)
       Object.assign(deathCauses, rr.deathCauses)
