@@ -795,6 +795,7 @@ unsubMessage2 = socket.onMessage((msg) => {
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
       }
       resetVisuals()
+      nameplateSystem?.setLocalPlayer(msg.playerId)
       if (nameplateSystem && msg.playerInfo) {
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
@@ -821,6 +822,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       }
       applyGameState(msg.state)
       resetVisuals()
+      nameplateSystem?.setLocalPlayer(msg.playerId)
       if (nameplateSystem && msg.playerInfo) {
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
@@ -850,6 +852,7 @@ unsubMessage2 = socket.onMessage((msg) => {
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
       }
       resetVisuals()
+      nameplateSystem?.setLocalPlayer(null)
       if (nameplateSystem && msg.playerInfo) {
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
@@ -871,6 +874,7 @@ unsubMessage2 = socket.onMessage((msg) => {
         playersSystem.applyPositions(msg.state.players.A, msg.state.players.B)
       }
       resetVisuals()
+      nameplateSystem?.setLocalPlayer(null)
       if (nameplateSystem && msg.playerInfo) {
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)

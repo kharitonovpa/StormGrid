@@ -60,7 +60,7 @@ alwaysApply: true
 - `packages/client/src/lib/preview.ts` — action preview: ribbon shaders (raise/lower), gradient arc (move)
 - `packages/client/src/lib/compass.ts` — static 3D compass rose
 - `packages/client/src/lib/interaction.ts` — raycasting on both surfaces, cell click/hover, touch handling
-- `packages/client/src/lib/nameplate.ts` — billboard name + flag sprites above players
+- `packages/client/src/lib/nameplate.ts` — billboard name + flag sprites above players (own plate reads "You", opponent keeps their name)
 - `packages/client/src/lib/models.ts` — GLB preload/cache for wheat/rice/corn characters
 - `packages/client/src/lib/celebrate.ts` — DOM canvas particle overlay (watcher score fly-to-HUD, fireworks)
 - `packages/client/src/lib/lobbyDemo.ts` — cinematic lobby background demo (sculpt/flip/wind/flood phases)

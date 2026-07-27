@@ -110,6 +110,13 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   ringGeo.setAttribute('position', ringPosAttr)
   ringGeo.setIndex(ringIdx)
 
+  /**
+   * The ring sits under the local player only, so it is the one thing on the board
+   * that says "this is you" — worth keeping legible at rest, not just on hover.
+   */
+  const RING_REST = 0.2
+  const RING_HOVER = 0.4
+
   const ringMat = new THREE.MeshBasicMaterial({
     color: 0x66ddff,
     transparent: true,
@@ -464,6 +471,8 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   let inMoveMode = false
   let validMoves: { cx: number; cz: number }[] = []
   let activePlayerId: 'A' | 'B' = 'A'
+  /** Watchers, the architect and the lobby demo have no side of their own. */
+  let hasLocalPlayer = false
   let lastTerrainVersion = -1
 
   function showMoveOptions() {
@@ -537,6 +546,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   function setActivePlayer(id: 'A' | 'B' | null) {
     activePlayerId = id ?? 'A'
+    hasLocalPlayer = id !== null
     if (id === 'B') {
       playerB.setSurface('top')
       playerA.setSurface('bottom')
@@ -629,11 +639,12 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         ringOpacity += (target - ringOpacity) * Math.min(dt * 12, 1)
         ringMat.color.setHex(0xffcc44)
       } else if (isPlayerHovered) {
-        ringOpacity += (0.3 - ringOpacity) * Math.min(dt * 10, 1)
+        ringOpacity += (RING_HOVER - ringOpacity) * Math.min(dt * 10, 1)
         ringMat.color.setHex(0x66ddff)
         ringPulseTime = 0
       } else {
-        ringOpacity += (0.08 - ringOpacity) * Math.min(dt * 10, 1)
+        const rest = hasLocalPlayer ? RING_REST : 0
+        ringOpacity += (rest - ringOpacity) * Math.min(dt * 10, 1)
         ringMat.color.setHex(0x66ddff)
         ringPulseTime = 0
       }
