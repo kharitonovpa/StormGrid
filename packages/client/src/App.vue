@@ -14,6 +14,7 @@ import { createInteractionSystem } from './lib/interaction'
 import { createPlayerSystem } from './lib/player'
 import { createNameplateSystem } from './lib/nameplate'
 import { createPreviewSystem } from './lib/preview'
+import { createInsectSystem } from './lib/insects'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
@@ -1062,6 +1063,22 @@ onMounted(() => {
   const preview = createPreviewSystem(scene, terrainState)
   previewSystem = preview
 
+  // The opponent is hidden under the slab; butterflies gather over their cell.
+  const insects = createInsectSystem(scene, terrainState, () => {
+    const myId = game.myPlayerId.value
+    const p = game.phase.value
+    if (!myId || (p !== 'forecast' && p !== 'ticking' && p !== 'weather')) return null
+    const opp = game.opponentPlayer.value
+    if (!opp || !opp.alive) return null
+    const hidden = myId === 'A' ? players.playerB : players.playerA
+    return {
+      cx: hidden.state.cx,
+      cz: hidden.state.cz,
+      character: opp.character,
+      scatter: p === 'weather',
+    }
+  })
+
   const DIR_MAP: Record<string, MoveDir> = {
     '0,-1': 'N', '0,1': 'S', '1,0': 'E', '-1,0': 'W',
     '1,-1': 'NE', '-1,-1': 'NW', '1,1': 'SE', '-1,1': 'SW',
@@ -1338,6 +1355,7 @@ onMounted(() => {
     nameplates.update(dt)
     interaction.update(dt)
     preview.update(dt)
+    insects.update(dt)
     audio.update(dt)
     renderer.render(scene, camera)
   }
@@ -1396,6 +1414,7 @@ onMounted(() => {
     nameplates.dispose()
     interaction.dispose()
     preview.dispose()
+    insects.dispose()
     handleAction = null
     playersSystem = null
     nameplateSystem = null
