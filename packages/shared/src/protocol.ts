@@ -20,6 +20,9 @@ export type ArchitectPlaceBonusMsg = { type: 'architect:place_bonus'; x: number;
 
 export type ReconnectMsg = { type: 'reconnect'; token: string }
 
+/** Keepalive. Sent every few seconds so an idle socket is never mistaken for a dead one. */
+export type PingMsg = { type: 'ping' }
+
 export type ClientMessage =
   | QueueJoinMsg
   | QueueLeaveMsg
@@ -35,8 +38,11 @@ export type ClientMessage =
   | ArchitectSetWeatherMsg
   | ArchitectPlaceBonusMsg
   | ReconnectMsg
+  | PingMsg
 
 /* ── Server → Client ── */
+
+export type PongMsg = { type: 'pong' }
 
 export type QueueWaitingMsg = { type: 'queue:waiting'; maxWaitMs: number }
 export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string; roomId: string; playerInfo: Record<PlayerId, PlayerInfo>; practice?: boolean }
@@ -147,3 +153,4 @@ export type ServerMessage =
   | ReconnectFailMsg
   | OpponentDisconnectedMsg
   | OpponentReconnectedMsg
+  | PongMsg

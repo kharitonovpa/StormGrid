@@ -58,6 +58,12 @@ const CLEANUP_DELAY_MS = 10_000
 /* Practice (tutorial) mode: longer forecast to read hints, untimed ticks, dumber bot */
 const PRACTICE_FORECAST_MS = 6_000
 const PRACTICE_BOT_SKIP_CHANCE = 0.3
+/**
+ * An untimed tick still needs a floor. The newcomer's action is what normally
+ * moves the game on, so if that action never arrives — a dropped frame, a socket
+ * that died quietly — the room would otherwise sit here forever.
+ */
+const PRACTICE_TICK_TIMEOUT_MS = 90_000
 
 const POINTS_WINNER = 10
 const POINTS_MOVE = 5
@@ -87,11 +93,14 @@ export type RoomCallbacks = {
 export type RoomOpts = {
   /** Tutorial match vs bot: ticks wait for the player's action, no replays/stats, no spectators. */
   practice?: boolean
+  /** Override the untimed-tick backstop. Tests use a short one; production takes the default. */
+  practiceTickTimeoutMs?: number
 }
 
 export class Room {
   readonly id: string
   readonly practice: boolean
+  private readonly practiceTickTimeoutMs: number
   private engine: GameEngine
   private players: Partial<Record<PlayerId, PlayerSlot>> = {}
   private watchers = new Map<string, WatcherSlot>()
@@ -105,6 +114,7 @@ export class Room {
   private callbacks: RoomCallbacks
   private ended = false
   private disposed = false
+  private resolving = false
 
   private tickTimerStartedAt = 0
   private tickTimerDurationMs = 0
@@ -128,6 +138,7 @@ export class Room {
   constructor(id: string, callbacks: RoomCallbacks, opts?: RoomOpts) {
     this.id = id
     this.practice = opts?.practice ?? false
+    this.practiceTickTimeoutMs = opts?.practiceTickTimeoutMs ?? PRACTICE_TICK_TIMEOUT_MS
     this.engine = new GameEngine()
     this.callbacks = callbacks
   }
@@ -597,6 +608,8 @@ export class Room {
     if (this.practice) {
       // Untimed tick: no deadline, no bot scheduling — the game waits for the player.
       this.broadcast({ type: 'tick:start', tick: state.tick, deadline: 0 })
+      // ...but not forever. If the action never lands, the tick resolves anyway.
+      this.setTickTimer(this.practiceTickTimeoutMs, () => this.resolveTick())
       return
     }
 
@@ -614,23 +627,35 @@ export class Room {
   }
 
   private resolveTick(): void {
-    this.clearTimer()
+    // Two things can ask for the same tick now — the player's action and the
+    // practice fallback timer — and they can land in the same instant. Only the
+    // first one gets to resolve; the phase check covers the timer arriving late,
+    // after the round has already moved on.
+    if (this.resolving || this.ended) return
+    if (this.engine.getState().phase !== 'ticking') return
+    this.resolving = true
 
-    const actions: Partial<Record<PlayerId, Action>> = {}
-    if (this.players.A?.action) actions.A = this.players.A.action
-    if (this.players.B?.action) actions.B = this.players.B.action
+    try {
+      this.clearTimer()
 
-    const result = this.engine.submitTick(actions)
-    this.replayFrames.push({ state: cloneState(result.state) })
-    this.sendEach((pid) => ({ type: 'tick:resolve', state: stateForPlayer(result.state, pid) }))
-    this.broadcastSpectators({ type: 'tick:resolve', state: result.state })
+      const actions: Partial<Record<PlayerId, Action>> = {}
+      if (this.players.A?.action) actions.A = this.players.A.action
+      if (this.players.B?.action) actions.B = this.players.B.action
 
-    this.resolveMovePredictions(actions)
+      const result = this.engine.submitTick(actions)
+      this.replayFrames.push({ state: cloneState(result.state) })
+      this.sendEach((pid) => ({ type: 'tick:resolve', state: stateForPlayer(result.state, pid) }))
+      this.broadcastSpectators({ type: 'tick:resolve', state: result.state })
 
-    if (result.state.phase === 'weather') {
-      this.setTickTimer(500, () => this.executeWeather())
-    } else {
-      this.setTickTimer(300, () => this.beginTick())
+      this.resolveMovePredictions(actions)
+
+      if (result.state.phase === 'weather') {
+        this.setTickTimer(500, () => this.executeWeather())
+      } else {
+        this.setTickTimer(300, () => this.beginTick())
+      }
+    } finally {
+      this.resolving = false
     }
   }
 

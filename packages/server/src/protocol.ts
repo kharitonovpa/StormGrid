@@ -36,6 +36,8 @@ export type {
   ForecastUpdateMsg,
   LobbyStatusMsg,
   ReconnectMsg,
+  PingMsg,
+  PongMsg,
   ReconnectOkMsg,
   ReconnectFailMsg,
   OpponentDisconnectedMsg,
@@ -82,6 +84,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       case 'watch:leave':
       case 'architect:join':
       case 'architect:leave':
+      case 'ping':
         return msg
       case 'action:submit':
         if (!isValidAction(msg.action)) return null

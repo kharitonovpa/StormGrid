@@ -1,5 +1,6 @@
 import type { UserInfo } from '@wheee/shared'
 import type { PlatformAdapter } from './types'
+import { createLocalStorage, createLocalSound, noSticky } from './defaults'
 import { API_BASE } from '../config'
 
 let user: UserInfo | null = null
@@ -8,6 +9,16 @@ const authCallbacks = new Set<() => void>()
 
 export default class TelegramAdapter implements PlatformAdapter {
   readonly type = 'telegram' as const
+  readonly hostId = null
+  readonly storage = createLocalStorage()
+  readonly sound = createLocalSound()
+
+  canAuth(): boolean { return true }
+  canShowLeaderboard(): boolean { return true }
+
+  showSticky = noSticky.showSticky
+  closeSticky = noSticky.closeSticky
+  onStickyChange = noSticky.onStickyChange
 
   async init(): Promise<void> {
     const wa = window.Telegram?.WebApp

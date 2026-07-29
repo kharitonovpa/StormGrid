@@ -188,5 +188,5 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
 
 Все фазы (0–8 + 2b) завершены. Игра в проде: `wheee.io`, `ru.wheee.io`, Telegram Mini App, Yandex Games, GamePush.
 
-Тесты: `bun test` в `packages/server` — 104 теста в 13 файлах (unit: engine/bot/auth/db/ratelimit; integration-сьюты `integration`/`watcher`/`architect`/`reconnect` требуют запущенного локально сервера:
+Тесты: `bun test` в `packages/server` — 128 тестов в 14 файлах (unit: engine/bot/auth/db/ratelimit; integration-сьюты `integration`/`watcher`/`architect`/`reconnect` требуют запущенного локально сервера:
 `RECONNECT_GRACE_MS=2000 BOT_MATCH_DELAY_MS=600000 bun src/index.ts`).

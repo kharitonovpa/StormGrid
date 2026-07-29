@@ -66,7 +66,8 @@ const reminderHtml = computed(() => md(t('tutorial.actToContinue')))
 <style scoped>
 .tut-root {
   position: fixed;
-  bottom: 76px;
+  /* --sticky-inset is the platform banner's height; 0 when there is none. */
+  bottom: calc(76px + var(--sticky-inset, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
@@ -146,7 +147,7 @@ const reminderHtml = computed(() => md(t('tutorial.actToContinue')))
 
 @media (max-width: 640px) {
   .tut-root {
-    bottom: 68px;
+    bottom: calc(68px + var(--sticky-inset, 0px));
     width: calc(100vw - 20px);
   }
   .tut-card { padding: 10px 14px; }

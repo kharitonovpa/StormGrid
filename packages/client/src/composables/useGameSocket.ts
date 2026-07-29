@@ -8,20 +8,35 @@ export type MessageHandler = (msg: ServerMessage) => void
 const MAX_RECONNECT_DELAY = 8_000
 const BASE_RECONNECT_DELAY = 500
 const MAX_RECONNECT_ATTEMPTS = 20
+/**
+ * A match in progress is worth fighting much longer for than an idle lobby: at the
+ * 8 s ceiling this is a bit over ten minutes of trying. A stale token is not a
+ * problem — the server answers it with `reconnect:fail` and the loop stops there.
+ */
+const IN_MATCH_MAX_RECONNECT_ATTEMPTS = 100
+/** Comfortably inside the server's 120 s idle timeout. */
+const HEARTBEAT_MS = 25_000
 
 export function useGameSocket() {
   const connected = ref(false)
   const reconnecting = ref(false)
+  /** Every reconnect attempt has been spent — the player needs a way out. */
+  const gaveUp = ref(false)
   const reconnectToken = ref<string | null>(null)
   const ws = shallowRef<WebSocket | null>(null)
   const handlers = new Set<MessageHandler>()
   let reconnectAttempts = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
   let intentionalClose = false
 
   function connect() {
     if (ws.value && ws.value.readyState <= WebSocket.OPEN) return
     intentionalClose = false
+    // An explicit connect (pressing Play) earns a fresh budget: otherwise a
+    // spent counter from an earlier outage leaves the lobby quietly dead.
+    reconnectAttempts = 0
+    gaveUp.value = false
     createSocket()
   }
 
@@ -37,7 +52,9 @@ export function useGameSocket() {
     socket.onopen = () => {
       connected.value = true
       reconnecting.value = false
+      gaveUp.value = false
       reconnectAttempts = 0
+      startHeartbeat()
       if (reconnectToken.value) {
         send({ type: 'reconnect', token: reconnectToken.value })
       }
@@ -54,19 +71,36 @@ export function useGameSocket() {
       /* browser fires close after error — reconnection handled there */
     }
 
-    socket.onclose = () => {
+    socket.onclose = (e) => {
+      // A socket that has already been replaced must not clear its successor.
+      if (ws.value !== socket) return
       connected.value = false
       ws.value = null
+      stopHeartbeat()
       if (!intentionalClose) {
+        console.warn(`[ws] closed code=${e.code}${e.reason ? ` reason=${e.reason}` : ''}`)
         scheduleReconnect()
       }
     }
   }
 
+  function startHeartbeat() {
+    stopHeartbeat()
+    heartbeatTimer = setInterval(() => { send({ type: 'ping' }) }, HEARTBEAT_MS)
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
+  }
+
   function scheduleReconnect() {
     if (reconnectTimer) return
-    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    const maxAttempts = reconnectToken.value
+      ? IN_MATCH_MAX_RECONNECT_ATTEMPTS
+      : MAX_RECONNECT_ATTEMPTS
+    if (reconnectAttempts >= maxAttempts) {
       reconnecting.value = false
+      gaveUp.value = true
       return
     }
     reconnecting.value = true
@@ -148,6 +182,10 @@ export function useGameSocket() {
   }
 
   function refreshConnection() {
+    // A backoff retry may already be queued. Letting it fire as well would leave
+    // two sockets racing, and the loser's `onclose` would drop the winner.
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+
     if (!ws.value || ws.value.readyState > WebSocket.OPEN) {
       createSocket()
       return
@@ -166,19 +204,31 @@ export function useGameSocket() {
     intentionalClose = true
     reconnectToken.value = null
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+    stopHeartbeat()
     ws.value?.close()
     ws.value = null
     connected.value = false
     reconnecting.value = false
+    gaveUp.value = false
+  }
+
+  /** Start over after the reconnect loop gave up — used by the "lost connection" screen. */
+  function retryConnection() {
+    reconnectAttempts = 0
+    gaveUp.value = false
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+    refreshConnection()
   }
 
   return {
     connected,
     reconnecting,
+    gaveUp,
     reconnectToken,
     connect,
     disconnect,
     refreshConnection,
+    retryConnection,
     setReconnectToken,
     joinQueue,
     leaveQueue,

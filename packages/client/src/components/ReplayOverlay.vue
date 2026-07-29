@@ -61,7 +61,8 @@ function onExit() {
 <style scoped>
 .replay-bar {
   position: fixed;
-  bottom: 24px;
+  /* --sticky-inset is the platform banner's height; 0 when there is none. */
+  bottom: calc(24px + var(--sticky-inset, 0px));
   left: 50%;
   transform: translateX(-50%);
   display: flex;

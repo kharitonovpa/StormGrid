@@ -276,6 +276,7 @@ packages/client/src/
 ```typescript
 interface PlatformAdapter {
   readonly type: 'web' | 'telegram' | 'yandex' | 'gamepush'
+  readonly hostId: string | null   // site behind an aggregator, e.g. 'GAME_DISTRIBUTION'
 
   init(): Promise<void>       // SDK initialization, initial auth
   ready(): void               // signal SDK that loading is complete
@@ -287,20 +288,51 @@ interface PlatformAdapter {
   logout(): Promise<void>
   getAuthToken(): string | null   // JWT token for WebSocket auth
 
+  canAuth(): boolean                     // false where sign-in needs a forbidden backend
+  canShowLeaderboard(): boolean          // false where overlay windows are forbidden
+
   isRewardedAvailable(): boolean         // whether rewarded ads exist on this platform
   showPreloader(): Promise<boolean>      // preloader ad before game start (GamePush)
   showInterstitial(): Promise<boolean>   // fullscreen ad
   showRewarded(): Promise<boolean>       // rewarded video ad
 
+  showSticky(): void                     // bottom banner (GamePush); no-op elsewhere
+  closeSticky(): void
+  onStickyChange(cb: (heightPx: number) => void): () => void
+
   onPause(cb: () => void): () => void    // tab hidden / ad playing / SDK pause
   onResume(cb: () => void): () => void   // tab visible / ad closed / SDK resume
+
+  readonly storage: PlatformStorage      // saved values (localStorage or player profile)
+  readonly sound: PlatformSound          // platform-level mute, where the host owns it
 
   getLanguage(): string                  // 2-letter code (en, ru, etc.)
 }
 ```
 
+`web.ts`, `telegram.ts` and `yandex.ts` take the neutral implementations from
+`lib/platform/defaults.ts` (localStorage saves, local mute state, no banner);
+only `gamepush.ts` wires these to a real SDK.
+
 Note: leaderboards and replays are **not** part of the adapter — they go through
 the game's own REST API (`/api/leaderboard/*`, `/api/replays`) on every platform.
+
+### Saved values
+
+`lib/storage.ts` is the single door to persistence. `initPlatform()` asks the
+adapter for everything once — before Vue mounts — and holds it in memory, so
+`storageGet` / `storageSet` stay synchronous at the call sites (the tutorial and
+intro flags in `App.vue`, the audio settings in `lib/audio.ts`). Keys are prefixed
+`wheee`.
+
+| Platform | Backing store |
+|----------|---------------|
+| Web / Telegram / Yandex | `localStorage`, one entry per key |
+| GamePush | `gp.player` JSON field `save`, debounced `sync()`, mirrored to `localStorage` |
+
+**GamePush setup**: the field must exist in the panel under **Players → Player
+Fields** with key `save` and type JSON. Without it the adapter logs a warning and
+keeps working off localStorage — moderation, however, requires the profile path.
 
 ### Platform-specific behaviors
 
@@ -310,6 +342,9 @@ the game's own REST API (`/api/leaderboard/*`, `/api/replays`) on every platform
 | Token | Cookie (`HttpOnly`) | JWT in memory | JWT in memory | JWT in memory |
 | Language | `navigator.language` | `initDataUnsafe.user.language_code` | `ysdk.environment.i18n.lang` | `gp.language` |
 | Ads | No-op | No-op | `showFullscreenAdv` / `showRewardedVideo` | `gp.ads.showFullscreen()` / `showRewardedVideo()` |
+| Sticky banner | No-op | No-op | No-op | `gp.ads.showSticky()`, height reserved via `--sticky-inset` |
+| Saves | localStorage | localStorage | localStorage | `gp.player` field `save` |
+| Mute | Game-local | Game-local | Game-local | `gp.sounds` (shared with the host's own control) |
 | Pause | `visibilitychange` | `visibilitychange` | `game_api_pause` + `visibilitychange` | `gp.ads.on('start'/'close')` + `visibilitychange` |
 | SDK injection | None | Conditional `document.write` | `<script src="/sdk.js">` via Vite | `<script async src="gamepush.com/sdk/...">` via Vite |
 | SDK init | — | `WebApp.ready()` | `YaGames.init()` | `window.onGPInit` callback (10s timeout) |
@@ -683,16 +718,35 @@ Produces `wheee-gamepush.zip` at the project root (git-ignored).
 - SDK initializes via `window.onGPInit` callback (10s timeout)
 - `gp.player.ready` awaited before gameplay
 - Authentication via `gp.player.login()` with server-side JWT issuance
-- Fullscreen ads via `gp.ads.showFullscreen()` (15s timeout)
-- Rewarded video via `gp.ads.showRewardedVideo()` (15s timeout)
+- Preloader ad on init; fullscreen via `gp.ads.showFullscreen()` (15s timeout)
+- Rewarded video via `gp.ads.showRewardedVideo()` (15s timeout), offered on the
+  game-over screen. Availability is re-read on every `game:end` — `isRewardedAvailable`
+  is a mutable SDK property, so it must never be cached in a `computed`
+- Sticky banner shown right after `gameStart()`; `sticky:render` / `sticky:close`
+  drive the `--sticky-inset` CSS variable that lifts the volume control, the
+  flip button and the bottom HUD clear of the banner
+- Saves through `gp.player` field `save` (see **Saved values** above)
+- Mute through `gp.sounds`: state read at startup, `mute`/`unmute` (+ `:sfx` /
+  `:music` variants) subscribed to, and the game's own volume panel calls back
+  into the SDK so the two never disagree
 - Pause/resume via `gp.ads.on('start'/'close')` + `visibilitychange`
 - Language from `gp.language`
+
+### Per-host behaviour
+
+GamePush is an aggregator: one build runs on every host it serves, and
+`gp.platform.type` says which one. **GameDistribution** (`GAME_DISTRIBUTION`)
+forbids anything leaning on the GamePush backend or opening an overlay window, so
+`canAuth()` and `canShowLeaderboard()` both return false there — the lobby drops
+sign-in, the leaderboard and the Watch button. Recent replays stay: they are the
+game's own REST API, not an overlay.
 
 ### Console
 
 - GamePush panel: https://gamepush.com/panel
 - Project ID: 27646
 - Add `api.wheee.io` to **Allowed origins** in GamePush settings
+- Create player field `save` (JSON) under **Players → Player Fields**
 
 
 ## Troubleshooting

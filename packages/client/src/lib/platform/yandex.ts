@@ -1,5 +1,6 @@
 import type { UserInfo } from '@wheee/shared'
 import type { PlatformAdapter } from './types'
+import { createLocalStorage, createLocalSound, noSticky } from './defaults'
 import { API_BASE } from '../config'
 
 const AD_TIMEOUT_MS = 15_000
@@ -31,6 +32,16 @@ async function authenticateWithServer(player: YandexGamesPlayer, signature?: str
 
 export default class YandexAdapter implements PlatformAdapter {
   readonly type = 'yandex' as const
+  readonly hostId = null
+  readonly storage = createLocalStorage()
+  readonly sound = createLocalSound()
+
+  canAuth(): boolean { return true }
+  canShowLeaderboard(): boolean { return true }
+
+  showSticky = noSticky.showSticky
+  closeSticky = noSticky.closeSticky
+  onStickyChange = noSticky.onStickyChange
 
   async init(): Promise<void> {
     if (typeof YaGames === 'undefined') {

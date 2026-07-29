@@ -1,4 +1,6 @@
 import { Howl, Howler } from 'howler'
+import { storageGet, storageSet } from './storage'
+import { usePlatform } from './platform'
 
 // ---------------------------------------------------------------------------
 // Sound IDs
@@ -23,7 +25,7 @@ export type SfxId = (typeof SFX_IDS)[number]
 export type SoundId = LoopId | SfxId
 
 // ---------------------------------------------------------------------------
-// Layer volumes (persisted to localStorage)
+// Layer volumes (persisted through the platform — localStorage or player profile)
 // ---------------------------------------------------------------------------
 
 interface AudioSettings {
@@ -31,6 +33,8 @@ interface AudioSettings {
   music: number     // 0-1
   sfx: number       // 0-1
   muted: boolean
+  musicMuted: boolean
+  sfxMuted: boolean
 }
 
 const STORAGE_KEY = 'wheee-audio-v1'
@@ -40,13 +44,15 @@ const DEFAULTS: AudioSettings = {
   music: 0.1,
   sfx: 0.5,
   muted: false,
+  musicMuted: false,
+  sfxMuted: false,
 }
 
 function clamp01(v: number): number { return Math.max(0, Math.min(1, v)) }
 
 function loadSettings(): AudioSettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = storageGet(STORAGE_KEY)
     if (!raw) return { ...DEFAULTS }
     const parsed = JSON.parse(raw)
     return {
@@ -54,12 +60,14 @@ function loadSettings(): AudioSettings {
       music: clamp01(parsed.music ?? DEFAULTS.music),
       sfx: clamp01(parsed.sfx ?? DEFAULTS.sfx),
       muted: typeof parsed.muted === 'boolean' ? parsed.muted : DEFAULTS.muted,
+      musicMuted: typeof parsed.musicMuted === 'boolean' ? parsed.musicMuted : DEFAULTS.musicMuted,
+      sfxMuted: typeof parsed.sfxMuted === 'boolean' ? parsed.sfxMuted : DEFAULTS.sfxMuted,
     }
   } catch { return { ...DEFAULTS } }
 }
 
 function saveSettings(s: AudioSettings) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)) } catch { /* noop */ }
+  storageSet(STORAGE_KEY, JSON.stringify(s))
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +129,19 @@ export function createAudioSystem() {
   const defs = new Map<SoundId, SoundDef>()
   let disposed = false
 
+  // Platform mute, where the platform has one. Never fatal: a missing adapter
+  // just means the game keeps its own settings, as it always did.
+  let platformSound: ReturnType<typeof usePlatform>['sound'] | null = null
+  try { platformSound = usePlatform().sound } catch { /* platform not initialised */ }
+
+  if (platformSound?.managed) {
+    // The host stores mute itself, so its answer outranks ours on startup.
+    const state = platformSound.getState()
+    settings.muted = state.all
+    settings.musicMuted = state.music
+    settings.sfxMuted = state.sfx
+  }
+
   const ALL_IDS: SoundId[] = [...LOOP_IDS, ...SFX_IDS]
 
   for (const id of ALL_IDS) {
@@ -159,6 +180,8 @@ export function createAudioSystem() {
 
   function layerGain(layer: 'ambient' | 'music' | 'sfx'): number {
     if (settings.muted) return 0
+    // Ambient beds are part of the music track as far as muting goes.
+    if (layer === 'sfx' ? settings.sfxMuted : settings.musicMuted) return 0
     const lv = layer === 'sfx' ? settings.sfx : settings.music
     return settings.master * lv
   }
@@ -290,13 +313,33 @@ export function createAudioSystem() {
     persist()
   }
 
+  /**
+   * Mute goes through the platform as well as through Howler: on GamePush the
+   * host owns the state, shares it with its own audio button and keeps it across
+   * reloads, so the toggle has to reach it.
+   */
   function toggleMute() {
     settings.muted = !settings.muted
     Howler.mute(settings.muted)
+    platformSound?.setMuted('all', settings.muted)
+    persist()
+  }
+
+  function toggleMusicMute() {
+    settings.musicMuted = !settings.musicMuted
+    platformSound?.setMuted('music', settings.musicMuted)
+    persist()
+  }
+
+  function toggleSfxMute() {
+    settings.sfxMuted = !settings.sfxMuted
+    platformSound?.setMuted('sfx', settings.sfxMuted)
     persist()
   }
 
   function isMuted() { return settings.muted }
+  function isMusicMuted() { return settings.musicMuted }
+  function isSfxMuted() { return settings.sfxMuted }
 
   function getSettings(): Readonly<AudioSettings> { return settings }
 
@@ -306,8 +349,18 @@ export function createAudioSystem() {
     // reserved for future: ducking, dynamic mixing
   }
 
+  // Mute pressed on the platform's own control has to reach the game too.
+  const unsubPlatformMute = platformSound?.onChange((state) => {
+    settings.muted = state.all
+    settings.musicMuted = state.music
+    settings.sfxMuted = state.sfx
+    Howler.mute(settings.muted)
+    persist()
+  }) ?? (() => {})
+
   function dispose() {
     disposed = true
+    unsubPlatformMute()
     if (persistTimer) clearTimeout(persistTimer)
     saveSettings(settings)
     cancelSceneTimers()
@@ -334,7 +387,11 @@ export function createAudioSystem() {
     setMusicVolume,
     setSfxVolume,
     toggleMute,
+    toggleMusicMute,
+    toggleSfxMute,
     isMuted,
+    isMusicMuted,
+    isSfxMuted,
     getSettings,
   }
 }

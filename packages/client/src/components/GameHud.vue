@@ -589,7 +589,8 @@ watch(() => props.phase, (newPhase, oldPhase) => {
 
 .flip-btn {
   position: fixed;
-  bottom: 18px;
+  /* --sticky-inset is the platform banner's height; 0 when there is none. */
+  bottom: calc(18px + var(--sticky-inset, 0px));
   right: 66px;
   width: 40px;
   height: 40px;
@@ -669,7 +670,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   .forecast-strip { gap: 8px; }
   .cataclysm-banner { padding: 10px 24px; }
   .cataclysm-text { font-size: 16px; letter-spacing: 2px; }
-  .flip-btn { bottom: 12px; right: 60px; width: 44px; height: 44px; }
+  .flip-btn { bottom: calc(12px + var(--sticky-inset, 0px)); right: 60px; width: 44px; height: 44px; }
   .flip-btn svg { width: 18px; height: 18px; }
   .choose-banner { top: 56px; padding: 6px 16px; }
   .choose-text { font-size: 10px; letter-spacing: 0.8px; }

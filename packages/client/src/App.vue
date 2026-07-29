@@ -26,6 +26,7 @@ import { useGameSocket } from './composables/useGameSocket'
 import { useGameState } from './composables/useGameState'
 import { useAuth } from './composables/useAuth'
 import { usePlatform } from './lib/platform'
+import { storageGet, storageSet } from './lib/storage'
 import LobbyOverlay from './components/LobbyOverlay.vue'
 import GameHud from './components/GameHud.vue'
 import GameOverOverlay from './components/GameOverOverlay.vue'
@@ -134,6 +135,7 @@ unsubMessage1 = socket.onMessage((msg) => {
   if (msg.type === 'game:end') {
     socket.setReconnectToken(null)
     platform.gameplayStop()
+    refreshRewardedAvailability()
     if (game.isPractice.value) storageSet(TUTORIAL_STORAGE_KEY, '1')
     if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
@@ -264,7 +266,17 @@ function onStartBonusPlace(bonusType: import('@wheee/shared').BonusType) {
   pendingBonusType.value = bonusType
 }
 
-const hasRewardedAds = computed(() => platform.isRewardedAvailable())
+/**
+ * A plain `computed` would be wrong here: `isRewardedAvailable()` reads a mutable
+ * SDK property with no reactive dependency behind it, so Vue would cache whatever
+ * it saw first — possibly before the SDK had an answer — and never look again.
+ * Re-read it whenever the button is about to matter.
+ */
+const hasRewardedAds = ref(platform.isRewardedAvailable())
+
+function refreshRewardedAvailability() {
+  hasRewardedAds.value = platform.isRewardedAvailable()
+}
 
 function doPlayAgain() {
   pendingGameEnd = null
@@ -325,6 +337,35 @@ async function onBackToLobby() {
     controls.autoRotateSpeed = 0.4
   }
   audio.enterLobby()
+}
+
+function onRetryConnection() {
+  socket.retryConnection()
+}
+
+/** Abandon the dead match rather than stare at a frozen board. */
+function onGiveUpToLobby() {
+  socket.retryConnection()
+  onBackToLobby()
+}
+
+/**
+ * The countdown reaching zero with nothing following it is exactly what a silently
+ * dead socket looks like from the player's seat. Give the server a grace window,
+ * then rebuild the connection once — the reconnect token restores the match.
+ */
+const TICK_STALL_GRACE_MS = 8_000
+let stallNudgedForTick = -1
+
+function checkTickStall() {
+  if (game.phase.value !== 'ticking') return
+  const deadline = game.tickDeadline.value
+  if (!deadline) return   // practice ticks are untimed by design
+  if (Date.now() - deadline < TICK_STALL_GRACE_MS) return
+  if (stallNudgedForTick === game.currentTick.value) return
+  stallNudgedForTick = game.currentTick.value
+  console.warn('[ws] tick deadline passed with no resolve — refreshing connection')
+  socket.refreshConnection()
 }
 
 async function startReplay(roomId: string) {
@@ -581,13 +622,6 @@ function smoothstep(t: number): number {
   return c * c * (3 - 2 * c)
 }
 
-function storageGet(key: string): string | null {
-  try { return localStorage.getItem(key) } catch { return null }
-}
-function storageSet(key: string, val: string) {
-  try { localStorage.setItem(key, val) } catch { /* private mode */ }
-}
-
 function startIntroAnimation() {
   if (storageGet(INTRO_STORAGE_KEY)) return
   introActive.value = true
@@ -643,13 +677,18 @@ function updateIntro(dt: number) {
 }
 
 // --- Radial menu state ---
+/** Height of the platform's sticky banner, 0 where there is none. */
+const stickyInset = ref(0)
 const MENU_MARGIN = 96
 function clampMenuPos(x: number, y: number) {
   const mx = Math.min(MENU_MARGIN, window.innerWidth / 2)
   const my = Math.min(MENU_MARGIN, window.innerHeight / 2)
+  // The sticky banner eats the bottom strip. A menu clamped into it would put
+  // Raise/Lower under the ad, where they cannot be tapped.
+  const usableHeight = window.innerHeight - stickyInset.value
   return {
     x: Math.max(mx, Math.min(x, window.innerWidth - mx)),
-    y: Math.max(my, Math.min(y, window.innerHeight - my)),
+    y: Math.max(my, Math.min(y, usableHeight - my)),
   }
 }
 
@@ -1344,6 +1383,15 @@ onMounted(() => {
 
   platform.ready()
 
+  // Sticky banner from the start, with the UI above it kept clear of the strip
+  // it occupies. Platforms without a banner report nothing and nothing moves.
+  const unsubSticky = platform.onStickyChange((heightPx) => {
+    stickyInset.value = heightPx
+    document.documentElement.style.setProperty('--sticky-inset', `${heightPx}px`)
+  })
+  platform.showSticky()
+  refreshRewardedAvailability()
+
   // --- Lobby demo: cinematic showcase ---
   players.setActivePlayer(null)
   const demoPairs: [CharacterType, CharacterType][] = [
@@ -1476,6 +1524,8 @@ onMounted(() => {
   }
   document.addEventListener('visibilitychange', onVisibility)
 
+  const stallTimer = setInterval(checkTickStall, 2_000)
+
   const unsubPause = platform.onPause(() => {
     Howler.mute(true)
   })
@@ -1496,6 +1546,8 @@ onMounted(() => {
 
   sceneCleanup = () => {
     document.removeEventListener('visibilitychange', onVisibility)
+    clearInterval(stallTimer)
+    unsubSticky()
     unsubPause()
     unsubResume()
     clearTimeout(contextLostTimer)
@@ -1566,8 +1618,17 @@ onUnmounted(() => {
   <Transition name="rc">
     <div v-if="showReconnecting" class="reconnect-overlay">
       <div class="reconnect-card">
-        <div class="reconnect-spinner" />
-        <div class="reconnect-text">{{ t('app.reconnecting') }}</div>
+        <template v-if="socket.gaveUp.value">
+          <div class="reconnect-text">{{ t('app.connectionLost') }}</div>
+          <div class="reconnect-actions">
+            <button class="reconnect-btn primary" @click="onRetryConnection">{{ t('app.retry') }}</button>
+            <button class="reconnect-btn" @click="onGiveUpToLobby">{{ t('app.toLobby') }}</button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="reconnect-spinner" />
+          <div class="reconnect-text">{{ t('app.reconnecting') }}</div>
+        </template>
       </div>
     </div>
   </Transition>
@@ -2162,6 +2223,42 @@ onUnmounted(() => {
   font-weight: 600;
   letter-spacing: 0.8px;
   color: rgba(200, 210, 230, 0.7);
+}
+
+.reconnect-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.reconnect-btn {
+  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(215, 224, 240, 0.85);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.reconnect-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.reconnect-btn.primary {
+  border-color: rgba(232, 197, 71, 0.5);
+  background: rgba(232, 197, 71, 0.14);
+  color: #e8c547;
+}
+
+.reconnect-btn.primary:hover {
+  background: rgba(232, 197, 71, 0.22);
+  border-color: rgba(232, 197, 71, 0.7);
 }
 
 @keyframes rc-spin {

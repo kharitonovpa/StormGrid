@@ -21,14 +21,14 @@ function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms))
 }
 
-function makePracticeRoom(onMatchEnd?: () => void): Room {
+function makePracticeRoom(onMatchEnd?: () => void, practiceTickTimeoutMs?: number): Room {
   return new Room('practice-test', {
     onDispose: () => {},
     gracePeriodMs: 30_000,
     onMatchEnd: onMatchEnd
       ? () => onMatchEnd()
       : undefined,
-  }, { practice: true })
+  }, { practice: true, ...(practiceTickTimeoutMs ? { practiceTickTimeoutMs } : {}) })
 }
 
 describe('Room — practice (tutorial) mode', () => {
@@ -81,6 +81,43 @@ describe('Room — practice (tutorial) mode', () => {
     await sleep(100)
 
     expect(ws.messages.some(m => m.type === 'tick:resolve')).toBe(true)
+
+    room.dispose()
+  }, 12_000)
+
+  it('resolves an untimed tick on the backstop when the action never arrives', async () => {
+    // A dropped action used to leave the room waiting for a move that would never
+    // come. The backstop means the tutorial can stall, but it cannot hang.
+    const room = makePracticeRoom(undefined, 800)
+    const ws = makeFakeWs()
+
+    room.join(ws as any, 'wheat')
+    room.joinBot('rice')
+
+    await sleep(6_500)
+    expect(ws.messages.some(m => m.type === 'tick:resolve')).toBe(false)
+
+    await sleep(1_000)
+    expect(ws.messages.some(m => m.type === 'tick:resolve')).toBe(true)
+
+    room.dispose()
+  }, 12_000)
+
+  it('a second action in the same tick does not resolve an extra tick', async () => {
+    const room = makePracticeRoom()
+    const ws = makeFakeWs()
+
+    room.join(ws as any, 'wheat')
+    room.joinBot('rice')
+
+    await sleep(6_500)
+
+    // Both land inside the same tick — the gap before the next one included.
+    room.submitAction('A', { kind: 'raise', x: 0, y: 0 })
+    room.submitAction('A', { kind: 'raise', x: 1, y: 1 })
+    await sleep(100)
+
+    expect(ws.messages.filter(m => m.type === 'tick:resolve').length).toBe(1)
 
     room.dispose()
   }, 12_000)

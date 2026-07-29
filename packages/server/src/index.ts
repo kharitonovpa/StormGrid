@@ -208,6 +208,12 @@ const server = Bun.serve<WsData>({
   },
 
   websocket: {
+    /**
+     * A quiet lobby socket sends nothing for minutes at a time, so the keepalive
+     * below has to fit comfortably inside this window.
+     */
+    idleTimeout: 120,
+
     open(ws) {
       console.log(`[ws] connect ${ws.data.sessionId}`)
       allClients.add(ws)
@@ -240,6 +246,14 @@ const server = Bun.serve<WsData>({
       limiter.resetInvalid()
 
       switch (msg.type) {
+        // Keepalive. Rate-limited like everything else: at one every 25 s against
+        // a 15/sec refill it never competes with real traffic, and treating it as
+        // special would hand anyone an unmetered way to make the server work.
+        case 'ping': {
+          send(ws, { type: 'pong' })
+          break
+        }
+
         case 'queue:join': {
           if (ws.data.roomId) {
             send(ws, { type: 'error', message: 'Already in a game' })
@@ -392,8 +406,9 @@ const server = Bun.serve<WsData>({
       }
     },
 
-    close(ws) {
-      console.log(`[ws] disconnect ${ws.data.sessionId}`)
+    close(ws, code, reason) {
+      // The code is the only clue to why a player dropped, so it goes in the log.
+      console.log(`[ws] disconnect ${ws.data.sessionId} code=${code}${reason ? ` reason=${reason}` : ''}`)
       allClients.delete(ws)
       matchmaking.dequeue(ws)
       broadcastLobbyStatus()

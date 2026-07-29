@@ -21,11 +21,28 @@ interface GamePushAds {
   isStickyPlaying: boolean
   isFullscreenAvailable: boolean
   isRewardedAvailable: boolean
+  isStickyAvailable: boolean
   showFullscreen(opts?: { showCountdownOverlay?: boolean }): Promise<boolean>
   showRewardedVideo(opts?: { showCountdownOverlay?: boolean }): Promise<boolean>
   showPreloader(): Promise<boolean>
   showSticky(): Promise<boolean>
+  refreshSticky(): Promise<void>
   closeSticky(): Promise<void>
+  on(event: string, cb: (...args: unknown[]) => void): void
+  off(event: string, cb: (...args: unknown[]) => void): void
+}
+
+/** Platform-wide mute, shared with the host's own audio control. */
+interface GamePushSounds {
+  isMuted: boolean
+  isSFXMuted: boolean
+  isMusicMuted: boolean
+  mute(): void
+  unmute(): void
+  muteSFX(): void
+  unmuteSFX(): void
+  muteMusic(): void
+  unmuteMusic(): void
   on(event: string, cb: (...args: unknown[]) => void): void
   off(event: string, cb: (...args: unknown[]) => void): void
 }
@@ -41,6 +58,7 @@ interface GamePushPlatform {
 interface GamePushInstance {
   player: GamePushPlayer
   ads: GamePushAds
+  sounds: GamePushSounds
   platform: GamePushPlatform
   language: string
   changeLanguage(lang: string): void

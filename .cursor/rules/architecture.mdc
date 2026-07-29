@@ -20,21 +20,21 @@ alwaysApply: true
 
 - `packages/server/src/engine/board.ts` — board creation, cloning, bounds checks, `stateForPlayer()` (height inversion for B), `resultForPlayer()`
 - `packages/server/src/engine/tick.ts` — tick resolution: 8-dir king movement, terrain changes (including under player), raise/lower conflict cancellation, bonus pickup
-- `packages/server/src/engine/wind.ts` — upwind shielding scan, downwind push, two-sided height perception (§13 of GAME_DESIGN)
-- `packages/server/src/engine/rain.ts` — basin detection BFS, separate flooding per player side (floodedCellsA/B), drowning (§14)
+- `packages/server/src/engine/wind.ts` — upwind shielding scan, downwind push, two-sided height perception, runway tiebreak (`spared`) (§13)
+- `packages/server/src/engine/rain.ts` — basin detection BFS, separate flooding per player side (floodedCellsA/B), drowning, basin-volume tiebreak + `waterVolume` (§14)
 - `packages/server/src/engine/forecast.ts` — weather decision generation (wind every cataclysm, 55% wind / 45% wind+rain), forecast hints
-- `packages/server/src/engine/GameEngine.ts` — orchestrator class: round lifecycle, phase management, architect overrides (`setWeatherDecision`, `placeBonus`), watcher `breakInstrument`
+- `packages/server/src/engine/GameEngine.ts` — orchestrator class: round lifecycle, phase management, wind-then-rain with skip-rain-on-wind-death (§12), architect overrides (`setWeatherDecision`, `placeBonus`), watcher `breakInstrument`
 - `packages/server/src/engine/bot.ts` — `chooseBotAction()`: scores every legal action by replaying it through `applyTick` and running the real `resolveWind`/`resolveRain` on each weather the forecast still allows (survival > kill > centre pull); `BotStrength` presets `BOT_MATCH` / `BOT_PRACTICE`; operates on canonical state and holds no copy of the rules
 
 ### Network / rooms
 
-- `packages/server/src/protocol.ts` — `parseClientMessage()` validation, `send()`, `WsData` connection state
-- `packages/server/src/Room.ts` — game room: GameEngine + timers (tick/forecast/architect/bot/disconnect) + player slots + per-player state broadcast + action inversion for B + watcher predictions + replay frame recording + reconnect with pause/resume + practice (tutorial) mode: untimed ticks vs bot, no replays/stats/spectators
-- `packages/server/src/RoomManager.ts` — room registry, reconnect-token map, active-room lookup
+- `packages/server/src/protocol.ts` — `parseClientMessage()` validation (including the `ping` keepalive), `send()`, `WsData` connection state
+- `packages/server/src/Room.ts` — game room: GameEngine + timers (tick/forecast/architect/bot/disconnect) + player slots + per-player state broadcast + action inversion for B + watcher predictions + replay frame recording + reconnect with pause/resume + practice (tutorial) mode: untimed ticks vs bot (`BOT_PRACTICE`), no replays/stats/spectators. `resolveTick()` is single-entry — the player's action and the practice backstop (`practiceTickTimeoutMs`, default 90 s) both call it, so an untimed tick can stall but never hang
+- `packages/server/src/RoomManager.ts` — room registry, reconnect-token map, active-room lookup, `liveMatchCount` (non-practice active rooms), `onRoomsChanged` callback
 - `packages/server/src/matchmaking.ts` — in-memory FIFO queue, auto-pair, bot match after `BOT_MATCH_DELAY_MS` (default 30 s)
 - `packages/server/src/ratelimit.ts` — `ConnectionLimiter`: token bucket (25 burst / 15 per sec), 1 KB message cap, invalid-message streak disconnect
 - `packages/server/src/ReplayStore.ts` — in-memory replay cache (last 50)
-- `packages/server/src/index.ts` — entry: Hono routes (`/api/*`, `/health`), Bun WS at `/ws`, message routing, lobby status broadcast, HTTP rate limiting, country detection
+- `packages/server/src/index.ts` — entry: Hono routes (`/api/*`, `/health`), Bun WS at `/ws` (`idleTimeout` 120 s, `ping`→`pong` keepalive, close code logged), message routing, lobby status broadcast (`online` / `inQueue` / `liveMatches`), HTTP rate limiting, country detection
 
 ### Auth & persistence
 
@@ -52,41 +52,44 @@ alwaysApply: true
 - `packages/client/src/lib/constants.ts` — shared grid/world constants (CELLS, SIZE, HALF, HEIGHT_SCALE, etc.)
 - `packages/client/src/lib/noise.ts` — pure math: clamp, hash, noise2d, fbm, sstep, mix
 - `packages/client/src/lib/terrain.ts` — terrain state singleton (`terrainState`), height cache, mesh rebuild (top/bottom/skirt), paintColors, flood BFS, stepAnimation
-- `packages/client/src/lib/water.ts` — water body rendering and animation (both surfaces)
+- `packages/client/src/lib/water.ts` — water body rendering and animation (both surfaces); fill level from `waterVolume` so basins rise proportional to inverse area
 - `packages/client/src/lib/wind.ts` — wind streamlines and dust particles, `setDirection()`
 - `packages/client/src/lib/rain.ts` — rain drops and splash rings (top + bottom)
-- `packages/client/src/lib/player.ts` — two players (A + B) as GLB characters, 8-dir movement highlights, wind slide animation, surface flip for bottom side
-- `packages/client/src/lib/glass.ts` — decisive-cataclysm reveal: turns the whole slab to translucent jade so the opponent under the far face becomes visible; owns the render order of the slab faces and both water sets
+- `packages/client/src/lib/player.ts` — two players (A + B) as GLB characters, 8-dir movement highlights, wind slide animation, surface flip for bottom side; drowned players stay visible underwater (`submerged`); local-player ring brighter and hidden when no local player
+- `packages/client/src/lib/insects.ts` — gem-winged butterfly swarm over the opponent's cell (3 sprites, 4-pose atlas, scatter on cataclysm); per-character palette
+- `packages/client/src/lib/glass.ts` — decisive-cataclysm reveal: turns the whole slab to translucent jade so the opponent under the far face becomes visible; owns the render order of the slab faces and both water sets (`GLASS_ORDER`)
 - `packages/client/src/lib/preview.ts` — action preview: ribbon shaders (raise/lower), gradient arc (move)
 - `packages/client/src/lib/compass.ts` — static 3D compass rose
 - `packages/client/src/lib/interaction.ts` — raycasting on both surfaces, cell click/hover, touch handling
-- `packages/client/src/lib/nameplate.ts` — billboard name + flag sprites above players (own plate reads "You", opponent keeps their name)
+- `packages/client/src/lib/nameplate.ts` — billboard name + flag sprites above players; local plate appends `(You)` / `(Вы)` via `setLocalPlayer`
 - `packages/client/src/lib/models.ts` — GLB preload/cache for wheat/rice/corn characters
 - `packages/client/src/lib/celebrate.ts` — DOM canvas particle overlay (watcher score fly-to-HUD, fireworks)
 - `packages/client/src/lib/lobbyDemo.ts` — cinematic lobby background demo (sculpt/flip/wind/flood phases)
 - `packages/client/src/lib/replayPlayer.ts` — replay fetch (`/api/replays`, `/api/replay/:id`) + frame-stepping player
-- `packages/client/src/lib/audio.ts` — Howler audio system: ambient/music/sfx layers, localStorage persistence
+- `packages/client/src/lib/audio.ts` — Howler audio system: ambient/music/sfx layers, per-track mute mirrored to the platform (`gp.sounds` on GamePush), settings persisted through `lib/storage.ts`
+- `packages/client/src/lib/storage.ts` — the single door to saved values: hydrated once by `initPlatform()`, then synchronous `storageGet` / `storageSet`. Backed by localStorage or, on GamePush, the `gp.player` field `save`
 - `packages/client/src/lib/i18n.ts` — minimal i18n (en/ru), `t()`, `setLanguage()`, reactive `TAGLINES`
 - `packages/client/src/lib/config.ts` — `API_BASE` / `WS_URL` from `VITE_API_URL` / dev mode
 
 ### Platform adapters (`lib/platform/`)
 
-- `types.ts` — `PlatformAdapter` interface, `PlatformType`
+- `types.ts` — `PlatformAdapter` interface, `PlatformType`, `PlatformStorage`, `PlatformSound`
 - `detect.ts` — build-time (`VITE_PLATFORM`) + runtime (Telegram WebApp) detection
-- `index.ts` — `initPlatform()` factory (dynamic import) + `usePlatform()` singleton
-- `web.ts`, `telegram.ts`, `yandex.ts`, `gamepush.ts` — per-platform auth, ads, pause/resume, language
+- `index.ts` — `initPlatform()` factory (dynamic import) + `hydrateStorage()` + `usePlatform()` singleton
+- `defaults.ts` — neutral implementations for platforms without an SDK: localStorage saves, game-local mute, no sticky banner
+- `web.ts`, `telegram.ts`, `yandex.ts`, `gamepush.ts` — per-platform auth, ads, pause/resume, language. `gamepush.ts` additionally implements saves (`gp.player` field `save`), mute (`gp.sounds`), the sticky banner and `canAuth()`/`canShowLeaderboard()`, which go false on GameDistribution
 
 ### Composables
 
-- `packages/client/src/composables/useGameSocket.ts` — typed WebSocket connection, reconnect with backoff (max 20 attempts), action submission
-- `packages/client/src/composables/useGameState.ts` — reactive game state store (client phase, tick, players, board, watcher/architect state)
+- `packages/client/src/composables/useGameSocket.ts` — typed WebSocket connection, 25 s keepalive `ping`, reconnect with backoff (20 attempts idle, 100 while a match is in progress), `gaveUp` for the "connection lost" screen, action submission
+- `packages/client/src/composables/useGameState.ts` — reactive game state store (client phase, tick, players, board, watcher/architect state); exposes `windSpared` / `rainSpared`
 - `packages/client/src/composables/useAuth.ts` — platform-delegated auth: `login()` / `logout()` / `fetchMe()`, reactive user
 
 ### UI components
 
-- `LobbyOverlay.vue` — character select, Play/Watch/Architect buttons, auth, online count, leaderboard, recent replays
+- `LobbyOverlay.vue` — character select, Play (+ Watch only if authenticated and `liveMatches > 0`); Architect gated by `SHOW_ARCHITECT = false`; auth, online count, leaderboard, recent replays. Sign-in and the leaderboard hide where `platform.canAuth()` / `canShowLeaderboard()` say no (GameDistribution)
 - `GameHud.vue` — tick countdown, round info, phase display, flip-view button
-- `GameOverOverlay.vue` — win/lose/draw + death causes + Play Again / rewarded ad
+- `GameOverOverlay.vue` — win/lose/draw + death causes including runway/basin tiebreak copy + Play Again / rewarded ad
 - `ForecastPanel.vue` — wind vane + rain barometer (SVG compass), broken-instrument states
 - `WatcherHud.vue` — watcher score, predict winner/move, break instrument, prediction history
 - `ArchitectHud.vue` — weather type/direction picker, decision countdown, bonus placement
@@ -94,9 +97,9 @@ alwaysApply: true
 - `TutorialHud.vue` — contextual step hints during the tutorial (practice) match vs bot
 - `LeaderboardPanel.vue` — players/watchers tabs, paginated REST leaderboards
 - `UserAvatar.vue` — avatar with colored-initial fallback (CSP-restricted platforms)
-- `VolumeControl.vue` — mute + music/sfx sliders (injected audio system)
+- `VolumeControl.vue` — master mute + per-track mute and sliders for music and sfx (injected audio system); sits above the sticky banner via `--sticky-inset`
 - `CharacterPreview.vue` — mini WebGL canvas with spinning character model
-- `App.vue` — orchestrator: scene/camera/renderer setup, animation loop, mode switching (lobby/play/watch/architect/replay), event handlers
+- `App.vue` — orchestrator: scene/camera/renderer setup (`fitCameraToBoard` on narrow aspects only), animation loop, mode switching (lobby/play/watch/architect/replay), glass open on decisive `weather:result`, insect + nameplate local-player wiring, sticky banner + `--sticky-inset`, tick-stall watchdog, event handlers
 
 ## Rules
 

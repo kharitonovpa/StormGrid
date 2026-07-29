@@ -10,12 +10,35 @@ const settings = audio?.getSettings()
 const musicVol = ref(Math.round((settings?.music ?? 0.4) * 100))
 const sfxVol = ref(Math.round((settings?.sfx ?? 0.7) * 100))
 const muted = ref(audio?.isMuted() ?? false)
+const musicMuted = ref(audio?.isMusicMuted() ?? false)
+const sfxMuted = ref(audio?.isSfxMuted() ?? false)
 
-function toggleOpen() { open.value = !open.value }
+function toggleOpen() {
+  open.value = !open.value
+  // The host's own audio button may have moved things since we last looked.
+  if (open.value) syncMuteFlags()
+}
+
+/** Mirror whatever the audio system settled on — the platform can override it. */
+function syncMuteFlags() {
+  muted.value = audio?.isMuted() ?? false
+  musicMuted.value = audio?.isMusicMuted() ?? false
+  sfxMuted.value = audio?.isSfxMuted() ?? false
+}
 
 function toggleMute() {
   audio?.toggleMute()
-  muted.value = audio?.isMuted() ?? false
+  syncMuteFlags()
+}
+
+function toggleMusicMute() {
+  audio?.toggleMusicMute()
+  syncMuteFlags()
+}
+
+function toggleSfxMute() {
+  audio?.toggleSfxMute()
+  syncMuteFlags()
 }
 
 function onMusicInput(e: Event) {
@@ -66,18 +89,32 @@ onUnmounted(() => {
         </button>
 
         <div class="vol-group">
-          <label class="vol-label">{{ t('volume.music') }}</label>
+          <div class="vol-label-row">
+            <label class="vol-label">{{ t('volume.music') }}</label>
+            <button
+              class="vol-track-mute" :class="{ off: musicMuted }"
+              :title="musicMuted ? t('volume.unmute') : t('volume.mute')"
+              @click="toggleMusicMute"
+            >{{ musicMuted ? '🔇' : '🔊' }}</button>
+          </div>
           <input
             type="range" min="0" max="100" :value="musicVol"
-            class="vol-range" @input="onMusicInput"
+            class="vol-range" :disabled="musicMuted" @input="onMusicInput"
           />
         </div>
 
         <div class="vol-group">
-          <label class="vol-label">{{ t('volume.sfx') }}</label>
+          <div class="vol-label-row">
+            <label class="vol-label">{{ t('volume.sfx') }}</label>
+            <button
+              class="vol-track-mute" :class="{ off: sfxMuted }"
+              :title="sfxMuted ? t('volume.unmute') : t('volume.mute')"
+              @click="toggleSfxMute"
+            >{{ sfxMuted ? '🔇' : '🔊' }}</button>
+          </div>
           <input
             type="range" min="0" max="100" :value="sfxVol"
-            class="vol-range" @input="onSfxInput"
+            class="vol-range" :disabled="sfxMuted" @input="onSfxInput"
           />
         </div>
       </div>
@@ -88,7 +125,8 @@ onUnmounted(() => {
 <style scoped>
 .vol-root {
   position: fixed;
-  bottom: 18px;
+  /* --sticky-inset is the platform banner's height; 0 when there is none. */
+  bottom: calc(18px + var(--sticky-inset, 0px));
   right: 18px;
   z-index: 300;
   font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
@@ -171,12 +209,38 @@ onUnmounted(() => {
   gap: 6px;
 }
 
+.vol-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .vol-label {
   font-size: 9px;
   font-weight: 600;
   color: rgba(200, 210, 225, 0.3);
   letter-spacing: 0.8px;
   text-transform: uppercase;
+}
+
+.vol-track-mute {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.vol-track-mute:hover { opacity: 1; }
+.vol-track-mute.off { opacity: 0.9; }
+
+.vol-range:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .vol-range {
@@ -222,7 +286,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
-  .vol-root { bottom: 12px; right: 12px; }
+  .vol-root { bottom: calc(12px + var(--sticky-inset, 0px)); right: 12px; }
   .vol-btn { width: 44px; height: 44px; }
 }
 </style>

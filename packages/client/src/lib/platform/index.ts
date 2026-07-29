@@ -1,5 +1,6 @@
 import type { PlatformAdapter, PlatformType } from './types'
 import { detectPlatform } from './detect'
+import { hydrateStorage } from '../storage'
 
 export type { PlatformAdapter, PlatformType }
 
@@ -26,6 +27,9 @@ export async function initPlatform(): Promise<PlatformAdapter> {
 
     const adapter = new mod.default()
     await adapter.init()
+    // Saved values are pulled in before the app mounts, so every read after this
+    // point can stay synchronous.
+    await hydrateStorage(adapter.storage)
     _platform = adapter
     return _platform
   })()

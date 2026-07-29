@@ -5,6 +5,7 @@ import { GAME_TITLE } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { fetchReplayList } from '../lib/replayPlayer'
 import { useAuth } from '../composables/useAuth'
+import { usePlatform } from '../lib/platform'
 import CharacterPreview from './CharacterPreview.vue'
 import LeaderboardPanel from './LeaderboardPanel.vue'
 import UserAvatar from './UserAvatar.vue'
@@ -40,7 +41,16 @@ const showAuthMenu = ref(false)
 
 // Watching only pays off with an account — the score goes to the watcher board —
 // and only while a match is actually running.
-const canWatch = computed(() => !!user.value && props.liveMatches > 0)
+const platform = usePlatform()
+
+/**
+ * Some hosts (GameDistribution) forbid anything that leans on the aggregator's
+ * backend or opens an overlay window over the game.
+ */
+const canAuth = platform.canAuth()
+const canShowLeaderboard = platform.canShowLeaderboard()
+
+const canWatch = computed(() => canAuth && !!user.value && props.liveMatches > 0)
 
 const characters = computed(() => [
   { id: 'wheat' as CharacterType, name: t('char.wheat'), color: '#e8c547', glow: 'rgba(232, 197, 71, 0.35)' },
@@ -179,7 +189,7 @@ onUnmounted(() => {
                   <span v-if="props.inQueue > 0" class="queue-pip" aria-hidden="true" />
                 </Transition>
               </button>
-              <template v-if="platformType === 'web'">
+              <template v-if="platformType === 'web' && canAuth">
                 <!-- Auth: logged-in user chip -->
                 <div v-if="user" class="user-chip" @click="showAuthMenu = !showAuthMenu">
                   <UserAvatar :src="user.avatar" :name="user.name" :size="28" />
@@ -227,8 +237,10 @@ onUnmounted(() => {
         </div>
 
         <!-- Leaderboard -->
-        <div class="panel-divider" />
-        <LeaderboardPanel />
+        <template v-if="canShowLeaderboard">
+          <div class="panel-divider" />
+          <LeaderboardPanel />
+        </template>
       </div>
     </div>
 

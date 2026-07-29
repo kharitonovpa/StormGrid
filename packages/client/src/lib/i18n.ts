@@ -123,6 +123,9 @@ const messages: Record<string, Record<string, string>> = {
 
     'app.contextLost': 'Display error — tap to reload',
     'app.reconnecting': 'Reconnecting...',
+    'app.connectionLost': 'Connection lost',
+    'app.retry': 'Try again',
+    'app.toLobby': 'Back to lobby',
     'app.opponentDc': 'Opponent disconnected — waiting for reconnect...',
     'app.you': 'You',
     'app.opponent': 'Opponent',
@@ -252,6 +255,9 @@ const messages: Record<string, Record<string, string>> = {
 
     'app.contextLost': 'Ошибка отображения — нажми для перезагрузки',
     'app.reconnecting': 'Переподключение...',
+    'app.connectionLost': 'Соединение потеряно',
+    'app.retry': 'Попробовать снова',
+    'app.toLobby': 'В лобби',
     'app.opponentDc': 'Соперник отключился — ожидание...',
     'app.you': 'Ты',
     'app.opponent': 'Соперник',
