@@ -283,7 +283,8 @@ function refreshRewardedAvailability() {
   hasRewardedAds.value = platform.isRewardedAvailable()
 }
 
-function doPlayAgain() {
+/** `instant` skips the queue for a bot match — the rewarded ad's payoff. */
+function doPlayAgain(instant = false) {
   pendingGameEnd = null
   socket.setReconnectToken(null)
   const lastCharacter = game.selectedCharacter.value ?? 'wheat'
@@ -291,14 +292,22 @@ function doPlayAgain() {
   game.selectedCharacter.value = lastCharacter
   audio.enterLobby()
   ensureConnected(() => {
+    if (instant) { socket.startInstant(lastCharacter, streak.value); return }
     if (socket.joinQueue(lastCharacter, streak.value)) game.queueJoinPending.value = true
   })
 }
 
 async function onRewardedPlayAgain() {
-  const rewarded = await platform.showRewarded().catch(() => false)
-  if (!rewarded) return
-  doPlayAgain()
+  if (rewardedBusy.value) return
+  rewardedBusy.value = true
+  try {
+    const rewarded = await platform.showRewarded().catch(() => false)
+    // An ad that never played buys nothing; the offer stays on the screen.
+    if (!rewarded) return
+    doPlayAgain(true)
+  } finally {
+    rewardedBusy.value = false
+  }
 }
 
 async function onPlayAgain() {
@@ -401,6 +410,7 @@ const lostStreak = ref(0)
 const lostRescuable = ref(false)
 /** Owned here, not by the overlay: only this side knows when the ad finished. */
 const rescueBusy = ref(false)
+const rewardedBusy = ref(false)
 const streakAtRisk = computed(() => lostStreak.value > 0)
 const streakLabel = computed(() => {
   const emoji = badgeFor(lostStreak.value)
@@ -1855,6 +1865,7 @@ onUnmounted(() => {
     :can-rescue-streak="streakAtRisk && lostRescuable && hasRewardedAds"
     :streak-badge="streakLabel"
     :rescue-busy="rescueBusy"
+    :rewarded-busy="rewardedBusy"
     @play-again="onPlayAgain"
     @rewarded-play-again="onRewardedPlayAgain"
     @rescue-streak="onRescueStreak"

@@ -8,6 +8,7 @@ export type {
   QueueJoinMsg,
   QueueLeaveMsg,
   PracticeStartMsg,
+  InstantStartMsg,
   ActionSubmitMsg,
   WatchJoinMsg,
   WatchLeaveMsg,
@@ -77,6 +78,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     switch (msg.type) {
       case 'queue:join':
       case 'practice:start':
+      case 'instant:start':
         if (!VALID_CHARACTERS.has(msg.character)) return null
         // Cosmetic and self-reported, but still has to be a sane number.
         if (msg.streak !== undefined

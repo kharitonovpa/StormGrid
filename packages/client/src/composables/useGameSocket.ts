@@ -128,6 +128,11 @@ export function useGameSocket() {
     return send({ type: 'practice:start', character, streak })
   }
 
+  /** Straight into a bot match, no queue — what the rewarded ad pays for. */
+  function startInstant(character: CharacterType = 'wheat', streak = 0) {
+    return send({ type: 'instant:start', character, streak })
+  }
+
   function leaveQueue() {
     send({ type: 'queue:leave' })
   }
@@ -233,6 +238,7 @@ export function useGameSocket() {
     joinQueue,
     leaveQueue,
     startPractice,
+    startInstant,
     submitAction,
     joinWatch,
     leaveWatch,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, inject, ref } from 'vue'
+import { onMounted, onUnmounted, computed, inject } from 'vue'
 import type { DeathCause, PlayerId } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
@@ -23,8 +23,9 @@ const props = defineProps<{
   canRescueStreak?: boolean
   /** Rendered badge, e.g. "🌧 7" — shown on the rescue button. */
   streakBadge?: string
-  /** The rescue ad is playing. Owned by the parent, which knows when it ends. */
+  /** Ads in flight. Owned by the parent, the only side that knows when they end. */
   rescueBusy?: boolean
+  rewardedBusy?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -104,8 +105,6 @@ const resultClass = computed(() => {
   return 'lose'
 })
 
-const rewardedLoading = ref(false)
-
 function onRescueClick() {
   if (props.rescueBusy) return
   audio?.play('ui-click')
@@ -113,8 +112,7 @@ function onRescueClick() {
 }
 
 function onRewardedClick() {
-  if (rewardedLoading.value) return
-  rewardedLoading.value = true
+  if (props.rewardedBusy) return
   audio?.play('ui-click')
   emit('rewardedPlayAgain')
 }
@@ -198,8 +196,8 @@ onUnmounted(() => {
           <span>{{ t('gameover.keepStreak', streakBadge ?? '') }}</span>
         </button>
 
-        <button v-else-if="showRewardedButton" class="btn-rewarded" :class="{ loading: rewardedLoading }" :disabled="rewardedLoading" @click="onRewardedClick">
-          <svg v-if="!rewardedLoading" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button v-else-if="showRewardedButton" class="btn-rewarded" :class="{ loading: rewardedBusy }" :disabled="rewardedBusy" @click="onRewardedClick">
+          <svg v-if="!rewardedBusy" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="8" width="18" height="13" rx="2" />
             <path d="M12 8V21" />
             <path d="M3 12h18" />

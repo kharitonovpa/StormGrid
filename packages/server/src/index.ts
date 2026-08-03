@@ -283,6 +283,23 @@ const server = Bun.serve<WsData>({
           break
         }
 
+        // What a rewarded ad buys: the same bot match the queue would hand over
+        // after BOT_MATCH_DELAY_MS, only without the wait. A real match in every
+        // other respect — it records, and it can grow a badge.
+        case 'instant:start': {
+          if (ws.data.roomId) {
+            send(ws, { type: 'error', message: 'Already in a game' })
+            return
+          }
+          matchmaking.dequeue(ws)
+          const botCharacter = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
+          const room = roomManager.createRoom()
+          room.join(ws, msg.character, msg.streak)
+          room.joinBot(botCharacter)
+          broadcastLobbyStatus()
+          break
+        }
+
         case 'action:submit': {
           const { roomId, playerId } = ws.data
           if (!roomId || !playerId) {

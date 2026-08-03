@@ -54,6 +54,7 @@ export type {
   QueueJoinMsg,
   QueueLeaveMsg,
   PracticeStartMsg,
+  InstantStartMsg,
   ActionSubmitMsg,
   WatchJoinMsg,
   WatchLeaveMsg,

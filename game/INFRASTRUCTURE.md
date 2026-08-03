@@ -751,6 +751,20 @@ Produces `wheee-gamepush.zip` at the project root (git-ignored).
 - Rewarded video via `gp.ads.showRewardedVideo()` (15s timeout), offered on the
   game-over screen. Availability is re-read on every `game:end` — `isRewardedAvailable`
   is a mutable SDK property, so it must never be cached in a `computed`
+
+  **Every result screen offers something real**, which is what moderation asks
+  for. Which offer appears depends on what the player has to gain:
+
+  | Situation | Offer |
+  |-----------|-------|
+  | A badge streak was just lost | keep it — the ad restores the number (§10.4 of GAME_DESIGN) |
+  | Anything else | play now, skipping the queue: `instant:start` drops the player straight into a bot match instead of waiting out `BOT_MATCH_DELAY_MS` |
+
+  The second one matters because the first is rare: a streak needs a crystal
+  found, collected and then lost. Without it the rewarded slot would fall back
+  to "watch an ad, then play again" — and playing again is free, which is
+  exactly the emptiness moderation flagged. Note that neither offer invents a
+  restriction to sell: the queue wait already existed.
 - Sticky banner shown right after `gameStart()`; `sticky:render` / `sticky:close`
   drive the `--sticky-inset` CSS variable that lifts the volume control, the
   flip button and the bottom HUD clear of the banner

@@ -76,3 +76,28 @@ describe('integration — full match via WebSocket', () => {
     p2.ws.close()
   }, 30_000)
 })
+
+describe('integration — instant match', () => {
+  it('starts against a bot at once, without the queue wait', async () => {
+    // This is what the rewarded ad buys, so the point is the speed: the queue
+    // would hand over the same bot only after BOT_MATCH_DELAY_MS.
+    const p = await connectPlayer()
+    const t0 = Date.now()
+    p.ws.send(JSON.stringify({ type: 'instant:start', character: 'wheat', streak: 0 }))
+
+    const start = await waitForMessage(p.messages, 'game:start', 5_000) as {
+      playerId: string
+      practice?: boolean
+    }
+    const waited = Date.now() - t0
+
+    expect(start.playerId).toBeDefined()
+    // Not a tutorial: this match records, and a badge can grow in it.
+    expect(start.practice).toBeUndefined()
+    expect(waited).toBeLessThan(3_000)
+    // Nobody was left sitting in the queue.
+    expect(p.messages.some(m => m.type === 'queue:waiting')).toBe(false)
+
+    p.ws.close()
+  }, 15_000)
+})

@@ -6,6 +6,12 @@ import type { Action, BonusType, CharacterType, DeathCause, GameState, PlayerId,
 export type QueueJoinMsg = { type: 'queue:join'; character: CharacterType; streak?: number }
 export type QueueLeaveMsg = { type: 'queue:leave' }
 export type PracticeStartMsg = { type: 'practice:start'; character: CharacterType; streak?: number }
+/**
+ * Skip the queue and start against a bot at once. This is what a rewarded ad
+ * buys: the wait already exists (BOT_MATCH_DELAY_MS), so nothing is invented to
+ * sell. A full match in every other way — it counts, unlike practice.
+ */
+export type InstantStartMsg = { type: 'instant:start'; character: CharacterType; streak?: number }
 export type ActionSubmitMsg = { type: 'action:submit'; action: Action }
 
 export type WatchJoinMsg = { type: 'watch:join' }
@@ -28,6 +34,7 @@ export type ClientMessage =
   | QueueJoinMsg
   | QueueLeaveMsg
   | PracticeStartMsg
+  | InstantStartMsg
   | ActionSubmitMsg
   | WatchJoinMsg
   | WatchLeaveMsg

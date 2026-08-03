@@ -34,7 +34,7 @@ alwaysApply: true
 - `packages/server/src/matchmaking.ts` — in-memory FIFO queue, auto-pair, bot match after `BOT_MATCH_DELAY_MS` (default 30 s)
 - `packages/server/src/ratelimit.ts` — `ConnectionLimiter`: token bucket (25 burst / 15 per sec), 1 KB message cap, invalid-message streak disconnect
 - `packages/server/src/ReplayStore.ts` — in-memory replay cache (last 50)
-- `packages/server/src/index.ts` — entry: Hono routes (`/api/*`, `/health`), Bun WS at `/ws` (`idleTimeout` 120 s, `ping`→`pong` keepalive, close code logged), message routing, lobby status broadcast (`online` / `inQueue` / `liveMatches`), HTTP rate limiting, country detection
+- `packages/server/src/index.ts` — entry: Hono routes (`/api/*`, `/health`), Bun WS at `/ws` (`idleTimeout` 120 s, `ping`→`pong` keepalive, close code logged), `instant:start` for a queue-free bot match, message routing, lobby status broadcast (`online` / `inQueue` / `liveMatches`), HTTP rate limiting, country detection
 
 ### Auth & persistence
 
@@ -91,7 +91,7 @@ alwaysApply: true
 
 - `LobbyOverlay.vue` — character select, Play (+ Watch only if authenticated and `liveMatches > 0`); Architect gated by `SHOW_ARCHITECT = false`; auth, online count, leaderboard, recent replays. Sign-in and the leaderboard hide where `platform.canAuth()` / `canShowLeaderboard()` say no (GameDistribution)
 - `GameHud.vue` — tick countdown, round info, phase display, flip-view button
-- `GameOverOverlay.vue` — win/lose/draw + death causes including runway/basin tiebreak copy + Play Again / rewarded ad. On a loss that cost a badge the rewarded slot becomes "keep 🌧 7" — the ad restores what was earned rather than handing out an advantage
+- `GameOverOverlay.vue` — win/lose/draw + death causes including runway/basin tiebreak copy + Play Again / rewarded ad. The rewarded slot always offers something real: "keep 🌧 7" when a loss just cost a badge, otherwise an instant bot match (`instant:start`) that skips the queue wait. Neither hands out an advantage, and neither invents a restriction to sell
 - `ForecastPanel.vue` — wind vane + rain barometer (SVG compass), broken-instrument states
 - `WatcherHud.vue` — watcher score, predict winner/move, break instrument, prediction history
 - `ArchitectHud.vue` — weather type/direction picker, decision countdown, bonus placement
