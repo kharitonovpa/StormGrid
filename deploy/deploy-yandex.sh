@@ -9,6 +9,9 @@ echo "==> Building client for Yandex Games..."
 cd "$CLIENT_DIR"
 VITE_PLATFORM=yandex VITE_API_URL="https://api.wheee.io" bunx vite build
 
+echo "==> Stripping store artwork..."
+bash "$SCRIPT_DIR/strip-store-assets.sh" "$CLIENT_DIR/dist"
+
 echo "==> Creating archive..."
 cd "$CLIENT_DIR/dist"
 rm -f "$PROJECT_ROOT/wheee-yandex.zip"

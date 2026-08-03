@@ -93,8 +93,9 @@ deploy/
 ├── deploy-all.sh        # One-command deploy: env sync → server → RU → archives
 ├── deploy.sh            # Polish server deploy via SSH (git pull + docker compose)
 ├── deploy-ru.sh         # Russian VPS deploy: vite build + rsync dist/
-├── deploy-yandex.sh     # Yandex Games build: vite build + zip archive
-├── deploy-gamepush.sh   # GamePush build: vite build + zip archive
+├── deploy-yandex.sh     # Yandex Games build: vite build + strip + zip archive
+├── deploy-gamepush.sh   # GamePush build: vite build + strip + zip archive
+├── strip-store-assets.sh # Drops store covers from dist/ before packing a platform zip
 ├── sync-env.sh          # Sync .env.example keys to remote .env on Polish VPS
 ├── setup-ru-vps.sh      # One-time Russian VPS provisioning (nginx, certbot, SSL)
 ├── .env.example         # Environment variables template
@@ -182,8 +183,9 @@ This:
    the `platformHtmlPlugin`:
    - Injects `<script src="/sdk.js"></script>` (Yandex Games SDK, absolute from CDN root)
    - Strips Google Fonts, hreflang links, Telegram SDK inline script
-3. Creates `wheee-yandex.zip` from `dist/`
-4. Upload the zip to [Yandex Games Console](https://games.yandex.ru/console)
+3. Runs `strip-store-assets.sh` (see **Store artwork** below)
+4. Creates `wheee-yandex.zip` from `dist/`
+5. Upload the zip to [Yandex Games Console](https://games.yandex.ru/console)
 
 ### GamePush (Pikabu Games)
 
@@ -197,8 +199,35 @@ This:
 2. Runs `vite build` with `base: './'`, which:
    - Injects `<script async src="https://gamepush.com/sdk/game-score.js?..."></script>`
    - Strips Google Fonts, hreflang links, Telegram SDK inline script
-3. Creates `wheee-gamepush.zip` from `dist/`
-4. Upload the zip to GamePush panel → Settings → Source code
+3. Runs `strip-store-assets.sh` (see **Store artwork** below)
+4. Creates `wheee-gamepush.zip` from `dist/`
+5. Upload the zip to GamePush panel → Settings → Source code
+
+### Store artwork
+
+Covers live in `packages/client/public/` so they stay versioned with the game:
+
+| File | Size | Where it goes |
+|------|------|---------------|
+| `cover-1920x1080.png` | 1920×1080 | GamePush cover (latin title) |
+| `cover-ru-1920x1080.png` | 1920×1080 | GamePush cover for Odnoklassniki (Russian title «Уиии») |
+| `yandex-cover.png` | 800×470 | Yandex Games console |
+| `og-image.png` | 1200×630 | Link previews — referenced by absolute URL from `index.html` |
+
+None of them is fetched by the running game: every platform takes its cover
+through its own console, and the `og:image` meta tag points at
+`https://wheee.io/og-image.png`, never at the local copy. So
+`deploy/strip-store-assets.sh` deletes all four from `dist/` before either
+platform zip is packed — that is ~5.9 MB, roughly half the archive, that players
+would otherwise download and never see.
+
+Web builds are left alone: `og-image.png` has to stay reachable at that absolute
+URL. Nothing leaks between the two, because `vite build` empties `dist/` and
+re-copies `public/` on every run.
+
+GamePush requirements: cover **1920×1080** (title must appear on it, and must not
+name the genre), icon 1024×1024 with no text, at least four 1280×720 landscape
+and four 720×1280 portrait screenshots, all showing real gameplay.
 
 GP credentials default to hardcoded values but can be overridden in
 `deploy/.deploy.env`:

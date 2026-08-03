@@ -21,6 +21,9 @@ VITE_PLATFORM=gamepush \
   VITE_GP_PUBLIC_TOKEN="$GP_PUBLIC_TOKEN" \
   bunx vite build
 
+echo "==> Stripping store artwork..."
+bash "$SCRIPT_DIR/strip-store-assets.sh" "$CLIENT_DIR/dist"
+
 echo "==> Creating archive..."
 cd "$CLIENT_DIR/dist"
 rm -f "$PROJECT_ROOT/wheee-gamepush.zip"
