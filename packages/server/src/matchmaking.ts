@@ -10,7 +10,7 @@ const BOT_MATCH_DELAY_MS = _rawBotDelay !== undefined && Number.isFinite(_rawBot
   ? _rawBotDelay
   : 30_000
 
-type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType }
+type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType; streak: number }
 
 export class Matchmaking {
   private queue: QueueEntry[] = []
@@ -22,10 +22,10 @@ export class Matchmaking {
     this.roomManager = roomManager
   }
 
-  enqueue(ws: ServerWebSocket<WsData>, character: CharacterType): void {
+  enqueue(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0): void {
     if (this.queueSet.has(ws)) return
 
-    this.queue.push({ ws, character })
+    this.queue.push({ ws, character, streak })
     this.queueSet.add(ws)
     send(ws, { type: 'queue:waiting', maxWaitMs: BOT_MATCH_DELAY_MS })
 
@@ -67,8 +67,8 @@ export class Matchmaking {
       this.queueSet.delete(entryB.ws)
 
       const room = this.roomManager.createRoom()
-      room.join(entryA.ws, entryA.character)
-      room.join(entryB.ws, entryB.character)
+      room.join(entryA.ws, entryA.character, entryA.streak)
+      room.join(entryB.ws, entryB.character, entryB.streak)
     }
 
     if (this.queue.length === 1 && !this.botTimer) {
@@ -87,7 +87,7 @@ export class Matchmaking {
 
     const botCharacter = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
     const room = this.roomManager.createRoom()
-    room.join(entry.ws, entry.character)
+    room.join(entry.ws, entry.character, entry.streak)
     room.joinBot(botCharacter)
   }
 }

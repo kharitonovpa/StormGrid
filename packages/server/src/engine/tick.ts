@@ -75,6 +75,9 @@ function resolveBonus(state: GameState): { player: PlayerId; bonus: BonusType } 
 
   const onBonus: PlayerId[] = []
   for (const pid of ['A', 'B'] as PlayerId[]) {
+    // An addressed crate ignores everyone else: they walk over it and it stays,
+    // so the player it is meant for cannot be denied it.
+    if (b.for && b.for !== pid) continue
     const p = state.players[pid]
     if (p.alive && p.x === b.x && p.y === b.y) onBonus.push(pid)
   }

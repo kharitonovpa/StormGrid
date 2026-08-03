@@ -259,7 +259,7 @@ const server = Bun.serve<WsData>({
             send(ws, { type: 'error', message: 'Already in a game' })
             return
           }
-          matchmaking.enqueue(ws, msg.character)
+          matchmaking.enqueue(ws, msg.character, msg.streak)
           broadcastLobbyStatus()
           break
         }
@@ -278,7 +278,7 @@ const server = Bun.serve<WsData>({
           matchmaking.dequeue(ws)
           const botCharacter = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
           const room = roomManager.createRoom({ practice: true })
-          room.join(ws, msg.character)
+          room.join(ws, msg.character, msg.streak)
           room.joinBot(botCharacter)
           break
         }

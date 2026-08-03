@@ -18,6 +18,7 @@ const SFX_IDS = [
   'tick-clock', 'tick-urgent', 'action-submit',
   'ui-click', 'match-found', 'victory', 'defeat', 'draw-end', 'queue-enter',
   'predict-correct', 'predict-wrong', 'instrument-break', 'weather-confirm',
+  'crate-pickup',
 ] as const
 
 export type LoopId = (typeof LOOP_IDS)[number]
@@ -116,6 +117,8 @@ function def(id: SoundId): SoundDef {
     case 'predict-wrong':    return { src, loop: false, layer: 'sfx', baseVolume: 0.35 }
     case 'instrument-break': return { src, loop: false, layer: 'sfx', baseVolume: 0.60 }
     case 'weather-confirm':  return { src, loop: false, layer: 'sfx', baseVolume: 0.55 }
+    // Struck-gem chime for the crate pickup — the one moment a badge begins.
+    case 'crate-pickup':     return { src, loop: false, layer: 'sfx', baseVolume: 0.60 }
   }
 }
 

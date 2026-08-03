@@ -78,6 +78,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       case 'queue:join':
       case 'practice:start':
         if (!VALID_CHARACTERS.has(msg.character)) return null
+        // Cosmetic and self-reported, but still has to be a sane number.
+        if (msg.streak !== undefined
+          && (!Number.isInteger(msg.streak) || msg.streak < 0 || msg.streak > 9999)) return null
         return msg
       case 'queue:leave':
       case 'watch:join':

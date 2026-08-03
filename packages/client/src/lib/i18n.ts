@@ -66,6 +66,9 @@ const messages: Record<string, Record<string, string>> = {
     'gameover.youDrownedFirst': 'Both hollows were filling — yours was the tighter one',
     'gameover.playAgain': 'Play Again',
     'gameover.rewardedPlay': 'Watch Ad & Play',
+    'gameover.keepStreak': 'Keep {0}',
+    'crate.youTook': 'You took the gem — your badge begins',
+    'crate.theyTook': 'Your opponent took the gem',
     'gameover.replay': 'Replay',
     'gameover.backToLobby': 'Back to lobby',
 
@@ -198,6 +201,9 @@ const messages: Record<string, Record<string, string>> = {
     'gameover.youDrownedFirst': 'Заливало обоих — у тебя яма была теснее',
     'gameover.playAgain': 'Ещё раз',
     'gameover.rewardedPlay': 'Реклама и играть',
+    'gameover.keepStreak': 'Сохранить {0}',
+    'crate.youTook': 'Самоцвет ваш — значок начат',
+    'crate.theyTook': 'Самоцвет забрал соперник',
     'gameover.replay': 'Повтор',
     'gameover.backToLobby': 'В лобби',
 

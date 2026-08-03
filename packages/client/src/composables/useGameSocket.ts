@@ -120,12 +120,12 @@ export function useGameSocket() {
     return false
   }
 
-  function joinQueue(character: CharacterType = 'wheat') {
-    return send({ type: 'queue:join', character })
+  function joinQueue(character: CharacterType = 'wheat', streak = 0) {
+    return send({ type: 'queue:join', character, streak })
   }
 
-  function startPractice(character: CharacterType = 'wheat') {
-    return send({ type: 'practice:start', character })
+  function startPractice(character: CharacterType = 'wheat', streak = 0) {
+    return send({ type: 'practice:start', character, streak })
   }
 
   function leaveQueue() {

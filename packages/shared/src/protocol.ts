@@ -2,9 +2,10 @@ import type { Action, BonusType, CharacterType, DeathCause, GameState, PlayerId,
 
 /* ── Client → Server ── */
 
-export type QueueJoinMsg = { type: 'queue:join'; character: CharacterType }
+/** `streak` is the player's badge length, self-reported: it is cosmetic only. */
+export type QueueJoinMsg = { type: 'queue:join'; character: CharacterType; streak?: number }
 export type QueueLeaveMsg = { type: 'queue:leave' }
-export type PracticeStartMsg = { type: 'practice:start'; character: CharacterType }
+export type PracticeStartMsg = { type: 'practice:start'; character: CharacterType; streak?: number }
 export type ActionSubmitMsg = { type: 'action:submit'; action: Action }
 
 export type WatchJoinMsg = { type: 'watch:join' }
@@ -49,7 +50,8 @@ export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: Game
 export type RoundStartMsg = { type: 'round:start'; state: GameState; forecastDeadline: number }
 /** `deadline: 0` means the tick is untimed (practice mode — waits for the player's action). */
 export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number }
-export type TickResolveMsg = { type: 'tick:resolve'; state: GameState }
+/** `bonus` is set on the tick where a crate was picked up — it seeds the badge. */
+export type TickResolveMsg = { type: 'tick:resolve'; state: GameState; bonus?: { player: PlayerId; type: BonusType } }
 export type WeatherResultMsg = { type: 'weather:result'; result: WeatherResult }
 export type GameEndMsg = { type: 'game:end'; winner: PlayerId | 'draw'; deathCauses?: Partial<Record<PlayerId, DeathCause>> }
 export type ErrorMsg = { type: 'error'; message: string }

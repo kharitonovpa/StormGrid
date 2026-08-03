@@ -19,7 +19,7 @@ alwaysApply: true
 ### Engine (pure logic, no I/O)
 
 - `packages/server/src/engine/board.ts` — board creation, cloning, bounds checks, `stateForPlayer()` (height inversion for B), `resultForPlayer()`
-- `packages/server/src/engine/tick.ts` — tick resolution: 8-dir king movement, terrain changes (including under player), raise/lower conflict cancellation, bonus pickup
+- `packages/server/src/engine/tick.ts` — tick resolution: 8-dir king movement, terrain changes (including under player), raise/lower conflict cancellation, bonus pickup honouring `BonusCell.for` (an addressed crate ignores everyone else and stays put)
 - `packages/server/src/engine/wind.ts` — upwind shielding scan, downwind push, two-sided height perception, runway tiebreak (`spared`) (§13)
 - `packages/server/src/engine/rain.ts` — basin detection BFS, separate flooding per player side (floodedCellsA/B), drowning, basin-volume tiebreak + `waterVolume` (§14)
 - `packages/server/src/engine/forecast.ts` — weather decision generation (wind every cataclysm, 55% wind / 45% wind+rain), forecast hints
@@ -29,7 +29,7 @@ alwaysApply: true
 ### Network / rooms
 
 - `packages/server/src/protocol.ts` — `parseClientMessage()` validation (including the `ping` keepalive), `send()`, `WsData` connection state
-- `packages/server/src/Room.ts` — game room: GameEngine + timers (tick/forecast/architect/bot/disconnect) + player slots + per-player state broadcast + action inversion for B + watcher predictions + replay frame recording + reconnect with pause/resume + practice (tutorial) mode: untimed ticks vs bot (`BOT_PRACTICE`), no replays/stats/spectators. `resolveTick()` is single-entry — the player's action and the practice backstop (`practiceTickTimeoutMs`, default 90 s) both call it, so an untimed tick can stall but never hang
+- `packages/server/src/Room.ts` — game room: GameEngine + timers (tick/forecast/architect/bot/disconnect) + player slots + per-player state broadcast + action inversion for B + watcher predictions + replay frame recording + reconnect with pause/resume + practice (tutorial) mode: untimed ticks vs bot (`BOT_PRACTICE`), no replays/stats/spectators. `resolveTick()` is single-entry — the player's action and the practice backstop (`practiceTickTimeoutMs`, default 90 s) both call it, so an untimed tick can stall but never hang. `placeStreakCrate()` drops the badge crate once per match at a randomly chosen round/tick — addressed to the lone human without a streak, or left open when neither has one (skipped in practice and when an architect is present)
 - `packages/server/src/RoomManager.ts` — room registry, reconnect-token map, active-room lookup, `liveMatchCount` (non-practice active rooms), `onRoomsChanged` callback
 - `packages/server/src/matchmaking.ts` — in-memory FIFO queue, auto-pair, bot match after `BOT_MATCH_DELAY_MS` (default 30 s)
 - `packages/server/src/ratelimit.ts` — `ConnectionLimiter`: token bucket (25 burst / 15 per sec), 1 KB message cap, invalid-message streak disconnect
@@ -61,13 +61,15 @@ alwaysApply: true
 - `packages/client/src/lib/preview.ts` — action preview: ribbon shaders (raise/lower), gradient arc (move)
 - `packages/client/src/lib/compass.ts` — static 3D compass rose
 - `packages/client/src/lib/interaction.ts` — raycasting on both surfaces, cell click/hover, touch handling
-- `packages/client/src/lib/nameplate.ts` — billboard name + flag sprites above players; local plate appends `(You)` / `(Вы)` via `setLocalPlayer`
+- `packages/client/src/lib/nameplate.ts` — billboard name + flag sprites above players; local plate appends `(You)` / `(Вы)` via `setLocalPlayer`; the streak badge sits next to the flag and replaces it from `BADGE_REPLACES_FLAG_FROM`
 - `packages/client/src/lib/models.ts` — GLB preload/cache for wheat/rice/corn characters
 - `packages/client/src/lib/celebrate.ts` — DOM canvas particle overlay (watcher score fly-to-HUD, fireworks)
 - `packages/client/src/lib/lobbyDemo.ts` — cinematic lobby background demo (sculpt/flip/wind/flood phases)
 - `packages/client/src/lib/replayPlayer.ts` — replay fetch (`/api/replays`, `/api/replay/:id`) + frame-stepping player
 - `packages/client/src/lib/audio.ts` — Howler audio system: ambient/music/sfx layers, per-track mute mirrored to the platform (`gp.sounds` on GamePush), settings persisted through `lib/storage.ts`
 - `packages/client/src/lib/storage.ts` — the single door to saved values: hydrated once by `initPlatform()`, then synchronous `storageGet` / `storageSet`. Backed by localStorage or, on GamePush, the `gp.player` field `save`
+- `packages/client/src/lib/streak.ts` — the badge streak state machine over `storage.ts`: seeded by a crate pickup, grown by wins, wiped by a loss, restored by the one rewarded-ad rescue. Client-side by design so it works for anonymous players; the server only relays the number (§10.4 of GAME_DESIGN)
+- `packages/client/src/lib/bonus.ts` — the crate on the board: lit and warm for the player it is addressed to, a dim husk for the other one, so the rule reads without explanation
 - `packages/client/src/lib/i18n.ts` — minimal i18n (en/ru), `t()`, `setLanguage()`, reactive `TAGLINES`
 - `packages/client/src/lib/config.ts` — `API_BASE` / `WS_URL` from `VITE_API_URL` / dev mode
 
@@ -89,7 +91,7 @@ alwaysApply: true
 
 - `LobbyOverlay.vue` — character select, Play (+ Watch only if authenticated and `liveMatches > 0`); Architect gated by `SHOW_ARCHITECT = false`; auth, online count, leaderboard, recent replays. Sign-in and the leaderboard hide where `platform.canAuth()` / `canShowLeaderboard()` say no (GameDistribution)
 - `GameHud.vue` — tick countdown, round info, phase display, flip-view button
-- `GameOverOverlay.vue` — win/lose/draw + death causes including runway/basin tiebreak copy + Play Again / rewarded ad
+- `GameOverOverlay.vue` — win/lose/draw + death causes including runway/basin tiebreak copy + Play Again / rewarded ad. On a loss that cost a badge the rewarded slot becomes "keep 🌧 7" — the ad restores what was earned rather than handing out an advantage
 - `ForecastPanel.vue` — wind vane + rain barometer (SVG compass), broken-instrument states
 - `WatcherHud.vue` — watcher score, predict winner/move, break instrument, prediction history
 - `ArchitectHud.vue` — weather type/direction picker, decision countdown, bonus placement

@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
 import type { Action, CharacterType, GameState, MoveDir } from '@wheee/shared'
+import { badgeFor } from '@wheee/shared'
 import { SIZE, HALF, CELL_SIZE, CELLS, SEGMENTS } from './lib/constants'
 import { terrainState } from './lib/terrain'
 import { createWaterSystem, WATER_FILL_MS } from './lib/water'
@@ -16,6 +17,8 @@ import { createNameplateSystem } from './lib/nameplate'
 import { createPreviewSystem } from './lib/preview'
 import { createInsectSystem } from './lib/insects'
 import { createGlassSystem, GLASS_ORDER } from './lib/glass'
+import { createBonusSystem } from './lib/bonus'
+import { streak, canRescue, seedStreak, winStreak, breakStreak, restoreStreak } from './lib/streak'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
@@ -132,11 +135,13 @@ unsubMessage1 = socket.onMessage((msg) => {
   if (msg.type === 'reconnect:fail') {
     socket.setReconnectToken(null)
   }
+  if (msg.type === 'tick:resolve' && msg.bonus) onCratePicked(msg.bonus.player)
   if (msg.type === 'game:end') {
     socket.setReconnectToken(null)
     platform.gameplayStop()
     refreshRewardedAvailability()
     if (game.isPractice.value) storageSet(TUTORIAL_STORAGE_KEY, '1')
+    settleStreak(msg)
     if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
       return
@@ -222,8 +227,8 @@ function onPlay(character: CharacterType) {
   ensureConnected(() => {
     // First Play ever → tutorial match vs bot instead of the real queue
     const ok = hasDoneTutorial()
-      ? socket.joinQueue(character)
-      : socket.startPractice(character)
+      ? socket.joinQueue(character, streak.value)
+      : socket.startPractice(character, streak.value)
     if (ok) game.queueJoinPending.value = true
   })
 }
@@ -286,7 +291,7 @@ function doPlayAgain() {
   game.selectedCharacter.value = lastCharacter
   audio.enterLobby()
   ensureConnected(() => {
-    if (socket.joinQueue(lastCharacter)) game.queueJoinPending.value = true
+    if (socket.joinQueue(lastCharacter, streak.value)) game.queueJoinPending.value = true
   })
 }
 
@@ -337,6 +342,105 @@ async function onBackToLobby() {
     controls.autoRotateSpeed = 0.4
   }
   audio.enterLobby()
+}
+
+/** Where the gem was standing, kept so the pickup burst starts from it. */
+let lastCrateCell: { x: number; y: number } | null = null
+/** Plate data for the running match, so a badge can be shown the instant it is won. */
+const matchInfo = ref<Record<'A' | 'B', import('@wheee/shared').PlayerInfo> | null>(null)
+const cratePopup = ref<{ mine: boolean } | null>(null)
+let cratePopupTimer = 0
+
+/**
+ * Somebody collected the gem. It has to be unmistakable whose it was: the gem is
+ * pulled in where it stood, sparks fly to that player's plate, and the badge
+ * lands on the plate at once rather than waiting for the next match.
+ */
+function onCratePicked(player: 'A' | 'B') {
+  const mine = player === game.myPlayerId.value
+  bonusSystem?.playTake()
+
+  if (mine) seedStreak()
+  // The opponent's find is worth hearing too, just quieter and further away —
+  // the same chime carries both, so the moment always sounds like itself.
+  audio.play(mine ? 'crate-pickup' : 'ui-click')
+
+  // The badge is worth 1 the moment the gem is taken — that is what seeds it.
+  if (matchInfo.value) {
+    matchInfo.value = { ...matchInfo.value, [player]: { ...matchInfo.value[player], streak: 1 } }
+    nameplateSystem?.setInfo(player, matchInfo.value[player])
+  }
+
+  if (lastCrateCell && sceneCamera) {
+    const wx = -HALF + (lastCrateCell.x + 0.5) * CELL_SIZE
+    const wz = -HALF + (lastCrateCell.y + 0.5) * CELL_SIZE
+    const wy = terrainState.getHeight(wx, wz) + 2
+    const src = worldToScreen(wx, wy, wz)
+    const p = game.gameState.value?.players[player]
+    let dst = src
+    if (p) {
+      const px = -HALF + (p.x + 0.5) * CELL_SIZE
+      const pz = -HALF + (p.y + 0.5) * CELL_SIZE
+      dst = worldToScreen(px, terrainState.getHeight(px, pz) + 5, pz)
+    }
+    celebrate(src.x, src.y, dst.x, dst.y, 1)
+  }
+  lastCrateCell = null
+
+  cratePopup.value = { mine }
+  clearTimeout(cratePopupTimer)
+  cratePopupTimer = window.setTimeout(() => { cratePopup.value = null }, 2600)
+}
+
+/**
+ * The badge a loss just took, kept only long enough to offer it back. The loss
+ * itself is committed immediately — leaving it pending until the player dismissed
+ * the screen would make closing the tab a free save.
+ */
+const lostStreak = ref(0)
+const lostRescuable = ref(false)
+/** Owned here, not by the overlay: only this side knows when the ad finished. */
+const rescueBusy = ref(false)
+const streakAtRisk = computed(() => lostStreak.value > 0)
+const streakLabel = computed(() => {
+  const emoji = badgeFor(lostStreak.value)
+  return emoji ? `${emoji}${lostStreak.value}` : ''
+})
+
+function settleStreak(msg: { winner: 'A' | 'B' | 'draw'; deathCauses?: Partial<Record<'A' | 'B', { type: string }>> | null }) {
+  lostStreak.value = 0
+  lostRescuable.value = false
+  // The tutorial sits outside the system: no crate is dropped there either.
+  if (game.isPractice.value) return
+  const myId = game.myPlayerId.value
+  if (!myId) return
+
+  if (msg.winner === myId) { winStreak(); return }
+  if (msg.winner === 'draw') return   // too rare to punish, too symmetric to reward
+
+  // Losing to a dropped connection is the network's fault, not the player's.
+  if (msg.deathCauses?.[myId]?.type === 'disconnect') return
+  if (streak.value === 0) return
+
+  lostStreak.value = streak.value
+  lostRescuable.value = canRescue.value
+  breakStreak()
+}
+
+async function onRescueStreak() {
+  if (rescueBusy.value) return
+  rescueBusy.value = true
+  try {
+    const watched = await platform.showRewarded().catch(() => false)
+    // An ad that failed to load must not cost the player their badge — the
+    // offer stays open so they can try again.
+    if (!watched) return
+    restoreStreak(lostStreak.value)
+    lostStreak.value = 0
+    lostRescuable.value = false
+  } finally {
+    rescueBusy.value = false
+  }
 }
 
 function onRetryConnection() {
@@ -744,6 +848,7 @@ watch(menuVisible, (open) => {
 let handleAction: ((action: MenuAction) => void) | null = null
 let playersSystem: ReturnType<typeof createPlayerSystem> | null = null
 let nameplateSystem: ReturnType<typeof createNameplateSystem> | null = null
+let bonusSystem: ReturnType<typeof createBonusSystem> | null = null
 let sceneCleanup: (() => void) | null = null
 
 const replayMode = ref(false)
@@ -791,9 +896,19 @@ function applyGameState(state: GameState) {
   if (playersSystem) {
     playersSystem.applyPositions(state.players.A, state.players.B)
   }
+  if (bonusSystem) {
+    const crate = state.activeBonus
+    // One crystal driven through the slab — both players see their own half of
+    // it. `mine` only decides which face gets the bright hoop.
+    const mine = !!crate && (!crate.for || crate.for === game.myPlayerId.value)
+    bonusSystem.setBonus(crate, mine)
+    if (crate) lastCrateCell = { x: crate.x, y: crate.y }
+  }
 }
 
 function resetVisuals() {
+  clearTimeout(cratePopupTimer)
+  cratePopup.value = null
   windSystem?.setVisible(false)
   rainSystem?.setVisible(false)
   glassSystem?.close()
@@ -838,6 +953,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       resetVisuals()
       nameplateSystem?.setLocalPlayer(msg.playerId)
       if (nameplateSystem && msg.playerInfo) {
+        matchInfo.value = msg.playerInfo
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
         nameplateSystem.setVisible(true)
@@ -865,6 +981,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       resetVisuals()
       nameplateSystem?.setLocalPlayer(msg.playerId)
       if (nameplateSystem && msg.playerInfo) {
+        matchInfo.value = msg.playerInfo
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
         nameplateSystem.setVisible(true)
@@ -895,6 +1012,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       resetVisuals()
       nameplateSystem?.setLocalPlayer(null)
       if (nameplateSystem && msg.playerInfo) {
+        matchInfo.value = msg.playerInfo
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
         nameplateSystem.setVisible(true)
@@ -917,6 +1035,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       resetVisuals()
       nameplateSystem?.setLocalPlayer(null)
       if (nameplateSystem && msg.playerInfo) {
+        matchInfo.value = msg.playerInfo
         nameplateSystem.setInfo('A', msg.playerInfo.A)
         nameplateSystem.setInfo('B', msg.playerInfo.B)
         nameplateSystem.setVisible(true)
@@ -1205,6 +1324,9 @@ onMounted(() => {
   // instead of only being told it.
   const glass = createGlassSystem(terrainMat)
   glassSystem = glass
+
+  const bonus = createBonusSystem(scene, terrainState)
+  bonusSystem = bonus
 
   const DIR_MAP: Record<string, MoveDir> = {
     '0,-1': 'N', '0,1': 'S', '1,0': 'E', '-1,0': 'W',
@@ -1496,6 +1618,7 @@ onMounted(() => {
     preview.update(dt)
     insects.update(dt)
     glass.update(dt)
+    bonus.update(dt)
     audio.update(dt)
     renderer.render(scene, camera)
   }
@@ -1562,11 +1685,13 @@ onMounted(() => {
     preview.dispose()
     insects.dispose()
     glass.dispose()
+    bonus.dispose()
     handleAction = null
     playersSystem = null
     nameplateSystem = null
     previewSystem = null
     glassSystem = null
+    bonusSystem = null
     waterSystem = null
     windSystem = null
     rainSystem = null
@@ -1630,6 +1755,14 @@ onUnmounted(() => {
           <div class="reconnect-text">{{ t('app.reconnecting') }}</div>
         </template>
       </div>
+    </div>
+  </Transition>
+
+  <!-- Crate collected — says plainly whose badge just started -->
+  <Transition name="crate-pop">
+    <div v-if="cratePopup" class="crate-banner" :class="{ mine: cratePopup.mine }">
+      <span class="crate-gem">◈</span>
+      {{ cratePopup.mine ? t('crate.youTook') : t('crate.theyTook') }}
     </div>
   </Transition>
 
@@ -1719,8 +1852,12 @@ onUnmounted(() => {
     :wind-spared="game.windSpared.value"
     :rain-spared="game.rainSpared.value"
     :show-rewarded-button="hasRewardedAds"
+    :can-rescue-streak="streakAtRisk && lostRescuable && hasRewardedAds"
+    :streak-badge="streakLabel"
+    :rescue-busy="rescueBusy"
     @play-again="onPlayAgain"
     @rewarded-play-again="onRewardedPlayAgain"
+    @rescue-streak="onRescueStreak"
     @watch-replay="startReplay"
     @back-to-lobby="onBackToLobby"
   />
@@ -2224,6 +2361,48 @@ onUnmounted(() => {
   letter-spacing: 0.8px;
   color: rgba(200, 210, 230, 0.7);
 }
+
+.crate-banner {
+  position: fixed;
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 320;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: rgba(18, 22, 30, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: rgba(200, 210, 230, 0.72);
+}
+
+.crate-banner.mine {
+  border-color: rgba(232, 197, 71, 0.45);
+  color: #f0d678;
+  box-shadow: 0 0 24px rgba(232, 197, 71, 0.18);
+}
+
+.crate-gem {
+  font-size: 15px;
+  color: rgba(200, 210, 230, 0.5);
+}
+
+.crate-banner.mine .crate-gem {
+  color: #e8c547;
+  text-shadow: 0 0 10px rgba(232, 197, 71, 0.8);
+}
+
+.crate-pop-enter-active { transition: opacity 0.3s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.crate-pop-leave-active { transition: opacity 0.4s, transform 0.4s ease; }
+.crate-pop-enter-from { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.94); }
+.crate-pop-leave-to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
 
 .reconnect-actions {
   display: flex;

@@ -41,6 +41,9 @@ export {
   MOVE_DIRS,
   SPAWN_PAIRS,
   RECONNECT_GRACE_MS,
+  BADGE_TIERS,
+  BADGE_REPLACES_FLAG_FROM,
+  badgeFor,
 } from './constants.js'
 
 export { WAR_AND_PEACE_SURNAMES } from './names.js'

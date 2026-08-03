@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun'
 import type { Action, BonusType, CharacterType, DeathCause, PlayerId, PlayerInfo, WeatherType, WindDir, WatcherState, WatcherPrediction, WatcherScoreEntry, ReplayFrame, ReplayData } from '@wheee/shared'
-import { TICK_DURATION_MS, RECONNECT_GRACE_MS, WAR_AND_PEACE_SURNAMES } from '@wheee/shared'
+import { TICK_DURATION_MS, RECONNECT_GRACE_MS, WAR_AND_PEACE_SURNAMES, BOARD_SIZE } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
 import { chooseBotAction, BOT_PRACTICE } from './engine/bot.js'
@@ -68,6 +68,9 @@ const PRACTICE_TICK_TIMEOUT_MS = 90_000
 const POINTS_WINNER = 10
 const POINTS_MOVE = 5
 
+/** Crate flavours. Which one it is has no effect — see placeStreakCrate(). */
+const CRATE_TYPES: BonusType[] = ['time_extend', 'intel', 'clear_sky']
+
 export type MatchEndData = {
   roomId: string
   playerAUserId: string | null
@@ -116,6 +119,15 @@ export class Room {
   private disposed = false
   private resolving = false
 
+  /**
+   * When the badge crate turns up, chosen once per match so its arrival cannot
+   * be timed by habit. Round 1–4 of the match, after tick 1–4 of that round —
+   * never at a round boundary, where it would just be part of the furniture.
+   */
+  private readonly crateRound = 1 + Math.floor(Math.random() * 4)
+  private readonly crateTick = 1 + Math.floor(Math.random() * 4)
+  private crateDropped = false
+
   private tickTimerStartedAt = 0
   private tickTimerDurationMs = 0
   private tickTimerCallback: (() => void) | null = null
@@ -131,8 +143,8 @@ export class Room {
   private matchStartedAt = 0
   private playerUserIds: Record<PlayerId, string | null> = { A: null, B: null }
   private playerInfoCache: Record<PlayerId, PlayerInfo> = {
-    A: { displayName: '', flag: '' },
-    B: { displayName: '', flag: '' },
+    A: { displayName: '', flag: '', streak: 0 },
+    B: { displayName: '', flag: '', streak: 0 },
   }
 
   constructor(id: string, callbacks: RoomCallbacks, opts?: RoomOpts) {
@@ -171,7 +183,7 @@ export class Room {
 
   /* ── Player management ── */
 
-  join(ws: ServerWebSocket<WsData>, character: CharacterType = 'wheat'): PlayerId | null {
+  join(ws: ServerWebSocket<WsData>, character: CharacterType = 'wheat', streak = 0): PlayerId | null {
     let pid: PlayerId
     if (!this.players.A) pid = 'A'
     else if (!this.players.B) pid = 'B'
@@ -183,6 +195,8 @@ export class Room {
     this.playerInfoCache[pid] = {
       displayName: ws.data.userName ?? randomSurname(),
       flag: ws.data.countryCode ? countryToFlag(ws.data.countryCode) : randomFlag(),
+      // Self-reported and purely cosmetic — see PlayerInfo.streak.
+      streak: Number.isFinite(streak) && streak > 0 ? Math.floor(streak) : 0,
     }
     ws.data.roomId = this.id
     ws.data.playerId = pid
@@ -212,7 +226,8 @@ export class Room {
     let name = randomSurname()
     let attempts = 0
     while (name === this.playerInfoCache[other].displayName && attempts++ < 5) name = randomSurname()
-    this.playerInfoCache[pid] = { displayName: name, flag: randomFlag() }
+    // The bot never carries a badge — the crate is always addressed to the human.
+    this.playerInfoCache[pid] = { displayName: name, flag: randomFlag(), streak: 0 }
 
     if (this.isFull) {
       this.matchStartedAt = Date.now()
@@ -581,6 +596,49 @@ export class Room {
     }
   }
 
+  /**
+   * Drop the crate that seeds a streak badge.
+   *
+   * Addressing exists for one reason: to stop a player who already carries a
+   * badge from stepping on the crate purely to deny it. So it is only addressed
+   * when exactly one side lacks a badge. With neither side carrying one there is
+   * no veteran to guard against, and the crate is left open — a race, first there
+   * takes it, which the engine already resolves (and burns if both arrive at once).
+   *
+   * It shows up once per match at a moment picked at the start (see
+   * `crateRound` / `crateTick`) rather than on a schedule anyone can learn.
+   * Skipped in the tutorial (busy enough already) and when an architect is
+   * present, since placing bonuses is their job.
+   */
+  private placeStreakCrate(): void {
+    if (this.practice || this.architect || this.crateDropped) return
+
+    const candidates = (['A', 'B'] as PlayerId[])
+      .filter((pid) => this.players[pid] && !this.players[pid]!.isBot
+        && this.playerInfoCache[pid].streak === 0)
+    if (candidates.length === 0) return
+
+    // Two hopefuls means an open crate; one means it is spoken for.
+    const target = candidates.length === 1 ? candidates[0] : undefined
+    const state = this.engine.getState()
+    const free: { x: number; y: number }[] = []
+    for (let y = 0; y < BOARD_SIZE; y++) {
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        const occupied = (['A', 'B'] as PlayerId[]).some((pid) => {
+          const p = state.players[pid]
+          return p.alive && p.x === x && p.y === y
+        })
+        if (!occupied) free.push({ x, y })
+      }
+    }
+    if (free.length === 0) return
+
+    const cell = free[Math.floor(Math.random() * free.length)]
+    // The type is decorative: the badge ladder does not depend on which crate it was.
+    const type = CRATE_TYPES[Math.floor(Math.random() * CRATE_TYPES.length)]
+    if (this.engine.placeBonus(cell.x, cell.y, type, target)) this.crateDropped = true
+  }
+
   private sendArchitectPrompt(): void {
     if (!this.architect) return
     const deadline = Date.now() + ARCHITECT_DECISION_MS
@@ -643,9 +701,22 @@ export class Room {
       if (this.players.B?.action) actions.B = this.players.B.action
 
       const result = this.engine.submitTick(actions)
+
+      // The crate appears between ticks, so the player watches it arrive rather
+      // than finding it already there when the round opens.
+      if (result.state.round === this.crateRound && result.state.tick === this.crateTick) {
+        this.placeStreakCrate()
+        // submitTick handed back a clone, so the fresh crate has to be copied in.
+        result.state.activeBonus = this.engine.getState().activeBonus
+      }
+
       this.replayFrames.push({ state: cloneState(result.state) })
-      this.sendEach((pid) => ({ type: 'tick:resolve', state: stateForPlayer(result.state, pid) }))
-      this.broadcastSpectators({ type: 'tick:resolve', state: result.state })
+      // The pickup rides along so the client can seed the badge streak.
+      const picked = result.activatedBonus
+        ? { bonus: { player: result.activatedBonus.player, type: result.activatedBonus.bonus } }
+        : {}
+      this.sendEach((pid) => ({ type: 'tick:resolve', state: stateForPlayer(result.state, pid), ...picked }))
+      this.broadcastSpectators({ type: 'tick:resolve', state: result.state, ...picked })
 
       this.resolveMovePredictions(actions)
 

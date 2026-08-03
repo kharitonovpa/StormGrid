@@ -141,4 +141,42 @@ describe('tick — bonus activation', () => {
     expect(result.activatedBonus).toBeNull()
     expect(result.state.activeBonus).not.toBeNull()
   })
+
+  it('an addressed crate ignores the other player and stays put', () => {
+    // B walks onto a crate meant for A: nothing happens and it is still there,
+    // so B cannot deny it to A.
+    const s = state()
+    s.players.B.x = 3
+    s.players.B.y = 3
+    s.activeBonus = { x: 4, y: 3, type: 'intel', for: 'A' }
+    const result = applyTick(s, { B: { kind: 'move', dir: 'E' } })
+    expect(result.activatedBonus).toBeNull()
+    expect(result.state.activeBonus).toEqual({ x: 4, y: 3, type: 'intel', for: 'A' })
+  })
+
+  it('an addressed crate is picked up by the player it is meant for', () => {
+    const s = state()
+    s.players.A.x = 3
+    s.players.A.y = 3
+    s.activeBonus = { x: 4, y: 3, type: 'intel', for: 'A' }
+    const result = applyTick(s, { A: { kind: 'move', dir: 'E' } })
+    expect(result.activatedBonus).toEqual({ player: 'A', bonus: 'intel' })
+    expect(result.state.activeBonus).toBeNull()
+  })
+
+  it('an addressed crate goes to its owner even when both stand on it', () => {
+    // The "both stepped on it" rule burns an unaddressed crate; an addressed one
+    // still belongs to its owner, so it is simply collected by them.
+    const s = state()
+    s.players.A.x = 3
+    s.players.A.y = 3
+    s.players.B.x = 5
+    s.players.B.y = 3
+    s.activeBonus = { x: 4, y: 3, type: 'clear_sky', for: 'A' }
+    const result = applyTick(s, {
+      A: { kind: 'move', dir: 'E' },
+      B: { kind: 'move', dir: 'W' },
+    })
+    expect(result.activatedBonus).toEqual({ player: 'A', bonus: 'clear_sky' })
+  })
 })

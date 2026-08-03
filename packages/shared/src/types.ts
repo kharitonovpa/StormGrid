@@ -45,6 +45,13 @@ export type BonusCell = {
   x: number
   y: number
   type: BonusType
+  /**
+   * Who may pick it up. The crate seeds a streak badge, so it is addressed to a
+   * player who has none — the other one walks straight through and it stays put,
+   * which stops a veteran denying a newcomer their way in. Undefined means
+   * anyone, which is how the architect places one.
+   */
+  for?: PlayerId
 }
 
 /* ── Roles ── */
@@ -152,6 +159,8 @@ export type UserInfo = {
 export type PlayerInfo = {
   displayName: string
   flag: string
+  /** Length of the badge streak; 0 means no badge. Cosmetic — see badgeFor(). */
+  streak: number
 }
 
 /* ── Stats ── */

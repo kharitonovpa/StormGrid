@@ -19,11 +19,18 @@ const props = defineProps<{
   /** Player the water released because the other one went under first. */
   rainSpared?: PlayerId | null
   showRewardedButton?: boolean
+  /** A badge streak is about to be wiped and the one rescue is still unspent. */
+  canRescueStreak?: boolean
+  /** Rendered badge, e.g. "🌧 7" — shown on the rescue button. */
+  streakBadge?: string
+  /** The rescue ad is playing. Owned by the parent, which knows when it ends. */
+  rescueBusy?: boolean
 }>()
 
 const emit = defineEmits<{
   playAgain: []
   rewardedPlayAgain: []
+  rescueStreak: []
   watchReplay: [roomId: string]
   backToLobby: []
 }>()
@@ -99,6 +106,12 @@ const resultClass = computed(() => {
 
 const rewardedLoading = ref(false)
 
+function onRescueClick() {
+  if (props.rescueBusy) return
+  audio?.play('ui-click')
+  emit('rescueStreak')
+}
+
 function onRewardedClick() {
   if (rewardedLoading.value) return
   rewardedLoading.value = true
@@ -169,7 +182,23 @@ onUnmounted(() => {
           </svg>
         </button>
 
-        <button v-if="showRewardedButton" class="btn-rewarded" :class="{ loading: rewardedLoading }" :disabled="rewardedLoading" @click="onRewardedClick">
+        <!-- A badge about to be lost is worth far more than a free replay, so it
+             takes the rewarded slot whenever there is one at stake. -->
+        <button
+          v-if="canRescueStreak"
+          class="btn-rewarded btn-rescue"
+          :class="{ loading: rescueBusy }"
+          :disabled="rescueBusy"
+          @click="onRescueClick"
+        >
+          <svg v-if="!rescueBusy" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 21s-7-4.35-9.33-8.42A5.4 5.4 0 0112 5.5a5.4 5.4 0 019.33 7.08C19 16.65 12 21 12 21z" />
+          </svg>
+          <div v-else class="rewarded-spinner" />
+          <span>{{ t('gameover.keepStreak', streakBadge ?? '') }}</span>
+        </button>
+
+        <button v-else-if="showRewardedButton" class="btn-rewarded" :class="{ loading: rewardedLoading }" :disabled="rewardedLoading" @click="onRewardedClick">
           <svg v-if="!rewardedLoading" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="8" width="18" height="13" rx="2" />
             <path d="M12 8V21" />
@@ -416,6 +445,17 @@ onUnmounted(() => {
 .btn-rewarded.loading {
   opacity: 0.5;
   cursor: wait;
+}
+
+/* Rescuing a badge is the warmer offer of the two — it keeps something. */
+.btn-rescue {
+  border-color: rgba(232, 197, 71, 0.35);
+  background: rgba(232, 197, 71, 0.09);
+  color: rgba(240, 214, 120, 0.92);
+}
+.btn-rescue:hover:not(:disabled) {
+  background: rgba(232, 197, 71, 0.16);
+  border-color: rgba(232, 197, 71, 0.6);
 }
 
 .rewarded-spinner {

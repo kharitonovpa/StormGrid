@@ -141,12 +141,15 @@ export class GameEngine {
     this.state.forecast.instrumentsBroken[target][instrument] = true
   }
 
-  /** Place a bonus on the board (architect ability). */
-  placeBonus(x: number, y: number, type: BonusType): boolean {
+  /**
+   * Place a bonus on the board (architect ability, or the room's own crate).
+   * `forPlayer` addresses it to one player — see BonusCell.for.
+   */
+  placeBonus(x: number, y: number, type: BonusType, forPlayer?: PlayerId): boolean {
     if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return false
     const { A, B } = this.state.players
     if ((A.alive && A.x === x && A.y === y) || (B.alive && B.x === x && B.y === y)) return false
-    this.state.activeBonus = { x, y, type }
+    this.state.activeBonus = { x, y, type, ...(forPlayer ? { for: forPlayer } : {}) }
     return true
   }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { PlayerId, PlayerInfo } from '@wheee/shared'
+import { badgeFor, BADGE_REPLACES_FLAG_FROM } from '@wheee/shared'
 import type { TerrainState } from './terrain'
 import { t } from './i18n'
 
@@ -40,7 +41,14 @@ function createPlateCanvas(): HTMLCanvasElement {
   return c
 }
 
-function renderPlate(canvas: HTMLCanvasElement, name: string, suffix: string, flag: string, pid: PlayerId): void {
+function renderPlate(
+  canvas: HTMLCanvasElement,
+  name: string,
+  suffix: string,
+  flag: string,
+  pid: PlayerId,
+  badgeText: string,
+): void {
   const ctx = canvas.getContext('2d')!
   const w = canvas.width
   const h = canvas.height
@@ -63,9 +71,16 @@ function renderPlate(canvas: HTMLCanvasElement, name: string, suffix: string, fl
     flagW = ctx.measureText(flag).width
   }
 
+  let badgeW = 0
+  if (badgeText) {
+    ctx.font = FLAG_FONT
+    badgeW = ctx.measureText(badgeText).width
+  }
+
   const contentW = nameW
     + (suffix ? SUFFIX_GAP + suffixW : 0)
     + (flag ? GAP + flagW : 0)
+    + (badgeText ? GAP + badgeW : 0)
   const maxPillW = w * 0.92
   const pillW = Math.min(contentW + PADDING_X * 2, maxPillW)
   const pillH = h * 0.72
@@ -114,6 +129,12 @@ function renderPlate(canvas: HTMLCanvasElement, name: string, suffix: string, fl
   if (flag) {
     ctx.font = FLAG_FONT
     ctx.fillText(flag, cursor + GAP, textY + 2 * CANVAS_SCALE)
+    cursor += GAP + flagW
+  }
+
+  if (badgeText) {
+    ctx.font = FLAG_FONT
+    ctx.fillText(badgeText, cursor + GAP, textY + 2 * CANVAS_SCALE)
   }
 }
 
@@ -184,7 +205,12 @@ export function createNameplateSystem(
     // A guest's name is rolled fresh for every match, so on its own it never tells
     // them which of the two characters they are driving.
     const suffix = pid === localId ? t('hud.you') : ''
-    renderPlate(plate.canvas, plate.info.displayName, suffix, plate.info.flag, pid)
+    // The badge only starts showing once it exists, and from the third rung it
+    // takes the flag's place so the plate does not keep growing.
+    const emoji = badgeFor(plate.info.streak ?? 0)
+    const badgeText = emoji ? `${emoji}${plate.info.streak}` : ''
+    const showFlag = !badgeText || (plate.info.streak ?? 0) < BADGE_REPLACES_FLAG_FROM
+    renderPlate(plate.canvas, plate.info.displayName, suffix, showFlag ? plate.info.flag : '', pid, badgeText)
     plate.texture.needsUpdate = true
     plate.hasContent = true
   }

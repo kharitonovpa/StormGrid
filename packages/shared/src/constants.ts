@@ -42,3 +42,31 @@ export const MOVE_DIRS: Record<MoveDir, { dx: number; dy: number }> = {
   SE: { dx: 1,  dy: 1 },
   SW: { dx: -1, dy: 1 },
 }
+
+/* ── Streak badge ── */
+
+/**
+ * The badge climbs the weather it is made of: a leaf that anything can move,
+ * up to the storm everyone runs from. `from` is the streak at which the rung
+ * starts; the exact count is shown next to the emoji.
+ */
+export const BADGE_TIERS: { from: number; emoji: string }[] = [
+  { from: 1,  emoji: '🍃' },
+  { from: 3,  emoji: '💨' },
+  { from: 6,  emoji: '🌧' },
+  { from: 10, emoji: '⛈' },
+  { from: 20, emoji: '🌪' },
+  { from: 50, emoji: '🌀' },
+]
+
+/** From this rung on the badge takes the flag's place, so the plate stays compact. */
+export const BADGE_REPLACES_FLAG_FROM = 6
+
+/** The rung a streak sits on, or null when there is no badge yet. */
+export function badgeFor(streak: number): string | null {
+  let emoji: string | null = null
+  for (const tier of BADGE_TIERS) {
+    if (streak >= tier.from) emoji = tier.emoji
+  }
+  return emoji
+}
