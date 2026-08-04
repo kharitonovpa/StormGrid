@@ -291,6 +291,21 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
       takeT = 0
     },
 
+    /**
+     * Leaving the match. Unlike setBonus(null) this cuts the take animation off
+     * too — a crystal nobody collected must not follow the player into the lobby
+     * and hang over the demo board.
+     */
+    clear() {
+      cell = null
+      takeT = -1
+      group.visible = false
+      group.scale.setScalar(1)
+      shardMat.opacity = GEM_OPACITY
+      haloMat.opacity = HALO_OPACITY
+      for (const s of sparks) s.mat.opacity = SPARK_OPACITY
+    },
+
     update(dt: number) {
       if (!group.visible) return
       time += dt

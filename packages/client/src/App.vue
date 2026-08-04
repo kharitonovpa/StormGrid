@@ -287,6 +287,10 @@ function refreshRewardedAvailability() {
 function doPlayAgain(instant = false) {
   pendingGameEnd = null
   socket.setReconnectToken(null)
+  // Straight into the queue without a full visual reset, so the crystal has to
+  // be sent away by hand or it hangs over the board while the player waits.
+  bonusSystem?.clear()
+  lastCrateCell = null
   const lastCharacter = game.selectedCharacter.value ?? 'wheat'
   game.reset()
   game.selectedCharacter.value = lastCharacter
@@ -928,6 +932,9 @@ function resetVisuals() {
   floodResolve?.()
   floodResolve = null
   nameplateSystem?.setVisible(false)
+  // An uncollected crystal belongs to the match it was dropped in.
+  bonusSystem?.clear()
+  lastCrateCell = null
 }
 
 function stopLobbyDemo() {
