@@ -4,7 +4,11 @@ PvP тактическая игра 1v1 на сетке 7×7 с двухстор
 (в тиках) двигаются и меняют рельеф; после 5 тиков приходит катаклизм (ветер и/или
 дождь). Цель — чтобы катаклизм убил соперника, а не вас.
 
-Прод: [wheee.io](https://wheee.io) · [ru.wheee.io](https://ru.wheee.io) · Telegram Mini App · Yandex Games · GamePush
+Прод: [wheee.io](https://wheee.io) · [ru.wheee.io](https://ru.wheee.io) · Telegram Mini App
+
+Сборки под Yandex Games и GamePush готовы и собираются одной командой, но игра
+там пока не размещена: GamePush прошёл модерацию и ждёт публикации, на Яндекс.Игры
+не подавалась.
 
 ## Стек
 
