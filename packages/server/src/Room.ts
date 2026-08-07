@@ -261,6 +261,15 @@ export class Room {
       return
     }
 
+    // Presence, not information: the opponent learns a move was locked in,
+    // never which one. Sent before the both-acted check so the indicator still
+    // flashes on the tick it completes.
+    const otherPid: PlayerId = pid === 'A' ? 'B' : 'A'
+    const otherSlot = this.players[otherPid]
+    if (otherSlot?.ws) {
+      send(otherSlot.ws, { type: 'opponent:acted', tick: state.tick })
+    }
+
     if (this.players.A && this.players.B
       && this.players.A.action !== null && this.players.B.action !== null) {
       this.resolveTick()

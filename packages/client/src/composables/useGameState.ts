@@ -77,6 +77,8 @@ export function useGameState() {
 
   /* ── Opponent connection state ── */
   const opponentDisconnected = ref(false)
+  /** The opponent locked in a move this tick (what it is stays secret). */
+  const opponentActed = ref(false)
 
   /* ── Architect state ── */
   const isArchitect = ref(false)
@@ -158,7 +160,12 @@ export function useGameState() {
         currentTick.value = msg.tick
         tickDeadline.value = msg.deadline
         actionSubmitted.value = false
+        opponentActed.value = false
         movePredicted.value = {}
+        break
+
+      case 'opponent:acted':
+        opponentActed.value = true
         break
 
       case 'tick:resolve':
@@ -239,6 +246,7 @@ export function useGameState() {
         forecastDeadline.value = msg.forecastDeadline ?? 0
         currentTick.value = msg.tick
         actionSubmitted.value = false
+        opponentActed.value = false
         opponentDisconnected.value = false
         isWatcher.value = false
         isArchitect.value = false
@@ -289,6 +297,7 @@ export function useGameState() {
     winnerPredicted.value = false
     movePredicted.value = {}
     opponentDisconnected.value = false
+    opponentActed.value = false
     isArchitect.value = false
     architectDeadline.value = 0
     weatherSubmitted.value = false
@@ -327,6 +336,7 @@ export function useGameState() {
     inviteCode,
     inviteFailed,
     opponentDisconnected,
+    opponentActed,
     weatherSubmitted,
     handleMessage,
     reset,

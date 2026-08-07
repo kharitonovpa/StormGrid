@@ -74,6 +74,12 @@ function worldToScreen(wx: number, wy: number, wz: number): { x: number; y: numb
   }
 }
 
+/** Which move was locked in this tick, for the HUD chip. Cleared when a new tick opens. */
+const myActionLabel = ref('')
+watch(() => game.actionSubmitted.value, (submitted) => {
+  if (!submitted) myActionLabel.value = ''
+})
+
 const winnerPopup = ref<{ player: 'A' | 'B'; points: number } | null>(null)
 const contextLost = ref(false)
 function onContextReload() { window.location.reload() }
@@ -1336,7 +1342,9 @@ onMounted(() => {
   const gridGeo = new THREE.BufferGeometry()
   const gridPos = new THREE.BufferAttribute(gridPts, 3)
   gridGeo.setAttribute('position', gridPos)
-  const gridLineMat = new THREE.LineBasicMaterial({ color: 0x2a4a2a, transparent: true, opacity: 0.35 })
+  // Bright enough to read cell borders at a glance — the old 0.35 swamp-green
+  // vanished into the grass (UX review §3).
+  const gridLineMat = new THREE.LineBasicMaterial({ color: 0x437a43, transparent: true, opacity: 0.55 })
   const gridLines = new THREE.LineSegments(gridGeo, gridLineMat)
   scene.add(gridLines)
 
@@ -1484,6 +1492,7 @@ onMounted(() => {
           if (dir) {
             socket.submitAction({ kind: 'move', dir })
             game.actionSubmitted.value = true
+            myActionLabel.value = t('action.move')
             audio.play('action-submit')
             const s2 = game.myPlayerId.value === 'A' ? players.playerA.state : players.playerB.state
             preview.showMove(s2.cx, s2.cz, e.cx, e.cz)
@@ -1562,6 +1571,7 @@ onMounted(() => {
     const serverAction: Action = { kind: action, x: cx, y: cz }
     socket.submitAction(serverAction)
     game.actionSubmitted.value = true
+    myActionLabel.value = t(action === 'raise' ? 'action.raise' : 'action.lower')
     audio.play('action-submit')
     if (action === 'raise') preview.showRaise(cx, cz)
     else if (action === 'lower') preview.showLower(cx, cz)
@@ -1895,6 +1905,9 @@ onUnmounted(() => {
     :tick-deadline="game.tickDeadline.value"
     :forecast-deadline="game.forecastDeadline.value"
     :action-submitted="game.actionSubmitted.value"
+    :my-action-label="myActionLabel"
+    :opponent-acted="game.opponentActed.value"
+    :show-opponent="!game.isPractice.value"
     :my-player-id="game.myPlayerId.value ?? 'A'"
     :bounce-flip="introBounceFlip || tutorialHint === 'tutorial.flip'"
     @flip="onFlipView"

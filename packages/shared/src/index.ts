@@ -94,6 +94,7 @@ export type {
   ReconnectFailMsg,
   OpponentDisconnectedMsg,
   OpponentReconnectedMsg,
+  OpponentActedMsg,
   ReplayFrame,
   ReplaySummary,
   ReplayData,

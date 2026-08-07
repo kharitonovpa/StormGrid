@@ -97,6 +97,11 @@ export type ReconnectOkMsg = { type: 'reconnect:ok'; playerId: PlayerId; state: 
 export type ReconnectFailMsg = { type: 'reconnect:fail' }
 export type OpponentDisconnectedMsg = { type: 'opponent:disconnected' }
 export type OpponentReconnectedMsg = { type: 'opponent:reconnected' }
+/**
+ * The other player has locked in a move this tick. What the move is stays
+ * secret until the tick resolves — this only proves someone is alive out there.
+ */
+export type OpponentActedMsg = { type: 'opponent:acted'; tick: number }
 
 /* ── Replay ── */
 
@@ -180,4 +185,5 @@ export type ServerMessage =
   | ReconnectFailMsg
   | OpponentDisconnectedMsg
   | OpponentReconnectedMsg
+  | OpponentActedMsg
   | PongMsg

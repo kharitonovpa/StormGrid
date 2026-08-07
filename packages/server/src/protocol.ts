@@ -48,6 +48,7 @@ export type {
   ReconnectFailMsg,
   OpponentDisconnectedMsg,
   OpponentReconnectedMsg,
+  OpponentActedMsg,
 } from '@wheee/shared'
 
 import type { ClientMessage, ServerMessage } from '@wheee/shared'

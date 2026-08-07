@@ -157,6 +157,14 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false) {
     g = mix(g, rk1, rockW)
     b = mix(b, rk2, rockW)
 
+    // Height has to read before the extremes: sun on anything rising, shadow in
+    // every hollow, not only mud at -3.5 and snow at +2 (UX review §3).
+    const lift = sstep(0.2, HEIGHT_SCALE * 0.7, h) * 0.10
+    const sink = (1 - sstep(-HEIGHT_SCALE * 0.7, -0.2, h)) * 0.13
+    r += lift - sink
+    g += lift * 1.15 - sink
+    b += lift * 0.6 - sink * 0.7
+
     col.setXYZ(i, clamp(r, 0, 1), clamp(g, 0, 1), clamp(b, 0, 1))
   }
   col.needsUpdate = true

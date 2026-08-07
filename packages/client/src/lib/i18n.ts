@@ -46,6 +46,9 @@ const messages: Record<string, Record<string, string>> = {
     'hud.chooseMoveFlash': 'Choose your move!',
     'hud.cataclysm': 'Cataclysm',
     'hud.flipView': 'Peek at opponent\'s side',
+    'hud.flip': 'Flip',
+    'hud.oppThinking': 'Opponent is thinking…',
+    'hud.oppActed': 'Opponent has moved',
     /** Marks the plate above the player's own character. */
     'hud.you': '(You)',
 
@@ -191,6 +194,9 @@ const messages: Record<string, Record<string, string>> = {
     'hud.chooseMoveFlash': 'Выбери действие!',
     'hud.cataclysm': 'Катаклизм',
     'hud.flipView': 'Посмотреть сторону соперника',
+    'hud.flip': 'Переворот',
+    'hud.oppThinking': 'Соперник думает…',
+    'hud.oppActed': 'Соперник сходил',
     'hud.you': '(Вы)',
 
     'gameover.stalemate': 'Ничья',

@@ -20,7 +20,9 @@ export function createPreviewSystem(scene: THREE.Scene, terrain: TerrainState) {
   const SPARKLE_COUNT = 24
   const SPARKLE_MAX_H = BUMP_AMP * 0.7
 
-  const raiseColor = new THREE.Color(0x44ff88)
+  // Cyan, not green: the confirmed-action marker has to stand apart from the
+  // grass it sits on (UX review §3).
+  const raiseColor = new THREE.Color(0x2ee6ff)
   const lowerColor = new THREE.Color(0xff3355)
 
   // ── Ribbon mesh (all 10 lines in one geometry) ──

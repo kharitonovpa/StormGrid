@@ -14,6 +14,12 @@ const props = defineProps<{
   tickDeadline: number
   forecastDeadline: number
   actionSubmitted: boolean
+  /** Label of the move locked in this tick (Raise/Lower/Move), '' before submit. */
+  myActionLabel: string
+  /** The opponent locked in their move this tick. */
+  opponentActed: boolean
+  /** Hide the opponent chip where there is no live opponent (practice). */
+  showOpponent: boolean
   myPlayerId: PlayerId
   bounceFlip: boolean
 }>()
@@ -143,17 +149,23 @@ watch(() => props.phase, (newPhase, oldPhase) => {
           <div class="round-label">{{ t('hud.round', round) }}</div>
         </div>
 
-        <!-- Action status -->
-        <Transition name="check-pop">
-          <div v-if="actionSubmitted" class="action-status">
-            <div class="action-check">
-              <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="4,10 8,14 16,6" />
-              </svg>
+        <!-- Action status: my move + the opponent's presence -->
+        <div class="status-col">
+          <Transition name="check-pop">
+            <div v-if="actionSubmitted" class="action-status">
+              <div class="action-check">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="4,10 8,14 16,6" />
+                </svg>
+              </div>
+              <span class="my-action-text">{{ myActionLabel || t('hud.waiting') }}</span>
             </div>
-            <span class="waiting-text">{{ t('hud.waiting') }}</span>
+          </Transition>
+          <div v-if="showOpponent" class="opp-status" :class="{ acted: opponentActed }">
+            <div class="opp-dot" />
+            <span>{{ opponentActed ? t('hud.oppActed') : t('hud.oppThinking') }}</span>
           </div>
-        </Transition>
+        </div>
       </div>
     </Transition>
 
@@ -208,6 +220,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
         <polyline points="7,23 3,19 7,15" />
         <path d="M21 13v2a4 4 0 0 1-4 4H3" />
       </svg>
+      <span class="flip-label">{{ t('hud.flip') }}</span>
     </button>
   </div>
 </template>
@@ -336,10 +349,65 @@ watch(() => props.phase, (newPhase, oldPhase) => {
 
 /* ── Action status ── */
 
+.status-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 120px;
+}
+
 .action-status {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.my-action-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(134, 239, 172, 0.85);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The opponent's presence: a live dot while they think, green once they moved. */
+.opp-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: rgba(251, 146, 60, 0.75);
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+
+.opp-status.acted {
+  color: rgba(74, 222, 128, 0.8);
+}
+
+.opp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(251, 146, 60, 0.8);
+  box-shadow: 0 0 8px rgba(251, 146, 60, 0.4);
+  animation: opp-think 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.opp-status.acted .opp-dot {
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
+  animation: none;
+}
+
+@keyframes opp-think {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
 }
 
 .action-check {
@@ -354,12 +422,6 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   flex-shrink: 0;
 }
 
-.waiting-text {
-  font-size: 11px;
-  color: rgba(200, 210, 225, 0.4);
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-}
 
 .check-pop-enter-active {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -592,22 +654,31 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   /* --sticky-inset is the platform banner's height; 0 when there is none. */
   bottom: calc(18px + var(--sticky-inset, 0px));
   right: 66px;
-  width: 40px;
   height: 40px;
   box-sizing: border-box;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(12, 16, 24, 0.5);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 16, 24, 0.6);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  color: rgba(200, 210, 225, 0.5);
+  color: rgba(200, 210, 225, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
   cursor: pointer;
   pointer-events: auto;
-  padding: 0;
+  padding: 0 14px;
+  font-family: inherit;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flip-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .flip-btn:hover {
@@ -638,7 +709,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   content: '';
   position: absolute;
   inset: -3px;
-  border-radius: 50%;
+  border-radius: 23px;
   border: 2px solid rgba(232, 197, 71, 0.7);
   animation: flip-ring 1.2s ease-out infinite;
   pointer-events: none;
@@ -670,8 +741,12 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   .forecast-strip { gap: 8px; }
   .cataclysm-banner { padding: 10px 24px; }
   .cataclysm-text { font-size: 16px; letter-spacing: 2px; }
-  .flip-btn { bottom: calc(12px + var(--sticky-inset, 0px)); right: 60px; width: 44px; height: 44px; }
+  .flip-btn { bottom: calc(12px + var(--sticky-inset, 0px)); right: 60px; height: 44px; padding: 0 12px; }
   .flip-btn svg { width: 18px; height: 18px; }
+  .flip-label { font-size: 9px; }
+  .status-col { min-width: 90px; }
+  .my-action-text { font-size: 10px; }
+  .opp-status { font-size: 9px; }
   .choose-banner { top: 56px; padding: 6px 16px; }
   .choose-text { font-size: 10px; letter-spacing: 0.8px; }
 }
