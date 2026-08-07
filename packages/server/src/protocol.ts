@@ -9,6 +9,11 @@ export type {
   QueueLeaveMsg,
   PracticeStartMsg,
   InstantStartMsg,
+  FriendCreateMsg,
+  FriendCancelMsg,
+  FriendJoinMsg,
+  FriendWaitingMsg,
+  FriendJoinFailMsg,
   ActionSubmitMsg,
   WatchJoinMsg,
   WatchLeaveMsg,
@@ -55,6 +60,8 @@ const VALID_PLAYER_IDS = new Set(['A', 'B'])
 const VALID_INSTRUMENTS = new Set(['vane', 'barometer'])
 const VALID_BONUS_TYPES = new Set(['time_extend', 'intel', 'clear_sky'])
 const VALID_CHARACTERS = new Set(CHARACTERS)
+/** Server codes are 6 chars, but stay tolerant of case and future lengths. */
+const FRIEND_CODE_RE = /^[a-zA-Z0-9]{4,12}$/
 
 function isValidAction(a: unknown): boolean {
   if (typeof a !== 'object' || a === null) return false
@@ -76,15 +83,20 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     if (typeof msg !== 'object' || msg === null || typeof msg.type !== 'string') return null
 
     switch (msg.type) {
+      case 'friend:join':
+        if (typeof msg.code !== 'string' || !FRIEND_CODE_RE.test(msg.code)) return null
+        // fallthrough — the rest of the shape matches queue:join
       case 'queue:join':
       case 'practice:start':
       case 'instant:start':
+      case 'friend:create':
         if (!VALID_CHARACTERS.has(msg.character)) return null
         // Cosmetic and self-reported, but still has to be a sane number.
         if (msg.streak !== undefined
           && (!Number.isInteger(msg.streak) || msg.streak < 0 || msg.streak > 9999)) return null
         return msg
       case 'queue:leave':
+      case 'friend:cancel':
       case 'watch:join':
       case 'watch:leave':
       case 'architect:join':

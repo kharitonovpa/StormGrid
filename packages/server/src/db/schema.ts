@@ -37,6 +37,28 @@ export const userStats = sqliteTable('user_stats', {
   index('user_stats_watcher_score_idx').on(t.watcherScore),
 ])
 
+/**
+ * First-party analytics: one row per client event. `deviceId` survives reloads
+ * (platform storage), `sessionId` lives one page load — together they give
+ * funnels and D1/D7 retention without any third-party SDK.
+ */
+export const events = sqliteTable('events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  deviceId: text('device_id').notNull(),
+  sessionId: text('session_id').notNull(),
+  userId: text('user_id'),
+  platform: text('platform').notNull(),
+  host: text('host'),
+  name: text('name').notNull(),
+  props: text('props'), // JSON, small and optional
+  country: text('country'),
+  lang: text('lang'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+}, (t) => [
+  index('events_name_created_idx').on(t.name, t.createdAt),
+  index('events_device_created_idx').on(t.deviceId, t.createdAt),
+])
+
 export const replays = sqliteTable('replays', {
   id: text('id').primaryKey(),
   matchId: text('match_id').notNull().references(() => matches.id),

@@ -14,6 +14,7 @@ import type {
 export type ClientPhase =
   | 'lobby'
   | 'queue'
+  | 'friend_wait'
   | 'forecast'
   | 'ticking'
   | 'weather'
@@ -68,6 +69,12 @@ export function useGameState() {
 
   onScopeDispose(stopQueueCountdown)
 
+  /* ── Friend invite ── */
+  /** Code of the live invite while this client waits for a friend. */
+  const inviteCode = ref<string | null>(null)
+  /** Set when a followed challenge link turned out dead — the lobby says so once. */
+  const inviteFailed = ref(false)
+
   /* ── Opponent connection state ── */
   const opponentDisconnected = ref(false)
 
@@ -112,9 +119,22 @@ export function useGameState() {
         startQueueCountdown(msg.maxWaitMs)
         break
 
+      case 'friend:waiting':
+        queueJoinPending.value = false
+        inviteCode.value = msg.code
+        phase.value = 'friend_wait'
+        break
+
+      case 'friend:join_fail':
+        queueJoinPending.value = false
+        inviteFailed.value = true
+        phase.value = 'lobby'
+        break
+
       case 'game:start':
         queueJoinPending.value = false
         stopQueueCountdown()
+        inviteCode.value = null
         myPlayerId.value = msg.playerId
         gameState.value = msg.state
         playerInfo.value = msg.playerInfo
@@ -249,6 +269,7 @@ export function useGameState() {
   function reset() {
     stopQueueCountdown()
     queueJoinPending.value = false
+    inviteCode.value = null
     phase.value = 'lobby'
     myPlayerId.value = null
     gameState.value = null
@@ -303,6 +324,8 @@ export function useGameState() {
     architectDeadline,
     queueCountdown,
     queueJoinPending,
+    inviteCode,
+    inviteFailed,
     opponentDisconnected,
     weatherSubmitted,
     handleMessage,

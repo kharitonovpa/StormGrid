@@ -137,6 +137,20 @@ export function useGameSocket() {
     send({ type: 'queue:leave' })
   }
 
+  /** Park under a short code and wait for the invited friend. */
+  function createFriendInvite(character: CharacterType = 'wheat', streak = 0) {
+    return send({ type: 'friend:create', character, streak })
+  }
+
+  function cancelFriendInvite() {
+    send({ type: 'friend:cancel' })
+  }
+
+  /** Join the match behind a challenge link's code. */
+  function joinFriend(code: string, character: CharacterType = 'wheat', streak = 0) {
+    return send({ type: 'friend:join', code, character, streak })
+  }
+
   function submitAction(action: Action) {
     send({ type: 'action:submit', action })
   }
@@ -237,6 +251,9 @@ export function useGameSocket() {
     setReconnectToken,
     joinQueue,
     leaveQueue,
+    createFriendInvite,
+    cancelFriendInvite,
+    joinFriend,
     startPractice,
     startInstant,
     submitAction,

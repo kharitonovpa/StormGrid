@@ -19,6 +19,7 @@ STORE_ASSETS=(
   'cover-ru-1920x1080.png'
   'yandex-cover.png'
   'og-image.png'
+  'icon-1024.png'
 )
 
 freed=0

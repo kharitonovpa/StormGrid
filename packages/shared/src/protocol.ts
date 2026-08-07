@@ -14,6 +14,15 @@ export type PracticeStartMsg = { type: 'practice:start'; character: CharacterTyp
 export type InstantStartMsg = { type: 'instant:start'; character: CharacterType; streak?: number }
 export type ActionSubmitMsg = { type: 'action:submit'; action: Action }
 
+/**
+ * A private match by link. `friend:create` parks the sender under a short code
+ * (no bot fallback — the wait is for one specific person); `friend:join` is what
+ * the invited side sends after opening the link with that code.
+ */
+export type FriendCreateMsg = { type: 'friend:create'; character: CharacterType; streak?: number }
+export type FriendCancelMsg = { type: 'friend:cancel' }
+export type FriendJoinMsg = { type: 'friend:join'; code: string; character: CharacterType; streak?: number }
+
 export type WatchJoinMsg = { type: 'watch:join' }
 export type WatchLeaveMsg = { type: 'watch:leave' }
 export type WatcherPredictWinnerMsg = { type: 'watcher:predict_winner'; playerId: PlayerId }
@@ -35,6 +44,9 @@ export type ClientMessage =
   | QueueLeaveMsg
   | PracticeStartMsg
   | InstantStartMsg
+  | FriendCreateMsg
+  | FriendCancelMsg
+  | FriendJoinMsg
   | ActionSubmitMsg
   | WatchJoinMsg
   | WatchLeaveMsg
@@ -53,6 +65,10 @@ export type ClientMessage =
 export type PongMsg = { type: 'pong' }
 
 export type QueueWaitingMsg = { type: 'queue:waiting'; maxWaitMs: number }
+/** The invite is live; `code` is what goes into the link. */
+export type FriendWaitingMsg = { type: 'friend:waiting'; code: string }
+/** The code did not resolve: expired, already used, or the creator left. */
+export type FriendJoinFailMsg = { type: 'friend:join_fail' }
 export type GameStartMsg = { type: 'game:start'; playerId: PlayerId; state: GameState; reconnectToken: string; roomId: string; playerInfo: Record<PlayerId, PlayerInfo>; practice?: boolean }
 export type RoundStartMsg = { type: 'round:start'; state: GameState; forecastDeadline: number }
 /** `deadline: 0` means the tick is untimed (practice mode — waits for the player's action). */
@@ -142,6 +158,8 @@ export type Paginated<T> = {
 
 export type ServerMessage =
   | QueueWaitingMsg
+  | FriendWaitingMsg
+  | FriendJoinFailMsg
   | GameStartMsg
   | RoundStartMsg
   | TickStartMsg

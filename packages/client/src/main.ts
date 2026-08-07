@@ -1,12 +1,14 @@
 import { createApp } from 'vue'
 import './style.css'
 import { initPlatform } from './lib/platform'
+import { initAnalytics } from './lib/analytics'
 import { setLanguage } from './lib/i18n'
 import App from './App.vue'
 
 initPlatform()
   .then((platform) => {
     setLanguage(platform.getLanguage())
+    initAnalytics(platform)
     createApp(App).mount('#app')
   })
   .catch((err) => {

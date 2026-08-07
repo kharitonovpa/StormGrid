@@ -22,6 +22,12 @@ const props = defineProps<{
   /** Matches running right now — with none, there is nothing to watch. */
   liveMatches: number
   queueCountdown: number
+  /** Challenge link to show while waiting for the invited friend. */
+  inviteUrl: string | null
+  /** The player arrived through a challenge link — Play accepts it. */
+  hasIncomingInvite: boolean
+  /** The followed link was dead; say so once, above the Play button. */
+  inviteFailed: boolean
 }>()
 
 /** The architect role is off the lobby until it is worth handing to a newcomer. */
@@ -33,6 +39,8 @@ const emit = defineEmits<{
   architect: []
   watchReplay: [roomId: string]
   cancelSearch: []
+  invite: [character: CharacterType]
+  shareInvite: []
 }>()
 
 const audio = inject<AudioSystem>('audio')
@@ -49,6 +57,13 @@ const platform = usePlatform()
  */
 const canAuth = platform.canAuth()
 const canShowLeaderboard = platform.canShowLeaderboard()
+
+/**
+ * Challenge links only where the game owns its URL. Inside a portal iframe
+ * (Yandex, GamePush hosts) `location.origin` is the portal's CDN, and linking
+ * players out of a portal is a moderation rejection waiting to happen.
+ */
+const canInvite = platform.type === 'web' || platform.type === 'telegram'
 
 const canWatch = computed(() => canAuth && !!user.value && props.liveMatches > 0)
 
@@ -90,6 +105,21 @@ function handleLogout() {
   showAuthMenu.value = false
 }
 
+/* ── Challenge link ── */
+const copied = ref(false)
+let copiedTimer = 0
+
+async function onCopyInvite() {
+  if (!props.inviteUrl) return
+  audio?.play('ui-click')
+  try {
+    await navigator.clipboard.writeText(props.inviteUrl)
+    copied.value = true
+    clearTimeout(copiedTimer)
+    copiedTimer = window.setTimeout(() => { copied.value = false }, 1800)
+  } catch { /* clipboard denied — the visible link can still be selected by hand */ }
+}
+
 const charLabel = computed<Record<string, string>>(() => ({
   wheat: t('char.wheat'),
   rice: t('char.rice'),
@@ -115,6 +145,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearTimeout(copiedTimer)
   document.removeEventListener('click', onClickOutside, true)
 })
 </script>
@@ -173,7 +204,25 @@ onUnmounted(() => {
             </div>
             <button class="btn-cancel" @click="emit('cancelSearch')">{{ t('lobby.cancel') }}</button>
           </template>
+          <template v-else-if="phase === 'friend_wait'">
+            <div class="queue-status">
+              <div class="queue-spinner" />
+              <span>{{ t('lobby.inviteWaiting') }}<span class="dots" /></span>
+            </div>
+            <div class="invite-hint">{{ t('lobby.inviteHint') }}</div>
+            <div class="invite-link" v-if="inviteUrl">{{ inviteUrl }}</div>
+            <div class="invite-actions">
+              <button class="btn-invite-action" @click="onCopyInvite">
+                {{ copied ? t('lobby.inviteCopied') : t('lobby.inviteCopy') }}
+              </button>
+              <button class="btn-invite-action primary" @click="audio?.play('ui-click'); emit('shareInvite')">
+                {{ t('lobby.inviteShare') }}
+              </button>
+              <button class="btn-cancel" @click="emit('cancelSearch')">{{ t('lobby.cancel') }}</button>
+            </div>
+          </template>
           <template v-else>
+            <div v-if="inviteFailed" class="invite-failed">{{ t('lobby.inviteFail') }}</div>
             <div class="actions-primary">
               <button
                 class="btn-play"
@@ -181,7 +230,7 @@ onUnmounted(() => {
                 :aria-label="props.inQueue > 0 ? t('lobby.play.instant') : t('lobby.play')"
                 @click="emit('play', selected)"
               >
-                <span class="btn-play-text">{{ t('lobby.play') }}</span>
+                <span class="btn-play-text">{{ hasIncomingInvite ? t('lobby.playFriend') : t('lobby.play') }}</span>
                 <svg class="btn-play-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M5 12h14M13 6l6 6-6 6" />
                 </svg>
@@ -216,7 +265,11 @@ onUnmounted(() => {
                 </div>
               </template>
             </div>
-            <div class="actions-secondary" v-if="canWatch || SHOW_ARCHITECT">
+            <div class="actions-secondary" v-if="canInvite || canWatch || SHOW_ARCHITECT">
+              <button class="btn-role btn-invite" v-if="canInvite" @click="emit('invite', selected)">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M13 7a3 3 0 11-6 0 3 3 0 016 0zM4 15.5C4 13 6.7 11.5 10 11.5s6 1.5 6 4V17H4v-1.5zM17 6v2h2v1.5h-2v2h-1.5v-2h-2V8h2V6H17z"/></svg>
+                {{ t('lobby.invite') }}
+              </button>
               <button class="btn-role" v-if="canWatch" @click="emit('watch')">
                 <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M10 3C5 3 1.7 7.1 1 10c.7 2.9 4 7 9 7s8.3-4.1 9-7c-.7-2.9-4-7-9-7zm0 11.5a4.5 4.5 0 110-9 4.5 4.5 0 010 9zm0-7a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/></svg>
                 {{ t('lobby.watch') }}
@@ -766,6 +819,92 @@ onUnmounted(() => {
   color: rgba(233, 69, 96, 0.8);
   letter-spacing: 0.5px;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Challenge link ── */
+
+.invite-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  color: rgba(200, 210, 225, 0.45);
+  max-width: 340px;
+}
+
+.invite-link {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px dashed rgba(139, 180, 255, 0.25);
+  background: rgba(139, 180, 255, 0.06);
+  color: rgba(170, 200, 245, 0.85);
+  font-size: 11px;
+  letter-spacing: 0.2px;
+  word-break: break-all;
+  user-select: all;
+  max-width: 340px;
+}
+
+.invite-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.invite-actions .btn-cancel {
+  margin-top: 0;
+}
+
+.btn-invite-action {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(139, 180, 255, 0.3);
+  background: rgba(139, 180, 255, 0.08);
+  color: rgba(170, 200, 245, 0.9);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-invite-action:hover {
+  border-color: rgba(139, 180, 255, 0.55);
+  background: rgba(139, 180, 255, 0.16);
+}
+
+.btn-invite-action.primary {
+  border-color: rgba(233, 69, 96, 0.5);
+  background: rgba(233, 69, 96, 0.14);
+  color: #f28a9c;
+}
+
+.btn-invite-action.primary:hover {
+  background: rgba(233, 69, 96, 0.24);
+  border-color: rgba(233, 69, 96, 0.75);
+}
+
+.invite-failed {
+  margin-bottom: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(230, 160, 80, 0.25);
+  background: rgba(230, 160, 80, 0.08);
+  color: rgba(230, 180, 100, 0.9);
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  max-width: 340px;
+}
+
+.btn-invite {
+  color: rgba(150, 210, 170, 0.65);
+}
+
+.btn-invite:hover {
+  color: rgba(170, 235, 190, 0.95);
 }
 
 .btn-cancel {

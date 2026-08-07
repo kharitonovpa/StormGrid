@@ -1,10 +1,11 @@
 interface TelegramWebApp {
   initData: string
-  initDataUnsafe: Record<string, unknown>
+  initDataUnsafe: Record<string, unknown> & { start_param?: string }
   ready: () => void
   expand: () => void
   close: () => void
   disableVerticalSwipes: () => void
+  openTelegramLink?: (url: string) => void
   isExpanded: boolean
   viewportHeight: number
   viewportStableHeight: number

@@ -229,6 +229,9 @@ GamePush requirements: cover **1920×1080** (title must appear on it, and must n
 name the genre), icon 1024×1024 with no text, at least four 1280×720 landscape
 and four 720×1280 portrait screenshots, all showing real gameplay.
 
+The no-text icon lives at `packages/client/public/icon-1024.png` (text-free
+right side of the cover art; also stripped from platform zips).
+
 GP credentials default to hardcoded values but can be overridden in
 `deploy/.deploy.env`:
 
@@ -657,6 +660,8 @@ See `deploy/.env.example` for the full list. Key variables:
 | `COOKIE_DOMAIN` | Server | Shared cookie domain (`.wheee.io` for multi-subdomain auth) |
 | `RECONNECT_GRACE_MS` | Server | Player reconnect grace period (default: 30000) |
 | `BOT_MATCH_DELAY_MS` | Server | Queue wait before matching with a bot (default: 30000) |
+| `STATS_TOKEN` | Server | Access token for `GET /api/events/summary` (unset = endpoint closed) |
+| `VITE_TG_APP_URL` | Client build | Mini App link for Telegram challenge links (default: `https://t.me/wheee_game_bot/play`) |
 
 CORS for Yandex (`*.yandex.ru/com/net`) and GamePush (`*.gamepush.com`, `*.pikabu.ru`,
 `*.eponesh.com`) origins are accepted dynamically via regex — no need to list them in
@@ -675,6 +680,45 @@ GP_PROJECT_ID=27646
 GP_PUBLIC_TOKEN=j27miVT4RNJTTRXRGJj6AQxQfsl16rsA
 ```
 
+
+## Analytics (first-party)
+
+No third-party SDK — some host portals (GameDistribution) forbid them, and the
+questions asked need only counts by device and day. The client
+(`packages/client/src/lib/analytics.ts`) batches named events and POSTs them to
+`/api/events`; the server stores them in the `events` table (SQLite).
+
+Event names in use: `app_open`, `queue_join`, `match_start`, `match_end`,
+`play_again`, `rewarded_instant`, `rewarded_rescue`, `watch_join`,
+`replay_watch`, `invite_created`, `invite_share`, `invite_join`,
+`invite_join_fail`.
+
+Read aggregates (daily opens / unique devices / new devices / matches / D1
+retention, plus per-event counts):
+
+```bash
+curl "https://api.wheee.io/api/events/summary?token=$STATS_TOKEN&days=14"
+```
+
+`STATS_TOKEN` must be set in the server `.env`; without it the endpoint answers 403.
+
+## Challenge Links (friend match)
+
+"Invite a friend" in the lobby parks the creator on the server under a 6-char
+code (`friend:create` → `friend:waiting`, TTL 10 min, no bot fallback) and shows
+a link:
+
+- Web: `https://wheee.io/?join=CODE` (origin of whoever created it, so ru.wheee.io hands out ru links)
+- Telegram: `https://t.me/wheee_game_bot/play?startapp=CODE` (override via `VITE_TG_APP_URL`)
+
+The invite button is hidden on Yandex/GamePush builds: inside a portal iframe
+`location.origin` is the portal's CDN, and linking players out of a portal
+violates their moderation rules.
+
+Opening the link turns the Play button into "Accept challenge" (`friend:join`).
+Dead codes answer `friend:join_fail` and the lobby says the challenge expired.
+Client pieces: `lib/invite.ts`, `friend_wait` phase in `useGameState`, the
+invite panel in `LobbyOverlay.vue`; server: invite map in `matchmaking.ts`.
 
 ## First-Time Russian VPS Setup
 

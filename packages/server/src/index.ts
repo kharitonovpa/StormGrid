@@ -11,6 +11,8 @@ import { runMigrations } from './db/migrate.js'
 import { authRoutes } from './auth/oauth.js'
 import { verifyJwt, parseCookieToken, extractToken } from './auth/jwt.js'
 import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard } from './db/matchStore.js'
+import { insertEvents, getDailySummary, getEventCounts } from './db/eventStore.js'
+import type { EventRow } from './db/eventStore.js'
 
 runMigrations()
 
@@ -166,6 +168,65 @@ app.get('/api/leaderboard/watchers', (c) => {
   return c.json(getWatcherLeaderboard(limit, offset))
 })
 
+/* ── First-party analytics ── */
+
+const EVENT_NAME_RE = /^[a-z0-9_:]{1,40}$/
+const ID_RE = /^[a-zA-Z0-9_-]{8,64}$/
+const MAX_BATCH = 25
+const MAX_PROPS_LEN = 500
+
+app.post('/api/events', async (c) => {
+  let body: unknown
+  try { body = await c.req.json() } catch { return c.json({ error: 'Bad JSON' }, 400) }
+  const b = body as { deviceId?: unknown; sessionId?: unknown; platform?: unknown; host?: unknown; lang?: unknown; events?: unknown }
+
+  if (typeof b.deviceId !== 'string' || !ID_RE.test(b.deviceId)) return c.json({ error: 'Bad deviceId' }, 400)
+  if (typeof b.sessionId !== 'string' || !ID_RE.test(b.sessionId)) return c.json({ error: 'Bad sessionId' }, 400)
+  if (typeof b.platform !== 'string' || b.platform.length > 20) return c.json({ error: 'Bad platform' }, 400)
+  if (!Array.isArray(b.events) || b.events.length === 0 || b.events.length > MAX_BATCH) {
+    return c.json({ error: 'Bad events' }, 400)
+  }
+
+  let userId: string | null = null
+  const token = extractToken(c.req.header('cookie') ?? null, c.req.header('authorization'))
+  if (token) {
+    const payload = await verifyJwt(token)
+    if (payload) userId = payload.sub
+  }
+  const country = detectCountry(c.req.raw.headers)
+  const host = typeof b.host === 'string' && b.host.length <= 40 ? b.host : null
+  const lang = typeof b.lang === 'string' && b.lang.length <= 10 ? b.lang : null
+
+  const rows: EventRow[] = []
+  for (const e of b.events as unknown[]) {
+    const ev = e as { name?: unknown; props?: unknown }
+    if (typeof ev.name !== 'string' || !EVENT_NAME_RE.test(ev.name)) continue
+    let props: string | null = null
+    if (ev.props && typeof ev.props === 'object') {
+      const s = JSON.stringify(ev.props)
+      if (s.length <= MAX_PROPS_LEN) props = s
+    }
+    rows.push({
+      deviceId: b.deviceId, sessionId: b.sessionId, userId,
+      platform: b.platform, host, name: ev.name, props, country, lang,
+    })
+  }
+
+  try { insertEvents(rows) } catch (e) { console.error('[db] insertEvents failed:', e) }
+  return c.json({ ok: true, accepted: rows.length })
+})
+
+/**
+ * Aggregates for the developer, guarded by STATS_TOKEN. With the variable unset
+ * the endpoint stays closed rather than open.
+ */
+app.get('/api/events/summary', (c) => {
+  const expected = process.env.STATS_TOKEN
+  if (!expected || c.req.query('token') !== expected) return c.json({ error: 'Forbidden' }, 403)
+  const days = Math.min(Math.max(parseInt(c.req.query('days') ?? '14') || 14, 1), 90)
+  return c.json({ daily: getDailySummary(days), counts: getEventCounts(days) })
+})
+
 app.get('/health', (c) => c.json({ ok: true }))
 
 app.get('/', (c) =>
@@ -267,6 +328,33 @@ const server = Bun.serve<WsData>({
         case 'queue:leave': {
           matchmaking.dequeue(ws)
           broadcastLobbyStatus()
+          break
+        }
+
+        /* ── Friend match by link ── */
+
+        case 'friend:create': {
+          if (ws.data.roomId) {
+            send(ws, { type: 'error', message: 'Already in a game' })
+            return
+          }
+          matchmaking.createInvite(ws, msg.character, msg.streak)
+          break
+        }
+
+        case 'friend:cancel': {
+          matchmaking.cancelInvite(ws)
+          break
+        }
+
+        case 'friend:join': {
+          if (ws.data.roomId) {
+            send(ws, { type: 'error', message: 'Already in a game' })
+            return
+          }
+          if (matchmaking.joinInvite(ws, msg.code, msg.character, msg.streak)) {
+            broadcastLobbyStatus()
+          }
           break
         }
 
@@ -428,6 +516,7 @@ const server = Bun.serve<WsData>({
       console.log(`[ws] disconnect ${ws.data.sessionId} code=${code}${reason ? ` reason=${reason}` : ''}`)
       allClients.delete(ws)
       matchmaking.dequeue(ws)
+      matchmaking.cancelInvite(ws)
       broadcastLobbyStatus()
 
       const { roomId, role } = ws.data

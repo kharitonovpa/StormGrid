@@ -36,6 +36,13 @@
       "when": 1775855582932,
       "tag": "0004_add_stats_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786078270790,
+      "tag": "0005_add_events",
+      "breakpoints": true
     }
   ]
 }

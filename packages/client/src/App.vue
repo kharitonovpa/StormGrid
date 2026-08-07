@@ -30,6 +30,8 @@ import { useGameState } from './composables/useGameState'
 import { useAuth } from './composables/useAuth'
 import { usePlatform } from './lib/platform'
 import { storageGet, storageSet } from './lib/storage'
+import { track } from './lib/analytics'
+import { getIncomingInviteCode, clearInviteFromUrl, buildInviteUrl, shareInvite, copyInvite } from './lib/invite'
 import LobbyOverlay from './components/LobbyOverlay.vue'
 import GameHud from './components/GameHud.vue'
 import GameOverOverlay from './components/GameOverOverlay.vue'
@@ -118,7 +120,43 @@ function triggerCelebration(prediction: import('@wheee/shared').WatcherPredictio
   }, delay)
 }
 
+/* ── Challenge link (friend match) ── */
+
+/** Code from a followed challenge link; Play accepts it instead of queueing. */
+const incomingInvite = ref(getIncomingInviteCode())
+clearInviteFromUrl()
+
+const inviteUrl = computed(() =>
+  game.inviteCode.value ? buildInviteUrl(game.inviteCode.value, platform.type) : null,
+)
+
+function onInvite(character: CharacterType) {
+  game.selectedCharacter.value = character
+  game.inviteFailed.value = false
+  audio.play('queue-enter')
+  stopLobbyDemo()
+  ensureConnected(() => {
+    if (socket.createFriendInvite(character, streak.value)) {
+      game.queueJoinPending.value = true
+      track('invite_created')
+    }
+  })
+}
+
+function onShareInvite() {
+  const url = inviteUrl.value
+  if (!url) return
+  track('invite_share')
+  // No native share sheet around (desktop web) — the copy button's job, done here.
+  if (!shareInvite(url, t('invite.shareText'))) copyInvite(url)
+}
+
 unsubMessage1 = socket.onMessage((msg) => {
+  if (msg.type === 'friend:join_fail') {
+    // The dead link must not swallow the next Play press too.
+    incomingInvite.value = null
+    track('invite_join_fail')
+  }
   if (msg.type === 'lobby:status') {
     onlineCount.value = Number.isFinite(msg.online) ? msg.online : 0
     inQueue.value = Number.isFinite(msg.inQueue) ? msg.inQueue : 0
@@ -131,6 +169,8 @@ unsubMessage1 = socket.onMessage((msg) => {
     platform.gameplayStart()
     audio.enterMatch()
     audio.play('match-found')
+    track('match_start', { practice: msg.practice === true, invited: !!incomingInvite.value })
+    incomingInvite.value = null
   }
   if (msg.type === 'reconnect:fail') {
     socket.setReconnectToken(null)
@@ -140,6 +180,11 @@ unsubMessage1 = socket.onMessage((msg) => {
     socket.setReconnectToken(null)
     platform.gameplayStop()
     refreshRewardedAvailability()
+    {
+      const myId = game.myPlayerId.value
+      const result = msg.winner === 'draw' ? 'draw' : (myId && msg.winner === myId ? 'win' : 'loss')
+      track('match_end', { result, practice: game.isPractice.value })
+    }
     if (game.isPractice.value) storageSet(TUTORIAL_STORAGE_KEY, '1')
     settleStreak(msg)
     if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
@@ -168,6 +213,7 @@ unsubMessage1 = socket.onMessage((msg) => {
 const showLobby = computed(() =>
   game.phase.value === 'lobby' ||
   game.phase.value === 'queue' ||
+  game.phase.value === 'friend_wait' ||
   game.phase.value === 'watch_queue' ||
   game.phase.value === 'architect_queue',
 )
@@ -222,20 +268,34 @@ watch(() => socket.connected.value, (connected) => {
 
 function onPlay(character: CharacterType) {
   game.selectedCharacter.value = character
+  game.inviteFailed.value = false
   audio.play('queue-enter')
   stopLobbyDemo()
   ensureConnected(() => {
+    // A followed challenge link beats everything, the tutorial included — the
+    // friend on the other end is already waiting.
+    if (incomingInvite.value) {
+      if (socket.joinFriend(incomingInvite.value, character, streak.value)) {
+        game.queueJoinPending.value = true
+        track('invite_join')
+      }
+      return
+    }
     // First Play ever → tutorial match vs bot instead of the real queue
     const ok = hasDoneTutorial()
       ? socket.joinQueue(character, streak.value)
       : socket.startPractice(character, streak.value)
-    if (ok) game.queueJoinPending.value = true
+    if (ok) {
+      game.queueJoinPending.value = true
+      track('queue_join', { practice: !hasDoneTutorial() })
+    }
   })
 }
 
 function onWatch() {
   audio.play('queue-enter')
   stopLobbyDemo()
+  track('watch_join')
   ensureConnected(() => socket.joinWatch())
 }
 
@@ -249,6 +309,7 @@ function onCancelSearch() {
   audio.play('ui-click')
   const phase = game.phase.value
   if (phase === 'queue') socket.leaveQueue()
+  else if (phase === 'friend_wait') socket.cancelFriendInvite()
   else if (phase === 'watch_queue') socket.leaveWatch()
   else if (phase === 'architect_queue') socket.leaveArchitect()
   game.reset()
@@ -285,6 +346,7 @@ function refreshRewardedAvailability() {
 
 /** `instant` skips the queue for a bot match — the rewarded ad's payoff. */
 function doPlayAgain(instant = false) {
+  track('play_again', { instant })
   pendingGameEnd = null
   socket.setReconnectToken(null)
   // Straight into the queue without a full visual reset, so the crystal has to
@@ -308,6 +370,7 @@ async function onRewardedPlayAgain() {
     const rewarded = await platform.showRewarded().catch(() => false)
     // An ad that never played buys nothing; the offer stays on the screen.
     if (!rewarded) return
+    track('rewarded_instant')
     doPlayAgain(true)
   } finally {
     rewardedBusy.value = false
@@ -449,6 +512,7 @@ async function onRescueStreak() {
     // An ad that failed to load must not cost the player their badge — the
     // offer stays open so they can try again.
     if (!watched) return
+    track('rewarded_rescue')
     restoreStreak(lostStreak.value)
     lostStreak.value = 0
     lostRescuable.value = false
@@ -487,6 +551,7 @@ function checkTickStall() {
 }
 
 async function startReplay(roomId: string) {
+  track('replay_watch')
   const gen = ++replayGeneration
   const data = await fetchReplayData(roomId)
   if (!data || data.frames.length === 0 || gen !== replayGeneration) return
@@ -1810,11 +1875,16 @@ onUnmounted(() => {
     :in-queue="inQueue"
     :live-matches="liveMatches"
     :queue-countdown="game.queueCountdown.value"
+    :invite-url="inviteUrl"
+    :has-incoming-invite="!!incomingInvite"
+    :invite-failed="game.inviteFailed.value"
     @play="onPlay"
     @watch="onWatch"
     @architect="onArchitect"
     @watch-replay="startReplay"
     @cancel-search="onCancelSearch"
+    @invite="onInvite"
+    @share-invite="onShareInvite"
   />
 
   <GameHud
