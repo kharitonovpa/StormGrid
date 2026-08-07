@@ -1344,7 +1344,7 @@ onMounted(() => {
   gridGeo.setAttribute('position', gridPos)
   // Bright enough to read cell borders at a glance — the old 0.35 swamp-green
   // vanished into the grass (UX review §3).
-  const gridLineMat = new THREE.LineBasicMaterial({ color: 0x437a43, transparent: true, opacity: 0.55 })
+  const gridLineMat = new THREE.LineBasicMaterial({ color: 0x69b869, transparent: true, opacity: 0.6 })
   const gridLines = new THREE.LineSegments(gridGeo, gridLineMat)
   scene.add(gridLines)
 

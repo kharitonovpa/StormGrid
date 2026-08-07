@@ -159,11 +159,22 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false) {
 
     // Height has to read before the extremes: sun on anything rising, shadow in
     // every hollow, not only mud at -3.5 and snow at +2 (UX review §3).
-    const lift = sstep(0.2, HEIGHT_SCALE * 0.7, h) * 0.10
-    const sink = (1 - sstep(-HEIGHT_SCALE * 0.7, -0.2, h)) * 0.13
+    const lift = sstep(0.2, HEIGHT_SCALE * 0.7, h) * 0.13
+    const sink = (1 - sstep(-HEIGHT_SCALE * 0.7, -0.2, h)) * 0.16
     r += lift - sink
     g += lift * 1.15 - sink
     b += lift * 0.6 - sink * 0.7
+
+    // Checkerboard: the flat board was a featureless green sheet (UX review §3).
+    // Alternate cells get a light/dark grass tint; kept off rock, mud and snow
+    // so the pattern reads as ground marking, not as paint over everything.
+    const ckx = Math.floor((wx + HALF) / CELL_SIZE)
+    const ckz = Math.floor((wz + HALF) / CELL_SIZE)
+    const checker = ((ckx + ckz) & 1) === 0 ? 1 : -1
+    const checkerAmp = 0.045 * grassW * (1 - rockW)
+    r += checker * checkerAmp * 0.7
+    g += checker * checkerAmp * 1.3
+    b += checker * checkerAmp * 0.4
 
     col.setXYZ(i, clamp(r, 0, 1), clamp(g, 0, 1), clamp(b, 0, 1))
   }
