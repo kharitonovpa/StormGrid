@@ -651,7 +651,8 @@ See `deploy/.env.example` for the full list. Key variables:
 | `VITE_GP_PUBLIC_TOKEN` | Client build | GamePush public token (required for gamepush builds) |
 | `JWT_SECRET` | Server | Authentication token signing |
 | `DB_PATH` | Server | SQLite database file path |
-| `TG_BOT_TOKEN` | Server | Telegram Mini App authentication |
+| `TG_BOT_TOKEN` | Server | Telegram Mini App authentication + bot /start replies |
+| `TG_WEBHOOK_SECRET` | Server | Secret for `POST /api/tg/webhook` (must match setWebhook's `secret_token`; empty = route off) |
 | `YANDEX_SECRET_KEY` | Server | Yandex Games player signature verification (optional) |
 | `GOOGLE_CLIENT_ID/SECRET` | Server | Google OAuth |
 | `GITHUB_CLIENT_ID/SECRET` | Server | GitHub OAuth |

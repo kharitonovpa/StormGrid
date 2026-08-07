@@ -227,6 +227,50 @@ app.get('/api/events/summary', (c) => {
   return c.json({ daily: getDailySummary(days), counts: getEventCounts(days) })
 })
 
+/* ── Telegram bot webhook ── */
+
+/**
+ * The bot's only conversational duty: answer /start with a Play button. Catalog
+ * moderation (tapps.center) requires an English reply to /start; everything else
+ * about the bot is the Mini App itself.
+ */
+const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN || ''
+const TG_WEBHOOK_SECRET = process.env.TG_WEBHOOK_SECRET || ''
+const TG_APP_LINK = 'https://t.me/wheee_game_bot/play'
+
+const TG_START_REPLY = {
+  en: '🌪 wheee — a 1v1 storm duel.\n\nShape the terrain, read the forecast, and let the wind blow your rival off the map. A match takes 1–3 minutes.',
+  ru: '🌪 wheee — штормовая дуэль 1 на 1.\n\nМеняй рельеф, читай прогноз — и пусть ветер сдует соперника с карты. Матч занимает 1–3 минуты.',
+}
+
+app.post('/api/tg/webhook', async (c) => {
+  // Without both secrets the route does not exist, rather than existing open.
+  if (!TG_BOT_TOKEN || !TG_WEBHOOK_SECRET) return c.json({ error: 'Not found' }, 404)
+  if (c.req.header('x-telegram-bot-api-secret-token') !== TG_WEBHOOK_SECRET) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+
+  let update: { message?: { text?: string; chat?: { id?: number }; from?: { language_code?: string } } }
+  try { update = await c.req.json() } catch { return c.json({ ok: true }) }
+
+  const msg = update.message
+  if (typeof msg?.text === 'string' && msg.text.startsWith('/start') && msg.chat?.id) {
+    const ru = msg.from?.language_code === 'ru'
+    // Telegram only needs a 200 — the reply itself can go out after we answer.
+    fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: msg.chat.id,
+        text: ru ? TG_START_REPLY.ru : TG_START_REPLY.en,
+        reply_markup: { inline_keyboard: [[{ text: ru ? '▶️ Играть' : '▶️ Play', url: TG_APP_LINK }]] },
+      }),
+    }).catch((e) => console.error('[tg] sendMessage failed:', e))
+  }
+
+  return c.json({ ok: true })
+})
+
 app.get('/health', (c) => c.json({ ok: true }))
 
 app.get('/', (c) =>
