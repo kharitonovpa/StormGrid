@@ -38,6 +38,7 @@ export default class YandexAdapter implements PlatformAdapter {
 
   canAuth(): boolean { return true }
   canShowLeaderboard(): boolean { return true }
+  canLinkOut(): boolean { return false }
 
   showSticky = noSticky.showSticky
   closeSticky = noSticky.closeSticky

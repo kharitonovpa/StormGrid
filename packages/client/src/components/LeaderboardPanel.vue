@@ -126,7 +126,7 @@ onMounted(fetchLeaderboard)
     </div>
 
     <a
-      v-if="platform.type !== 'yandex'"
+      v-if="platform.canLinkOut()"
       href="https://t.me/wheeeio"
       target="_blank"
       rel="noopener"

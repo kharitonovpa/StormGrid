@@ -20,6 +20,11 @@ STORE_ASSETS=(
   'yandex-cover.png'
   'og-image.png'
   'icon-1024.png'
+  # The legal pages belong to wheee.io, where the catalogs link to them. Inside a
+  # portal archive they are unreachable files full of outbound links — exactly
+  # what portal moderation objects to.
+  'terms.html'
+  'privacy.html'
 )
 
 freed=0

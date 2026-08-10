@@ -143,6 +143,7 @@ export default class GamePushAdapter implements PlatformAdapter {
 
   canAuth(): boolean { return !this.isGameDistribution }
   canShowLeaderboard(): boolean { return !this.isGameDistribution }
+  canLinkOut(): boolean { return false }
 
   async init(): Promise<void> {
     if (gp) return

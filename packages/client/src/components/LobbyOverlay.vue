@@ -58,12 +58,8 @@ const platform = usePlatform()
 const canAuth = platform.canAuth()
 const canShowLeaderboard = platform.canShowLeaderboard()
 
-/**
- * Challenge links only where the game owns its URL. Inside a portal iframe
- * (Yandex, GamePush hosts) `location.origin` is the portal's CDN, and linking
- * players out of a portal is a moderation rejection waiting to happen.
- */
-const canInvite = platform.type === 'web' || platform.type === 'telegram'
+/** Challenge links only where the game owns its URL — see `canLinkOut`. */
+const canInvite = platform.canLinkOut()
 
 const canWatch = computed(() => canAuth && !!user.value && props.liveMatches > 0)
 

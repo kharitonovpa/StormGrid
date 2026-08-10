@@ -15,6 +15,7 @@ export default class TelegramAdapter implements PlatformAdapter {
 
   canAuth(): boolean { return true }
   canShowLeaderboard(): boolean { return true }
+  canLinkOut(): boolean { return true }
 
   showSticky = noSticky.showSticky
   closeSticky = noSticky.closeSticky

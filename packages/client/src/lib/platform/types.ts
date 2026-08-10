@@ -52,6 +52,13 @@ export interface PlatformAdapter {
   canAuth(): boolean
   /** False where the host does not allow overlay windows like a leaderboard. */
   canShowLeaderboard(): boolean
+  /**
+   * False on hosts that forbid sending players anywhere off the portal — the
+   * community link and challenge links included. Portal moderation rejects
+   * builds over this ("external links are severely not allowed"), and inside a
+   * portal iframe `location.origin` is the portal's CDN anyway.
+   */
+  canLinkOut(): boolean
 
   isRewardedAvailable(): boolean
   showPreloader(): Promise<boolean>
