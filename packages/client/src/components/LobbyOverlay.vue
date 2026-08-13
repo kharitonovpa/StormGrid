@@ -35,6 +35,7 @@ const SHOW_ARCHITECT = false
 
 const emit = defineEmits<{
   play: [character: CharacterType]
+  howToPlay: [character: CharacterType]
   watch: []
   architect: []
   watchReplay: [roomId: string]
@@ -261,7 +262,19 @@ onUnmounted(() => {
                 </div>
               </template>
             </div>
-            <div class="actions-secondary" v-if="canInvite || canWatch || SHOW_ARCHITECT">
+            <!--
+              The tutorial's own entrance, unconditional: on GamePush hosts the rest
+              of this row is hidden, and the tutorial must stay reachable there too.
+            -->
+            <div class="actions-secondary">
+              <button class="btn-role" @click="audio?.play('ui-click'); emit('howToPlay', selected)">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="10" cy="10" r="7.4" />
+                  <path d="M7.9 7.7a2.2 2.2 0 1 1 4.1.9c-.25.7-.9 1.05-1.45 1.45-.4.3-.55.7-.55 1.15" />
+                  <circle cx="10" cy="14.2" r="0.85" fill="currentColor" stroke="none" />
+                </svg>
+                {{ t('lobby.howToPlay') }}
+              </button>
               <button class="btn-role btn-invite" v-if="canInvite" @click="emit('invite', selected)">
                 <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M13 7a3 3 0 11-6 0 3 3 0 016 0zM4 15.5C4 13 6.7 11.5 10 11.5s6 1.5 6 4V17H4v-1.5zM17 6v2h2v1.5h-2v2h-1.5v-2h-2V8h2V6H17z"/></svg>
                 {{ t('lobby.invite') }}

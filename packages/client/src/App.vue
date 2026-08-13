@@ -298,6 +298,26 @@ function onPlay(character: CharacterType) {
   })
 }
 
+/**
+ * The tutorial's own entrance. First Play alone is not enough: `tutorial_done` lives
+ * in the portal player profile on GamePush hosts (see lib/storage.ts), and portal
+ * testers reuse accounts — so anyone whose account has played before never sees the
+ * tutorial. Pikabu moderation rejected the build over exactly this.
+ */
+function onHowToPlay(character: CharacterType) {
+  game.selectedCharacter.value = character
+  game.inviteFailed.value = false
+  audio.play('queue-enter')
+  stopLobbyDemo()
+  const replay = hasDoneTutorial()
+  ensureConnected(() => {
+    if (socket.startPractice(character, streak.value)) {
+      game.queueJoinPending.value = true
+      track('tutorial_open', { replay })
+    }
+  })
+}
+
 function onWatch() {
   audio.play('queue-enter')
   stopLobbyDemo()
@@ -1889,6 +1909,7 @@ onUnmounted(() => {
     :has-incoming-invite="!!incomingInvite"
     :invite-failed="game.inviteFailed.value"
     @play="onPlay"
+    @how-to-play="onHowToPlay"
     @watch="onWatch"
     @architect="onArchitect"
     @watch-replay="startReplay"
