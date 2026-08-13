@@ -26,6 +26,9 @@ deploy/.deploy.env
 wheee-yandex.zip
 wheee-gamepush.zip
 
+# Agent tooling — permission lists full of this machine's absolute paths
+.claude/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
