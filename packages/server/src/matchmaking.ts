@@ -11,6 +11,17 @@ const BOT_MATCH_DELAY_MS = _rawBotDelay !== undefined && Number.isFinite(_rawBot
   ? _rawBotDelay
   : 8_000
 
+/** The patient window: applies while another idle human is online who might still press Play. */
+const _rawBotDelayLong = process.env.BOT_MATCH_DELAY_LONG_MS ? Number(process.env.BOT_MATCH_DELAY_LONG_MS) : undefined
+const BOT_MATCH_DELAY_LONG_MS = _rawBotDelayLong !== undefined && Number.isFinite(_rawBotDelayLong) && _rawBotDelayLong > 0
+  ? _rawBotDelayLong
+  : 30_000
+
+export type MatchmakingOpts = {
+  /** Connected humans sitting in the lobby, excluding the given socket. */
+  countIdleHumans?: (exclude: ServerWebSocket<WsData>) => number
+}
+
 type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType; streak: number }
 
 /** A parked friend invite: the creator waits for one specific person, no bot fallback. */
@@ -37,8 +48,21 @@ export class Matchmaking {
   private roomManager: RoomManager
   private botTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(roomManager: RoomManager) {
+  constructor(roomManager: RoomManager, opts?: MatchmakingOpts) {
     this.roomManager = roomManager
+    this.opts = opts
+  }
+
+  private opts?: MatchmakingOpts
+
+  /**
+   * Alone on the server there is nobody to wait for — take the short window
+   * and hand over a bot. With another idle human online, hold the long one:
+   * a real opponent might still press Play.
+   */
+  private pickBotDelayMs(ws: ServerWebSocket<WsData>): number {
+    const idle = this.opts?.countIdleHumans?.(ws) ?? 0
+    return idle > 0 ? BOT_MATCH_DELAY_LONG_MS : BOT_MATCH_DELAY_MS
   }
 
   enqueue(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0): void {
@@ -46,18 +70,12 @@ export class Matchmaking {
     // The public queue supersedes a parked invite — nobody waits in two lines.
     this.cancelInvite(ws)
 
+    const waitMs = this.pickBotDelayMs(ws)
     this.queue.push({ ws, character, streak })
     this.queueSet.add(ws)
-    send(ws, { type: 'queue:waiting', maxWaitMs: BOT_MATCH_DELAY_MS })
+    send(ws, { type: 'queue:waiting', maxWaitMs: waitMs })
 
-    this.tryMatch()
-
-    if (this.queue.length === 1 && !this.botTimer) {
-      this.botTimer = setTimeout(() => {
-        this.botTimer = null
-        this.matchWithBot()
-      }, BOT_MATCH_DELAY_MS)
-    }
+    this.tryMatch(waitMs)
   }
 
   dequeue(ws: ServerWebSocket<WsData>): void {
@@ -127,7 +145,7 @@ export class Matchmaking {
     }
   }
 
-  private tryMatch(): void {
+  private tryMatch(botDelayMs?: number): void {
     if (this.botTimer) {
       clearTimeout(this.botTimer)
       this.botTimer = null
@@ -148,7 +166,7 @@ export class Matchmaking {
       this.botTimer = setTimeout(() => {
         this.botTimer = null
         this.matchWithBot()
-      }, BOT_MATCH_DELAY_MS)
+      }, botDelayMs ?? this.pickBotDelayMs(this.queue[0].ws))
     }
   }
 

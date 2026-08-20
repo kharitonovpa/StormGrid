@@ -82,9 +82,19 @@ const roomManager = new RoomManager({
     broadcastLobbyStatus()
   },
 })
-const matchmaking = new Matchmaking(roomManager)
-
 const allClients = new Set<ServerWebSocket<WsData>>()
+
+const matchmaking = new Matchmaking(roomManager, {
+  // Idle = connected and in the lobby (no room). Watchers, architects and
+  // playing players all carry a roomId and don't count as potential opponents.
+  countIdleHumans(exclude) {
+    let n = 0
+    for (const ws of allClients) {
+      if (ws !== exclude && ws.readyState === 1 && ws.data.roomId === null) n++
+    }
+    return n
+  },
+})
 
 let lobbyStatusTimer: ReturnType<typeof setTimeout> | null = null
 
