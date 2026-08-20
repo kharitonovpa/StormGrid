@@ -4,6 +4,7 @@ import { CHARACTERS } from '@wheee/shared'
 import type { WsData } from './protocol.js'
 import { send } from './protocol.js'
 import { RoomManager } from './RoomManager.js'
+import { botStrengthForStreak } from './engine/bot.js'
 
 const _rawBotDelay = process.env.BOT_MATCH_DELAY_MS ? Number(process.env.BOT_MATCH_DELAY_MS) : undefined
 const BOT_MATCH_DELAY_MS = _rawBotDelay !== undefined && Number.isFinite(_rawBotDelay) && _rawBotDelay > 0
@@ -160,6 +161,6 @@ export class Matchmaking {
     const botCharacter = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
     const room = this.roomManager.createRoom()
     room.join(entry.ws, entry.character, entry.streak)
-    room.joinBot(botCharacter)
+    room.joinBot(botCharacter, botStrengthForStreak(entry.streak))
   }
 }

@@ -119,3 +119,53 @@ describe('Room — bot integration', () => {
     room.dispose()
   })
 })
+
+describe('Room — bot strength and vsBot reporting', () => {
+  it('joinBot remembers the strength it was given', async () => {
+    const { BOT_PRACTICE } = await import('../bot.js')
+    const room = makeRoom()
+    const ws = makeFakeWs()
+    room.join(ws as any, 'wheat')
+    room.joinBot('corn', BOT_PRACTICE)
+    expect(room.botStrength).toBe(BOT_PRACTICE)
+    room.dispose()
+  })
+
+  it('onMatchEnd reports vsBot=true for a bot match', async () => {
+    let ended: { vsBot?: boolean; winner?: string } | null = null
+    const room = new Room('vsbot-room', {
+      onDispose: () => {},
+      gracePeriodMs: 50,
+      onMatchEnd: (data) => { ended = data },
+    })
+    const ws = makeFakeWs()
+    room.join(ws as any, 'wheat')
+    room.joinBot('corn')
+    await sleep(200) // let the game start
+    room.handleDisconnect('A')
+    await sleep(200) // grace expires -> forfeit -> onMatchEnd
+    expect(ended).not.toBeNull()
+    expect(ended!.vsBot).toBe(true)
+    expect(ended!.winner).toBe('B')
+    room.dispose()
+  })
+
+  it('onMatchEnd reports vsBot=false for a human match', async () => {
+    let ended: { vsBot?: boolean } | null = null
+    const room = new Room('humans-room', {
+      onDispose: () => {},
+      gracePeriodMs: 50,
+      onMatchEnd: (data) => { ended = data },
+    })
+    const wsA = makeFakeWs()
+    const wsB = makeFakeWs()
+    room.join(wsA as any, 'wheat')
+    room.join(wsB as any, 'rice')
+    await sleep(200)
+    room.handleDisconnect('B')
+    await sleep(200)
+    expect(ended).not.toBeNull()
+    expect(ended!.vsBot).toBe(false)
+    room.dispose()
+  })
+})

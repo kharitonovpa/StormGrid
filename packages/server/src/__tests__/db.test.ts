@@ -195,6 +195,7 @@ describe('matchStore leaderboard functions', () => {
     sqlite: testDbData.sqlite,
   }))
 
+  let saveMatch: typeof import('../db/matchStore')['saveMatch']
   let updatePlayerStats: typeof import('../db/matchStore')['updatePlayerStats']
   let updateWatcherStats: typeof import('../db/matchStore')['updateWatcherStats']
   let getPlayerLeaderboard: typeof import('../db/matchStore')['getPlayerLeaderboard']
@@ -206,6 +207,7 @@ describe('matchStore leaderboard functions', () => {
 
   beforeAll(async () => {
     const mod = await import('../db/matchStore')
+    saveMatch = mod.saveMatch
     updatePlayerStats = mod.updatePlayerStats
     updateWatcherStats = mod.updateWatcherStats
     getPlayerLeaderboard = mod.getPlayerLeaderboard
@@ -251,6 +253,17 @@ describe('matchStore leaderboard functions', () => {
     const rows = getPlayerLeaderboard().items
     expect(rows.length).toBeGreaterThanOrEqual(2)
     expect(rows[0].userId).toBe(uA)
+  })
+
+  test('saveMatch — persists the vsBot flag', () => {
+    const roomId = crypto.randomUUID()
+    saveMatch(
+      { roomId, playerAId: null, playerBId: null, characterA: 'wheat', characterB: 'rice', winner: 'A', rounds: 2, durationMs: 30_000, vsBot: true },
+      { id: roomId, charA: 'wheat', charB: 'rice', winner: 'A', frameCount: 0, frames: [] } as unknown as ReplayData,
+    )
+    const row = testDbData.db.select().from(schema.matches).where(eq(schema.matches.roomId, roomId)).get()
+    expect(row).not.toBeNull()
+    expect(row!.vsBot).toBe(true)
   })
 
   test('updatePlayerStats — skips null userIds', () => {

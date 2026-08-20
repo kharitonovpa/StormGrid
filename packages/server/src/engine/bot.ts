@@ -30,6 +30,22 @@ export type BotStrength = {
 /** Plays to win, but leaves the door open often enough to be beatable. */
 export const BOT_MATCH: BotStrength = { skip: 0.04, blunder: 0.12, hunt: true }
 
+/** First queue match: looks after itself, never attacks, stumbles a lot. */
+export const BOT_GENTLE: BotStrength = { skip: 0.08, blunder: 0.30, hunt: false }
+
+/** Second match: starts hunting, still generous with mistakes. */
+export const BOT_MEDIUM: BotStrength = { skip: 0.05, blunder: 0.20, hunt: true }
+
+/**
+ * The queue's difficulty ramp. Streak is the client-kept win streak, so it
+ * resets on every loss — a beaten player deliberately gets a softer bot next.
+ */
+export function botStrengthForStreak(streak: number): BotStrength {
+  if (streak <= 0) return BOT_GENTLE
+  if (streak === 1) return BOT_MEDIUM
+  return BOT_MATCH
+}
+
 /**
  * The tutorial opponent: it looks after itself and never sets a trap, so the
  * newcomer loses only to the weather, which is the thing being taught.

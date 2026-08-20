@@ -3,7 +3,7 @@ import type { Action, BonusType, CharacterType, DeathCause, PlayerId, PlayerInfo
 import { TICK_DURATION_MS, RECONNECT_GRACE_MS, WAR_AND_PEACE_SURNAMES, BOARD_SIZE } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
-import { chooseBotAction, BOT_PRACTICE } from './engine/bot.js'
+import { chooseBotAction, BOT_PRACTICE, BOT_MATCH, type BotStrength } from './engine/bot.js'
 import type { ServerMessage, WsData } from './protocol.js'
 import { send } from './protocol.js'
 import type { ReplayStore } from './ReplayStore.js'
@@ -80,6 +80,8 @@ export type MatchEndData = {
   winner: PlayerId | 'draw'
   rounds: number
   durationMs: number
+  /** True when one of the players was a bot (queue fallback; the bot is always slot B). */
+  vsBot: boolean
   watcherScores: WatcherScoreEntry[]
 }
 
@@ -113,6 +115,8 @@ export class Room {
   private architectTimer: ReturnType<typeof setTimeout> | null = null
   private tickTimer: ReturnType<typeof setTimeout> | null = null
   private botActionTimers = new Map<PlayerId, ReturnType<typeof setTimeout>>()
+  /** Set once joinBot fills a slot; doubles as the "this match had a bot" flag. */
+  botStrength: BotStrength | null = null
   private cleanupTimer: ReturnType<typeof setTimeout> | null = null
   private callbacks: RoomCallbacks
   private ended = false
@@ -212,7 +216,7 @@ export class Room {
     return pid
   }
 
-  joinBot(character: CharacterType = 'wheat'): PlayerId | null {
+  joinBot(character: CharacterType = 'wheat', strength: BotStrength = BOT_MATCH): PlayerId | null {
     let pid: PlayerId
     if (!this.players.A) pid = 'A'
     else if (!this.players.B) pid = 'B'
@@ -222,6 +226,7 @@ export class Room {
       ws: null, reconnectToken: '', character, action: null,
       disconnectedAt: null, isBot: true,
     }
+    this.botStrength = strength
     const other: PlayerId = pid === 'A' ? 'B' : 'A'
     let name = randomSurname()
     let attempts = 0
@@ -804,6 +809,7 @@ export class Room {
       winner,
       rounds: this.engine.getState().round,
       durationMs: this.matchStartedAt > 0 ? Date.now() - this.matchStartedAt : 0,
+      vsBot: this.botStrength !== null,
       watcherScores,
     }, replay)
   }
@@ -918,7 +924,7 @@ export class Room {
         if (this.ended) return
         const state = this.engine.getState()
         if (state.phase !== 'ticking') return
-        const action = chooseBotAction(state, pid)
+        const action = chooseBotAction(state, pid, this.botStrength ?? BOT_MATCH)
         if (action) this.submitAction(pid, action)
       }, delay)
       this.botActionTimers.set(pid, timer)

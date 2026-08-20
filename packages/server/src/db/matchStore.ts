@@ -11,6 +11,7 @@ export type MatchRecord = {
   winner: string | null
   rounds: number
   durationMs: number
+  vsBot: boolean
 }
 
 export function saveMatch(record: MatchRecord, replay: ReplayData): void {
@@ -28,6 +29,7 @@ export function saveMatch(record: MatchRecord, replay: ReplayData): void {
       winner: record.winner,
       rounds: record.rounds,
       durationMs: record.durationMs,
+      vsBot: record.vsBot,
       createdAt: now,
     }).run()
 

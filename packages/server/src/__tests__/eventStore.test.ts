@@ -38,7 +38,7 @@ function insertEvent(e: Ev) {
   }).run()
 }
 
-function insertServerMatch(at: Date) {
+function insertServerMatch(at: Date, vsBot = false, winner: string = 'A') {
   db.insert(schema.matches).values({
     id: crypto.randomUUID(),
     roomId: crypto.randomUUID(),
@@ -46,9 +46,10 @@ function insertServerMatch(at: Date) {
     playerBId: null,
     characterA: 'wheat',
     characterB: 'rice',
-    winner: 'A',
+    winner,
     rounds: 3,
     durationMs: 60_000,
+    vsBot,
     createdAt: at,
   }).run()
 }
@@ -88,6 +89,9 @@ beforeAll(() => {
 
   insertServerMatch(yesterday)
   insertServerMatch(today)
+  // Two bot matches today: the human (always slot A in queue bot matches) wins one.
+  insertServerMatch(today, true, 'A')
+  insertServerMatch(today, true, 'B')
 })
 
 describe('getEventCounts', () => {
@@ -117,7 +121,20 @@ describe('getDailySummary', () => {
 
     const t = daily.find((r) => r.day === dayKey(today))!
     expect(t.matches).toBe(0) // web-1 never finished
-    expect(t.serverMatches).toBe(1)
+    expect(t.serverMatches).toBe(3)
+  })
+
+  test('splits bot matches and human wins against the bot', () => {
+    const daily = getDailySummary(14)
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+
+    const t = daily.find((r) => r.day === dayKey(today))!
+    expect(t.botMatches).toBe(2)
+    expect(t.botHumanWins).toBe(1)
+
+    const y = daily.find((r) => r.day === dayKey(yesterday))!
+    expect(y.botMatches).toBe(0)
+    expect(y.botHumanWins).toBe(0)
   })
 })
 

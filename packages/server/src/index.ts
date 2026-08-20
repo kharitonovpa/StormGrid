@@ -66,6 +66,7 @@ const roomManager = new RoomManager({
         winner: data.winner,
         rounds: data.rounds,
         durationMs: data.durationMs,
+        vsBot: data.vsBot,
       }, replay)
     } catch (e) { console.error('[db] saveMatch failed:', e) }
 

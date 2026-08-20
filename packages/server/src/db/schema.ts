@@ -21,6 +21,8 @@ export const matches = sqliteTable('matches', {
   winner: text('winner'), // 'A' | 'B' | 'draw' | null
   rounds: integer('rounds').notNull(),
   durationMs: integer('duration_ms').notNull(),
+  // Queue fallback vs bot; the bot always sits in slot B, so winner='A' means the human won.
+  vsBot: integer('vs_bot', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 })
 

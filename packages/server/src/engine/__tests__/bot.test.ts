@@ -214,3 +214,21 @@ describe('chooseBotAction — full engine round', () => {
     expect(final.players.B.alive).toBe(true)
   })
 })
+
+describe('botStrengthForStreak — queue difficulty ramp', () => {
+  it('gives a fresh player (streak 0) a gentle, non-hunting bot', async () => {
+    const { botStrengthForStreak, BOT_MATCH } = await import('../bot.js')
+    const gentle = botStrengthForStreak(0)
+    expect(gentle.hunt).toBe(false)
+    expect(gentle.blunder).toBeGreaterThan(BOT_MATCH.blunder)
+  })
+
+  it('ramps to a hunting mid-tier at streak 1 and full strength from streak 2', async () => {
+    const { botStrengthForStreak, BOT_MATCH } = await import('../bot.js')
+    const mid = botStrengthForStreak(1)
+    expect(mid.hunt).toBe(true)
+    expect(mid.blunder).toBeGreaterThan(BOT_MATCH.blunder)
+    expect(botStrengthForStreak(2)).toBe(BOT_MATCH)
+    expect(botStrengthForStreak(7)).toBe(BOT_MATCH)
+  })
+})

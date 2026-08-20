@@ -1,0 +1,1 @@
+ALTER TABLE `matches` ADD `vs_bot` integer DEFAULT false NOT NULL;

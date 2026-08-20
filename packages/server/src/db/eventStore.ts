@@ -28,6 +28,10 @@ export type DailySummary = {
   matches: number
   /** Completed PvP matches from the server's `matches` table — the authoritative count, forfeits included. */
   serverMatches: number
+  /** Of serverMatches, how many were the queue's bot fallback. */
+  botMatches: number
+  /** Of botMatches, how many the human won (the bot always sits in slot B). */
+  botHumanWins: number
   /** Of devices first seen the previous day, how many came back on this one. */
   d1Retained: number
 }
@@ -75,23 +79,31 @@ export function getDailySummary(days = 14): DailySummary[] {
     ORDER BY d.day DESC
   `)
 
-  const serverRows = db.all<{ day: string; n: number }>(sql`
-    SELECT date(created_at, 'unixepoch') AS day, COUNT(*) AS n
+  const serverRows = db.all<{ day: string; n: number; bots: number; bot_human_wins: number }>(sql`
+    SELECT date(created_at, 'unixepoch') AS day,
+           COUNT(*) AS n,
+           SUM(vs_bot) AS bots,
+           SUM(CASE WHEN vs_bot AND winner = 'A' THEN 1 ELSE 0 END) AS bot_human_wins
     FROM matches
     WHERE created_at >= unixepoch('now', ${window})
     GROUP BY day
   `)
-  const serverByDay = new Map(serverRows.map((r) => [r.day, r.n]))
+  const serverByDay = new Map(serverRows.map((r) => [r.day, r]))
 
-  return rows.map((r) => ({
-    day: r.day,
-    opens: r.opens,
-    devices: r.devices,
-    newDevices: r.new_devices,
-    matches: r.matches,
-    serverMatches: serverByDay.get(r.day) ?? 0,
-    d1Retained: r.d1_retained,
-  }))
+  return rows.map((r) => {
+    const s = serverByDay.get(r.day)
+    return {
+      day: r.day,
+      opens: r.opens,
+      devices: r.devices,
+      newDevices: r.new_devices,
+      matches: r.matches,
+      serverMatches: s?.n ?? 0,
+      botMatches: s?.bots ?? 0,
+      botHumanWins: s?.bot_human_wins ?? 0,
+      d1Retained: r.d1_retained,
+    }
+  })
 }
 
 /** Event counts by name for a quick funnel read, over the last `days`. `practice` is how many of `count` came from tutorial/bot matches. */
