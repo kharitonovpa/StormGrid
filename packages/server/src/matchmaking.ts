@@ -8,7 +8,7 @@ import { RoomManager } from './RoomManager.js'
 const _rawBotDelay = process.env.BOT_MATCH_DELAY_MS ? Number(process.env.BOT_MATCH_DELAY_MS) : undefined
 const BOT_MATCH_DELAY_MS = _rawBotDelay !== undefined && Number.isFinite(_rawBotDelay) && _rawBotDelay > 0
   ? _rawBotDelay
-  : 30_000
+  : 8_000
 
 type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType; streak: number }
 

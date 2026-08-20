@@ -287,22 +287,20 @@ function onPlay(character: CharacterType) {
       }
       return
     }
-    // First Play ever → tutorial match vs bot instead of the real queue
-    const ok = hasDoneTutorial()
-      ? socket.joinQueue(character, streak.value)
-      : socket.startPractice(character, streak.value)
-    if (ok) {
+    // Straight to the real queue — the tutorial lives behind the lobby's
+    // «How to play» chip only. Forcing it on first Play killed 7 of 10
+    // newcomers before they ever saw a real match.
+    if (socket.joinQueue(character, streak.value)) {
       game.queueJoinPending.value = true
-      track('queue_join', { practice: !hasDoneTutorial() })
+      track('queue_join')
     }
   })
 }
 
 /**
- * The tutorial's own entrance. First Play alone is not enough: `tutorial_done` lives
- * in the portal player profile on GamePush hosts (see lib/storage.ts), and portal
- * testers reuse accounts — so anyone whose account has played before never sees the
- * tutorial. Pikabu moderation rejected the build over exactly this.
+ * The tutorial's only entrance — Play goes straight to the real queue. The chip
+ * has to stay visible in the lobby: portal moderation (Pikabu) requires a way to
+ * learn the rules that reused portal accounts can always find.
  */
 function onHowToPlay(character: CharacterType) {
   game.selectedCharacter.value = character
@@ -797,7 +795,7 @@ function updateDemoOrbit(dt: number) {
   }
 }
 
-/* ── Tutorial (practice match vs bot on first Play) ── */
+/* ── Tutorial (practice match vs bot, via the «How to play» chip) ── */
 const TUTORIAL_STORAGE_KEY = 'wheee:tutorial_done'
 /** Legacy key from the old slide-based onboarding — don't force veterans through the tutorial. */
 const LEGACY_STORIES_KEY = 'wheee:stories_skipped'
