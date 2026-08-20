@@ -20,6 +20,8 @@ const BOT_MATCH_DELAY_LONG_MS = _rawBotDelayLong !== undefined && Number.isFinit
 export type MatchmakingOpts = {
   /** Connected humans sitting in the lobby, excluding the given socket. */
   countIdleHumans?: (exclude: ServerWebSocket<WsData>) => number
+  /** Fires when an enqueue leaves someone waiting alone — their bot countdown just started. */
+  onLoneWaiter?: (info: { name: string; waitMs: number }) => void
 }
 
 type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType; streak: number }
@@ -76,6 +78,10 @@ export class Matchmaking {
     send(ws, { type: 'queue:waiting', maxWaitMs: waitMs })
 
     this.tryMatch(waitMs)
+
+    if (this.queue.length === 1) {
+      this.opts?.onLoneWaiter?.({ name: ws.data.userName ?? 'guest', waitMs })
+    }
   }
 
   dequeue(ws: ServerWebSocket<WsData>): void {

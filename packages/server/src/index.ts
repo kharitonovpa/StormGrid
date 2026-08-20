@@ -12,6 +12,8 @@ import { authRoutes } from './auth/oauth.js'
 import { verifyJwt, parseCookieToken, extractToken } from './auth/jwt.js'
 import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard } from './db/matchStore.js'
 import { insertEvents, getDailySummary, getEventCounts, getPlatformSummary } from './db/eventStore.js'
+import { replyForUpdate, type TgUpdate } from './tgBot.js'
+import { createQueueAlert } from './queueAlert.js'
 import type { EventRow } from './db/eventStore.js'
 
 runMigrations()
@@ -84,6 +86,16 @@ const roomManager = new RoomManager({
 })
 const allClients = new Set<ServerWebSocket<WsData>>()
 
+const _rawAlertCooldown = process.env.QUEUE_ALERT_COOLDOWN_MS ? Number(process.env.QUEUE_ALERT_COOLDOWN_MS) : undefined
+const queueAlert = createQueueAlert({
+  chatId: process.env.QUEUE_ALERT_CHAT_ID || '',
+  cooldownMs: _rawAlertCooldown !== undefined && Number.isFinite(_rawAlertCooldown) && _rawAlertCooldown >= 0
+    ? _rawAlertCooldown
+    : 60_000,
+  send: (chatId, text) => tgSendMessage(chatId, text),
+  now: Date.now,
+})
+
 const matchmaking = new Matchmaking(roomManager, {
   // Idle = connected and in the lobby (no room). Watchers, architects and
   // playing players all carry a roomId and don't count as potential opponents.
@@ -94,6 +106,7 @@ const matchmaking = new Matchmaking(roomManager, {
     }
     return n
   },
+  onLoneWaiter: queueAlert,
 })
 
 let lobbyStatusTimer: ReturnType<typeof setTimeout> | null = null
@@ -241,43 +254,34 @@ app.get('/api/events/summary', (c) => {
 /* ── Telegram bot webhook ── */
 
 /**
- * The bot's only conversational duty: answer /start with a Play button. Catalog
- * moderation (tapps.center) requires an English reply to /start; everything else
- * about the bot is the Mini App itself.
+ * The bot's conversational duties live in tgBot.ts (catalog moderation at
+ * tapps.center requires an English reply to /start); this route is only the
+ * transport. Without both secrets it does not exist, rather than existing open.
  */
 const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN || ''
 const TG_WEBHOOK_SECRET = process.env.TG_WEBHOOK_SECRET || ''
-const TG_APP_LINK = 'https://t.me/wheee_game_bot/play'
 
-const TG_START_REPLY = {
-  en: '🌪 wheee — a 1v1 storm duel.\n\nShape the terrain, read the forecast, and let the wind blow your rival off the map. A match takes 1–3 minutes.',
-  ru: '🌪 wheee — штормовая дуэль 1 на 1.\n\nМеняй рельеф, читай прогноз — и пусть ветер сдует соперника с карты. Матч занимает 1–3 минуты.',
+function tgSendMessage(chatId: number | string, text: string, replyMarkup?: unknown): void {
+  if (!TG_BOT_TOKEN) return
+  fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }),
+  }).catch((e) => console.error('[tg] sendMessage failed:', e))
 }
 
 app.post('/api/tg/webhook', async (c) => {
-  // Without both secrets the route does not exist, rather than existing open.
   if (!TG_BOT_TOKEN || !TG_WEBHOOK_SECRET) return c.json({ error: 'Not found' }, 404)
   if (c.req.header('x-telegram-bot-api-secret-token') !== TG_WEBHOOK_SECRET) {
     return c.json({ error: 'Forbidden' }, 403)
   }
 
-  let update: { message?: { text?: string; chat?: { id?: number }; from?: { language_code?: string } } }
+  let update: TgUpdate
   try { update = await c.req.json() } catch { return c.json({ ok: true }) }
 
-  const msg = update.message
-  if (typeof msg?.text === 'string' && msg.text.startsWith('/start') && msg.chat?.id) {
-    const ru = msg.from?.language_code === 'ru'
-    // Telegram only needs a 200 — the reply itself can go out after we answer.
-    fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: msg.chat.id,
-        text: ru ? TG_START_REPLY.ru : TG_START_REPLY.en,
-        reply_markup: { inline_keyboard: [[{ text: ru ? '▶️ Играть' : '▶️ Play', url: TG_APP_LINK }]] },
-      }),
-    }).catch((e) => console.error('[tg] sendMessage failed:', e))
-  }
+  // Telegram only needs a 200 — the reply itself can go out after we answer.
+  const reply = replyForUpdate(update)
+  if (reply) tgSendMessage(reply.chatId, reply.text, reply.replyMarkup)
 
   return c.json({ ok: true })
 })

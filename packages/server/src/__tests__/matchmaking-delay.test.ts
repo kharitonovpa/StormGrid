@@ -70,3 +70,35 @@ describe('Matchmaking — dynamic bot delay', () => {
     mm.dequeue(ws as any)
   })
 })
+
+describe('Matchmaking — lone-waiter callback', () => {
+  it('fires when a player starts waiting alone, with their name and window', () => {
+    const seen: { name: string; waitMs: number }[] = []
+    const mm = new Matchmaking(new RoomManager(), {
+      countIdleHumans: () => 1,
+      onLoneWaiter: (info) => { seen.push(info) },
+    })
+    const ws = makeFakeWs()
+    ws.data.userName = 'ovi8x'
+    mm.enqueue(ws as any, 'wheat')
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0].name).toBe('ovi8x')
+    expect(seen[0].waitMs).toBe(30_000)
+    mm.dequeue(ws as any)
+  })
+
+  it('does not fire when two players match instantly', () => {
+    const seen: unknown[] = []
+    const mm = new Matchmaking(new RoomManager(), {
+      onLoneWaiter: (info) => { seen.push(info) },
+    })
+    const a = makeFakeWs()
+    const b = makeFakeWs()
+    mm.enqueue(a as any, 'wheat')
+    mm.enqueue(b as any, 'rice')
+
+    expect(seen).toHaveLength(1) // only the first, lone enqueue — not the pairing one
+    expect(mm.queueSize).toBe(0)
+  })
+})
