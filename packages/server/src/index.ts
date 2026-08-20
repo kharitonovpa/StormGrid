@@ -11,7 +11,7 @@ import { runMigrations } from './db/migrate.js'
 import { authRoutes } from './auth/oauth.js'
 import { verifyJwt, parseCookieToken, extractToken } from './auth/jwt.js'
 import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard } from './db/matchStore.js'
-import { insertEvents, getDailySummary, getEventCounts } from './db/eventStore.js'
+import { insertEvents, getDailySummary, getEventCounts, getPlatformSummary } from './db/eventStore.js'
 import type { EventRow } from './db/eventStore.js'
 
 runMigrations()
@@ -224,7 +224,7 @@ app.get('/api/events/summary', (c) => {
   const expected = process.env.STATS_TOKEN
   if (!expected || c.req.query('token') !== expected) return c.json({ error: 'Forbidden' }, 403)
   const days = Math.min(Math.max(parseInt(c.req.query('days') ?? '14') || 14, 1), 90)
-  return c.json({ daily: getDailySummary(days), counts: getEventCounts(days) })
+  return c.json({ daily: getDailySummary(days), counts: getEventCounts(days), platforms: getPlatformSummary(days) })
 })
 
 /* ── Telegram bot webhook ── */
