@@ -103,9 +103,17 @@ common generator). This feature commits a reproducible generator:
   loop; disposed in the same teardown.
 - Inputs wired from existing handlers: forecast (candidates, vane state, lightning
   probability) from `applyGameState`; progress from `tick:start` (`(tick+1)/5`,
-  eased); reset to zero intensity on `round:start`, `resetVisuals()`, `game:end`,
-  lobby return, replay enter/exit. Replays do not accumulate storm presence in v1
-  (frames jump tick-to-tick; the buildup would strobe).
+  eased). Replays do not accumulate storm presence in v1 (frames jump tick-to-tick;
+  the buildup would strobe).
+- **Discharge (how the dome "disappears"):** the mesh is permanent — only intensity
+  animates, and intensity 0 is pixel-identical to the void. Three exits:
+  1. *The cataclysm spends the storm:* as the front sweeps (or the bolt lands), the
+     sector drains to 0 over ~1.5–2 s — by the next forecast the sky is clean and
+     the next storm grows from zero, possibly over a different horizon. The azimuth
+     never jumps while visible; a storm dies, the next one is born.
+  2. *Match end:* a slow ~2 s exhale behind the game-over overlay.
+  3. *Hard context switches* (`resetVisuals()` — reconnect, watcher redirect, lobby
+     return, replay enter/exit): a fast ~0.3 s fade, never an instant snap.
 - Watchers and the architect get the effect for free (same state messages).
 - API shape: `createStormSystem(scene, camera)` →
   `{ setForecast(candidates, vaneBroken, stormy), setProgress(t), sweep(dir): Promise<void>, halt(), reset(), update(dt), dispose() }`.
