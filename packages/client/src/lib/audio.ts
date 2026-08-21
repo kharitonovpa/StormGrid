@@ -10,6 +10,7 @@ const LOOP_IDS = [
   'lobby-pad', 'game-drone',
   'lobby-music', 'match-music',
   'wind-loop', 'rain-loop',
+  'static-crackle',
 ] as const
 
 const SFX_IDS = [
@@ -19,6 +20,7 @@ const SFX_IDS = [
   'ui-click', 'match-found', 'victory', 'defeat', 'draw-end', 'queue-enter',
   'predict-correct', 'predict-wrong', 'instrument-break', 'weather-confirm',
   'crate-pickup',
+  'thunder-crack', 'thunder-distant',
 ] as const
 
 export type LoopId = (typeof LOOP_IDS)[number]
@@ -93,8 +95,12 @@ function def(id: SoundId): SoundDef {
     case 'lobby-music':  return { src, loop: true,  layer: 'music',   baseVolume: 0.75 }
     case 'match-music':  return { src, loop: true,  layer: 'music',   baseVolume: 0.70 }
     // Weather loops
-    case 'wind-loop':    return { src, loop: true,  layer: 'sfx',     baseVolume: 0.70 }
-    case 'rain-loop':    return { src, loop: true,  layer: 'sfx',     baseVolume: 0.60 }
+    case 'wind-loop':       return { src, loop: true,  layer: 'sfx', baseVolume: 0.70 }
+    case 'rain-loop':       return { src, loop: true,  layer: 'sfx', baseVolume: 0.60 }
+    case 'static-crackle':  return { src, loop: true,  layer: 'sfx', baseVolume: 0.12 }
+    // Storm one-shots
+    case 'thunder-crack':   return { src, loop: false, layer: 'sfx', baseVolume: 0.72 }
+    case 'thunder-distant': return { src, loop: false, layer: 'sfx', baseVolume: 0.22 }
     // Gameplay SFX
     case 'terrain-raise':  return { src, loop: false, layer: 'sfx', baseVolume: 0.55 }
     case 'terrain-lower':  return { src, loop: false, layer: 'sfx', baseVolume: 0.55 }
@@ -286,7 +292,58 @@ export function createAudioSystem() {
   function stopWeather() {
     fadeOut('wind-loop', 800)
     fadeOut('rain-loop', 800)
+    setStormAmbience(false)
   }
+
+  // ------ Storm effects (hush, duck, ambience, crackle) ------
+
+  /** The hush before the strike: wind and music sink almost to silence. */
+  function beginHush() {
+    if (disposed) return
+    for (const id of ['wind-loop', 'match-music', 'game-drone'] as SoundId[]) {
+      const h = howls.get(id)!
+      if (activeLoops.has(id)) h.fade(h.volume() as number, resolveVolume(id) * 0.05, 200)
+    }
+  }
+
+  function endHush() {
+    if (disposed) return
+    for (const id of ['wind-loop', 'match-music', 'game-drone'] as SoundId[]) {
+      const h = howls.get(id)!
+      if (activeLoops.has(id)) h.fade(h.volume() as number, resolveVolume(id), 400)
+    }
+  }
+
+  /** Cinema duck: dip active music-layer loops for `ms` so the crack cuts through. */
+  function duckMusic(ms: number) {
+    if (disposed) return
+    for (const id of activeLoops) {
+      if (defs.get(id)!.layer === 'sfx') continue
+      const h = howls.get(id)!
+      h.fade(h.volume() as number, resolveVolume(id) * 0.2, 60)
+      safeTimeout(() => { if (activeLoops.has(id)) h.fade(h.volume() as number, resolveVolume(id), 300) }, ms)
+    }
+  }
+
+  let stormAmbienceTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** Random distant rumbles every 10-20s while a storm is active over the scene. */
+  function setStormAmbience(active: boolean) {
+    if (!active) {
+      if (stormAmbienceTimer) { clearTimeout(stormAmbienceTimer); pendingTimers.delete(stormAmbienceTimer) }
+      stormAmbienceTimer = null
+      return
+    }
+    if (disposed || stormAmbienceTimer) return
+    const tick = () => {
+      play('thunder-distant')
+      stormAmbienceTimer = safeTimeout(tick, 10_000 + Math.random() * 10_000)
+    }
+    stormAmbienceTimer = safeTimeout(tick, 3_000 + Math.random() * 5_000)
+  }
+
+  function startCrackle() { fadeIn('static-crackle', 600) }
+  function stopCrackle() { fadeOut('static-crackle', 800) }
 
   // ------ One-shot SFX ------
 
@@ -385,6 +442,12 @@ export function createAudioSystem() {
     startWind,
     startRain,
     stopWeather,
+    beginHush,
+    endHush,
+    duckMusic,
+    setStormAmbience,
+    startCrackle,
+    stopCrackle,
     play,
     setMasterVolume,
     setMusicVolume,
