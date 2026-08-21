@@ -10,7 +10,7 @@ import numpy as np, subprocess, sys, wave, tempfile, os
 
 SR = 44100
 OUT = os.path.join(os.path.dirname(__file__), "..", "packages", "client", "public", "sounds")
-rng = np.random.default_rng(20260821)
+SEED = 20260821
 
 def _envelope(n, attack, decay):   # exponential attack/decay envelope
     t = np.arange(n) / SR
@@ -24,7 +24,7 @@ def _lowpass(x, cutoff_hz):        # simple one-pole lowpass
     for i, v in enumerate(x): acc += a * (v - acc); y[i] = acc
     return y
 
-def thunder_crack():
+def thunder_crack(rng):
     n = int(SR * 2.6)
     body = rng.standard_normal(n)
     # falling lowpass sweep: bright crack collapsing into a rumble
@@ -36,13 +36,13 @@ def thunder_crack():
     out[: int(0.01 * SR)] += rng.standard_normal(int(0.01 * SR)) * 0.8   # the whip transient
     return out
 
-def thunder_distant():
+def thunder_distant(rng):
     n = int(SR * 4.0)
     out = _lowpass(rng.standard_normal(n), 160)
     swell = np.sin(np.linspace(0, np.pi, n)) ** 2
     return out * swell
 
-def static_crackle():
+def static_crackle(rng):
     n = int(SR * 3.0)
     out = _lowpass(rng.standard_normal(n), 6000) * 0.06
     ticks = rng.random(n) < (28 / SR)          # sparse impulse train
@@ -52,7 +52,7 @@ def static_crackle():
 SOUNDS = {"thunder-crack": thunder_crack, "thunder-distant": thunder_distant, "static-crackle": static_crackle}
 
 def write(name, data):
-    data = (np.clip(data / (np.abs(data).max() + 1e-9), -1, 1) * 32767 * 0.9).astype(np.int16)
+    data = (data / (np.abs(data).max() + 1e-9) * 32767 * 0.9).astype(np.int16)
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         with wave.open(f, "wb") as w:
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes(data.tobytes())
@@ -64,5 +64,6 @@ def write(name, data):
 if __name__ == "__main__":
     names = sys.argv[1:] or list(SOUNDS)
     for name in names:
-        write(name, SOUNDS[name]())
+        rng = np.random.default_rng([SEED, *name.encode()])
+        write(name, SOUNDS[name](rng))
         print("wrote", name + ".mp3")
