@@ -13,6 +13,7 @@ export type LightningResult = {
 type Judgement = {
   exposed: boolean
   crown: number
+  maxOtherHeight: number
   bolt: { x: number; y: number }
 }
 
@@ -25,9 +26,10 @@ type Judgement = {
  * highest point — exposed. The rule is relative, so a uniformly lowered board
  * is exactly as deadly as a flat one.
  *
- * When both players stand exposed there is one bolt and it picks the taller
- * crown (experienced heights compared across sides); the shorter one is spared.
- * Equal crowns die together — the draw of full symmetry, like equal runways.
+ * When both players stand exposed, the bolt kills the one whose crown protrudes
+ * furthest above everything else on their side. Margin = crown − max(other cells).
+ * The player with the larger margin dies; the other is spared. Equal margins both die.
+ * This keeps the rule side-relative: uniform board shifts change no outcome.
  */
 export function resolveLightning(state: GameState): LightningResult {
   const judged: Partial<Record<PlayerId, Judgement>> = {}
@@ -39,10 +41,10 @@ export function resolveLightning(state: GameState): LightningResult {
   const a = judged.A
   const b = judged.B
   if (a?.exposed && b?.exposed) {
-    const aHeightCanonical = state.board[state.players.A.y][state.players.A.x].height
-    const bHeightCanonical = state.board[state.players.B.y][state.players.B.x].height
-    if (aHeightCanonical !== bHeightCanonical) {
-      spared = aHeightCanonical > bHeightCanonical ? 'B' : 'A'
+    const aMargin = a.crown - a.maxOtherHeight
+    const bMargin = b.crown - b.maxOtherHeight
+    if (aMargin !== bMargin) {
+      spared = aMargin > bMargin ? 'B' : 'A'
       judged[spared]!.exposed = false
     }
   }
@@ -54,7 +56,11 @@ export function resolveLightning(state: GameState): LightningResult {
   for (const pid of ['A', 'B'] as PlayerId[]) {
     const j = judged[pid]
     if (!j) continue
-    boltCell[pid] = j.bolt
+    if (pid === spared) {
+      boltCell[pid] = null
+    } else {
+      boltCell[pid] = j.bolt
+    }
     if (j.exposed) {
       state.players[pid].alive = false
       deaths.push(pid)
@@ -72,10 +78,15 @@ function judge(state: GameState, pid: PlayerId): Judgement {
   const p = state.players[pid]
   const crown = h(p.x, p.y) + CROWN_HEIGHT
 
+  let maxOtherHeight = -Infinity
   let rod: { x: number; y: number; h: number; dist: number } | null = null
   for (let y = 0; y < BOARD_SIZE; y++) {
     for (let x = 0; x < BOARD_SIZE; x++) {
       const hh = h(x, y)
+      // Track max height of cells other than the player's cell
+      if (x !== p.x || y !== p.y) {
+        maxOtherHeight = Math.max(maxOtherHeight, hh)
+      }
       if (hh <= crown) continue
       const dist = Math.max(Math.abs(x - p.x), Math.abs(y - p.y))
       if (
@@ -90,6 +101,6 @@ function judge(state: GameState, pid: PlayerId): Judgement {
   }
 
   return rod
-    ? { exposed: false, crown, bolt: { x: rod.x, y: rod.y } }
-    : { exposed: true, crown, bolt: { x: p.x, y: p.y } }
+    ? { exposed: false, crown, maxOtherHeight, bolt: { x: rod.x, y: rod.y } }
+    : { exposed: true, crown, maxOtherHeight, bolt: { x: p.x, y: p.y } }
 }

@@ -102,4 +102,16 @@ describe('resolveLightning', () => {
     expect(r.deaths).toEqual(['B'])
     expect(r.boltCell.A).toBeNull()
   })
+
+  test('margin arbitration: B sticks out more above its world', () => {
+    // A at (1,1) flat 0: crown 0.5, max other 0, margin 0.5
+    // B at (5,5) on height -1: crown 1.5, max other 0, margin 1.5 — B sticks out more
+    const s = makeState([1, 1], [5, 5], [[5, 5, -1]])
+    const r = resolveLightning(s)
+    expect(r.deaths).toEqual(['B'])
+    expect(r.spared).toBe('A')
+    expect(r.boltCell.A).toBeNull() // A spared; no bolt landed on their side
+    expect(r.boltCell.B).toEqual({ x: 5, y: 5 })
+    expect(s.players.A.alive).toBe(true)
+  })
 })
