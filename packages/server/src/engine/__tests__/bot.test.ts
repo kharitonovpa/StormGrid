@@ -45,7 +45,7 @@ describe('chooseBotAction — basic', () => {
   it('returns a valid action for a living bot', () => {
     const state = makeState()
     state.phase = 'ticking'
-    state.forecast = { windCandidates: [], rainProbability: 0, instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } } }
+    state.forecast = { windCandidates: [], rainProbability: 0, lightningProbability: 0, instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } } }
 
     let actions = 0
     let nulls = 0
@@ -71,6 +71,7 @@ describe('chooseBotAction — wind safety', () => {
     state.forecast = {
       windCandidates: ['N'],
       rainProbability: 0,
+      lightningProbability: 0,
       instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } },
     }
 
@@ -94,6 +95,7 @@ describe('chooseBotAction — wind safety', () => {
     state.forecast = {
       windCandidates: ['E'],
       rainProbability: 0,
+      lightningProbability: 0,
       instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } },
     }
 
@@ -115,6 +117,7 @@ describe('chooseBotAction — wind safety', () => {
     state.forecast = {
       windCandidates: ['N'],
       rainProbability: 0,
+      lightningProbability: 0,
       instrumentsBroken: { A: { vane: true, barometer: false }, B: { vane: false, barometer: false } },
     }
 
@@ -134,6 +137,7 @@ describe('chooseBotAction — wind safety', () => {
     state.forecast = {
       windCandidates: ['N'],
       rainProbability: 0,
+      lightningProbability: 0,
       instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } },
     }
 
@@ -159,6 +163,7 @@ describe('chooseBotAction — rain safety', () => {
     state.forecast = {
       windCandidates: [],
       rainProbability: 0.9,
+      lightningProbability: 0,
       instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } },
     }
 
@@ -179,7 +184,7 @@ describe('chooseBotAction — player B inversion', () => {
   it('returns valid actions for player B', () => {
     const state = makeState()
     state.phase = 'ticking'
-    state.forecast = { windCandidates: [], rainProbability: 0, instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } } }
+    state.forecast = { windCandidates: [], rainProbability: 0, lightningProbability: 0, instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } } }
 
     let count = 0
     for (let i = 0; i < 50; i++) {
