@@ -4,12 +4,13 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
 import type { Action, CharacterType, GameState, MoveDir } from '@wheee/shared'
-import { badgeFor } from '@wheee/shared'
+import { badgeFor, hasWind, hasRain, hasLightning } from '@wheee/shared'
 import { SIZE, HALF, CELL_SIZE, CELLS, SEGMENTS } from './lib/constants'
 import { terrainState } from './lib/terrain'
 import { createWaterSystem, WATER_FILL_MS } from './lib/water'
 import { createWindSystem } from './lib/wind'
 import { createRainSystem } from './lib/rain'
+import { createLightningSystem } from './lib/lightning'
 import { createCompassSystem } from './lib/compass'
 import { createInteractionSystem } from './lib/interaction'
 import { createPlayerSystem } from './lib/player'
@@ -254,6 +255,11 @@ const inQueue = ref(0)
 const liveMatches = ref(0)
 let pendingAction: (() => void) | null = null
 let weatherAnimDone = false
+/**
+ * The pause between the sky going quiet and the bolt landing. Long enough to be
+ * read as dread, short enough that it never feels like a dropped frame.
+ */
+const HUSH_MS = 800
 
 function ensureConnected(then: () => void) {
   if (socket.connected.value) {
@@ -599,17 +605,32 @@ async function startReplay(roomId: string) {
 
     if (animate && frame.weather && playersSystem) {
       const weather = frame.state.weather
-      if (weather) {
-        windSystem?.setDirection(weather.dir)
-        windSystem?.setVisible(true)
-      }
       const paths = frame.weather.windPath as Record<'A' | 'B', { x: number; y: number }[]>
       const deaths = frame.weather.deaths as ('A' | 'B')[]
-      playersSystem.animateWindPaths(paths, deaths).then(() => {
-        if (!playersSystem) return
-        playersSystem.applyPositions(frame.state.players.A, frame.state.players.B)
-        windSystem?.setVisible(false)
-      })
+      // A scrub can land on the next frame while the last bolt is still flashing;
+      // the gale that belonged to the abandoned frame must not arrive late.
+      const gen = ++replayStormGeneration
+
+      const animateWind = () => {
+        if (gen !== replayStormGeneration || !playersSystem) return
+        if (weather && hasWind(weather.type)) {
+          windSystem?.setDirection(weather.dir)
+          windSystem?.setVisible(true)
+        }
+        playersSystem.animateWindPaths(paths, deaths).then(() => {
+          if (!playersSystem) return
+          playersSystem.applyPositions(frame.state.players.A, frame.state.players.B)
+          windSystem?.setVisible(false)
+        })
+      }
+
+      // Replays are watched from A's seat, so A's is the bolt that gets drawn.
+      const bolt = frame.weather.boltCell?.A ?? null
+      if (bolt && weather && hasLightning(weather.type) && lightningSystem) {
+        lightningSystem.strike(bolt, terrainState).then(animateWind)
+      } else {
+        animateWind()
+      }
     } else {
       windSystem?.setVisible(false)
       if (playersSystem) {
@@ -958,6 +979,8 @@ const replayMode = ref(false)
 const replayPlayer = shallowRef<ReplayPlayer | null>(null)
 let lastRoomId: string | null = null
 let replayGeneration = 0
+/** Bumped per animated replay frame, so an abandoned storm cannot finish late. */
+let replayStormGeneration = 0
 
 function selectOption(action: MenuAction) {
   handleAction?.(action)
@@ -1015,6 +1038,9 @@ function resetVisuals() {
   windSystem?.setVisible(false)
   rainSystem?.setVisible(false)
   glassSystem?.close()
+  // The sky over this round is done rumbling, whatever the last forecast promised.
+  audio.setStormAmbience(false)
+  audio.stopCrackle()
   waterSystem?.clear()
   pendingWaterVolume = null
   // Never leave the storm waiting on water that will not come.
@@ -1025,6 +1051,25 @@ function resetVisuals() {
   bonusSystem?.clear()
   lastCrateCell = null
 }
+
+/**
+ * The storm is heard before it is seen. Distant rumbles from a quarter chance up,
+ * mains-hum crackle once the dial is all but certain — driven straight off the
+ * forecast, so a watcher hears the same sky the players are reading. -1 stands for
+ * "no forecast to listen to", which silences both.
+ */
+watch(
+  () => {
+    const p = game.gameState.value?.phase
+    if (p !== 'forecast' && p !== 'ticking') return -1
+    return game.forecast.value?.lightningProbability ?? -1
+  },
+  (prob) => {
+    audio.setStormAmbience(prob >= 0.25)
+    if (prob >= 0.75) audio.startCrackle()
+    else audio.stopCrackle()
+  },
+)
 
 function stopLobbyDemo() {
   if (!lobbyDemoActive) return
@@ -1181,57 +1226,99 @@ unsubMessage2 = socket.onMessage((msg) => {
     case 'weather:result': {
       terrainState.applyBoardState(msg.result.state.board)
       const weather = msg.result.state.weather
-      if (weather) {
-        windSystem?.setDirection(weather.dir)
-        windSystem?.setVisible(true)
-        audio.startWind()
-      }
-      if (weather?.type === 'wind_rain') {
-        rainSystem?.setVisible(true)
-        audio.startRain()
-      }
+      const stormy = weather ? hasLightning(weather.type) : false
+      // Nothing about the round is announced until the whole storm has played —
+      // and with a bolt in it, the storm now starts before the wind does.
+      weatherAnimDone = false
       const deaths = msg.result.deaths as ('A' | 'B')[]
       const causeOf = (pid: 'A' | 'B') => msg.result.deathCauses[pid]?.type
       // Only the wind takes a body away with it; the water keeps the one it drowned.
       const blownAway = deaths.filter(pid => causeOf(pid) === 'wind')
       const drowned = deaths.filter(pid => causeOf(pid) === 'rain')
+      const struckDead = (['A', 'B'] as const).filter(pid => causeOf(pid) === 'lightning')
       // Own hollows aside, water has to be built for a drowning on the far side
       // too: the player watches it through the glass.
       const flooding = msg.result.floodedCells.length > 0 || drowned.length > 0
       if (flooding) pendingWaterVolume = msg.result.waterVolume
+      // Claimed here, not after the hush: the hollows can finish filling while the
+      // sky is still holding its breath, and the storm must not wait on a promise
+      // made after the water already stopped rising.
+      const floodWait = flooding ? waitForFlood() : null
       // The storm has already resolved, so showing the opponent gives nothing away.
       if (deaths.length > 0) glassSystem?.open()
       startAnimating()
 
-      if (playersSystem) {
-        const paths = msg.result.windPath as Record<'A' | 'B', { x: number; y: number }[]>
-        if (paths.A.length > 1 || paths.B.length > 1) audio.play('wind-push')
-        weatherAnimDone = false
-        // The storm is over once the wind has carried everyone it could and the
-        // water has stopped rising — only then is the round decided out loud.
-        const storm: Promise<unknown>[] = [playersSystem.animateWindPaths(paths, blownAway)]
-        if (flooding) storm.push(waitForFlood())
-        Promise.all(storm).then(() => {
-          if (!playersSystem) return
-          playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B, drowned)
-          audio.stopWeather()
-          if (deaths.length > 0) audio.play('death')
-          weatherAnimDone = true
-          if (pendingGameEnd) {
-            nameplateSystem?.setVisible(false)
-            audio.enterFinished()
-            const w = pendingGameEnd.winner
-            const myId = game.myPlayerId.value
-            if (w === 'draw') audio.play('draw-end')
-            else if (myId && w === myId) audio.play('victory')
-            else if (myId) audio.play('defeat')
-            game.handleMessage(pendingGameEnd)
-            pendingGameEnd = null
-          }
-        })
-      } else {
-        audio.stopWeather()
+      /** The verdict, once nothing on the board is moving any more. */
+      const concludeStorm = () => {
+        weatherAnimDone = true
+        if (pendingGameEnd) {
+          nameplateSystem?.setVisible(false)
+          audio.enterFinished()
+          const w = pendingGameEnd.winner
+          const myId = game.myPlayerId.value
+          if (w === 'draw') audio.play('draw-end')
+          else if (myId && w === myId) audio.play('victory')
+          else if (myId) audio.play('defeat')
+          game.handleMessage(pendingGameEnd)
+          pendingGameEnd = null
+        }
       }
+
+      /**
+       * The cataclysm, in order: the sky goes quiet, then it breaks. The gale is
+       * held back until the bolt has landed — a hush you can hear the wind through
+       * is no hush at all.
+       */
+      const runStorm = async () => {
+        if (!stormy) return
+        audio.beginHush()
+        await new Promise(r => setTimeout(r, HUSH_MS))
+        // Watchers and the architect have no side; they stand where A stands.
+        const mySide = game.myPlayerId.value ?? 'A'
+        const bolt = msg.result.boltCell?.[mySide] ?? null
+        audio.play('thunder-crack')
+        audio.duckMusic(300)
+        if ('vibrate' in navigator) navigator.vibrate?.(40)
+        for (const pid of struckDead) playersSystem?.flashDeath(pid)
+        glassSystem?.pulse()
+        // Null on the side the bolt passed over: the thunder still carries, but
+        // there is nothing to show falling on this half of the slab.
+        if (bolt) await lightningSystem?.strike(bolt, terrainState)
+        audio.endHush()
+      }
+
+      // Whatever the sky does, the wind, the water and the verdict still have to
+      // follow: a thrown prelude must never be what strands the round.
+      runStorm().catch(err => console.warn('[storm] the bolt sequence failed', err)).then(() => {
+        if (weather && hasWind(weather.type)) {
+          windSystem?.setDirection(weather.dir)
+          windSystem?.setVisible(true)
+          audio.startWind()
+        }
+        if (weather && hasRain(weather.type)) {
+          rainSystem?.setVisible(true)
+          audio.startRain()
+        }
+
+        if (playersSystem) {
+          const paths = msg.result.windPath as Record<'A' | 'B', { x: number; y: number }[]>
+          if (paths.A.length > 1 || paths.B.length > 1) audio.play('wind-push')
+          // The storm is over once the wind has carried everyone it could and the
+          // water has stopped rising — only then is the round decided out loud.
+          const storm: Promise<unknown>[] = [playersSystem.animateWindPaths(paths, blownAway)]
+          if (floodWait) storm.push(floodWait)
+          Promise.all(storm).then(() => {
+            if (!playersSystem) return
+            playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B, drowned)
+            audio.stopWeather()
+            if (deaths.length > 0) audio.play('death')
+            concludeStorm()
+          })
+        } else {
+          audio.stopWeather()
+          concludeStorm()
+        }
+      })
       break
     }
     case 'round:start': {
@@ -1254,6 +1341,7 @@ let animating = false
 let waterSystem: ReturnType<typeof createWaterSystem> | null = null
 let windSystem: ReturnType<typeof createWindSystem> | null = null
 let rainSystem: ReturnType<typeof createRainSystem> | null = null
+let lightningSystem: ReturnType<typeof createLightningSystem> | null = null
 /** Water that came down and still has to be built, in cell-depths. */
 let pendingWaterVolume: number | null = null
 /** Set while the storm waits for the hollows to finish filling. */
@@ -1408,6 +1496,8 @@ onMounted(() => {
   windSystem = wind
   const rain = createRainSystem(scene, terrainState)
   rainSystem = rain
+  const lightning = createLightningSystem(scene)
+  lightningSystem = lightning
   const compass = createCompassSystem(scene)
   const preview = createPreviewSystem(scene, terrainState)
   previewSystem = preview
@@ -1722,6 +1812,7 @@ onMounted(() => {
     water.update(dt)
     wind.update(dt)
     rain.update(dt)
+    lightning.update(dt)
     players.update(dt)
     nameplates.update(dt)
     interaction.update(dt)
@@ -1788,6 +1879,7 @@ onMounted(() => {
     water.dispose()
     wind.dispose()
     rain.dispose()
+    lightning.dispose()
     compass.dispose()
     players.dispose()
     nameplates.dispose()
@@ -1805,6 +1897,7 @@ onMounted(() => {
     waterSystem = null
     windSystem = null
     rainSystem = null
+    lightningSystem = null
     lobbyDemo?.stop()
     lobbyDemo = null
     lobbyDemoActive = false
