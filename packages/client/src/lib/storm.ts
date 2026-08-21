@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { HALF } from './constants'
 import type { WindDir } from '@wheee/shared'
 
 /* ── Constants ──────────────────────────────────────────── */
@@ -22,8 +23,39 @@ const SPREAD_MAX = 1.15            // swollen mass at intensity 1
 
 const DISCHARGE_RATES = { cataclysm: 1 / 1.8, exhale: 1 / 2.0, fast: 1 / 0.3 }
 
-// @ts-ignore - used in Task 2/4
 const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
+const FRONT_COUNT = 400
+const FRONT_FAR = HALF * 3            // far horizon distance at intensity 0
+const FRONT_NEAR = HALF * 1.15        // just beyond the board edge at tick 5 (intensity 1)
+const FRONT_HEIGHT = 9
+const FRONT_JITTER = HALF * 0.08      // per-particle radial jitter amplitude
+const SWEEP_MS = 1200
+const SWEEP_TARGET = -HALF * 1.2      // across and past the board
+
+interface FrontParticle {
+  arcT: number         // slot along the arc, -1..1 (scaled by the dome's current spread)
+  jitterPhase: number
+  jitterAmp: number
+  height: number
+  bobPhase: number
+  bobSpeed: number
+}
+
+function makeFrontParticles(): FrontParticle[] {
+  const arr: FrontParticle[] = []
+  for (let i = 0; i < FRONT_COUNT; i++) {
+    arr.push({
+      arcT: Math.random() * 2 - 1,
+      jitterPhase: Math.random() * Math.PI * 2,
+      jitterAmp: Math.random() * FRONT_JITTER,
+      height: Math.random() * FRONT_HEIGHT,
+      bobPhase: Math.random() * Math.PI * 2,
+      bobSpeed: 0.3 + Math.random() * 0.4,
+    })
+  }
+  return arr
+}
 
 export function createStormSystem(scene: THREE.Scene) {
   /* ── Dome ── */
@@ -68,6 +100,24 @@ export function createStormSystem(scene: THREE.Scene) {
   dome.renderOrder = -1
   scene.add(dome)
 
+  /* ── Front curtain ── */
+  const frontParticles = makeFrontParticles()
+  const frontPositions = new Float32Array(FRONT_COUNT * 3)
+  const frontGeo = new THREE.BufferGeometry()
+  frontGeo.setAttribute('position', new THREE.BufferAttribute(frontPositions, 3))
+  const frontPosAttr = frontGeo.getAttribute('position') as THREE.BufferAttribute
+  const frontMat = new THREE.PointsMaterial({
+    color: 0xb8a9e6,
+    size: 1.6,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })
+  const front = new THREE.Points(frontGeo, frontMat)
+  scene.add(front)
+
   /* ── State ── */
   let candidates: WindDir[] = []
   let vaneBroken = false
@@ -81,6 +131,12 @@ export function createStormSystem(scene: THREE.Scene) {
   let intensity = 0                 // eased toward progress, or drained by discharge
   let discharging: keyof typeof DISCHARGE_RATES | null = null
   let sleeping = true               // true while intensity === 0 and target === 0
+
+  let frontDist = FRONT_FAR          // curtain center distance, frozen while halted
+  let frontTime = 0                  // clock for jitter/bob animation
+  let sweepOverride: number | null = null   // takes precedence over the intensity-derived distance
+  let sweepToken = 0
+  let halted = false
 
   function shortestArc(from: number, to: number): number {
     let d = to - from
@@ -99,6 +155,12 @@ export function createStormSystem(scene: THREE.Scene) {
     return a + shortestArc(a, b) * t
   }
 
+  function dischargeImpl(mode: 'cataclysm' | 'exhale' | 'fast') {
+    discharging = mode
+    progress = 0
+    halted = false
+  }
+
   return {
     setForecast(c: WindDir[], broken: boolean, stormy: boolean) {
       candidates = [...c]
@@ -112,14 +174,35 @@ export function createStormSystem(scene: THREE.Scene) {
       progress = Math.max(0, Math.min(1, t))
       discharging = null
     },
-    discharge(mode: 'cataclysm' | 'exhale' | 'fast') {
-      discharging = mode
-      progress = 0
-    },
+    discharge: dischargeImpl,
     setTremor(_active: boolean) { /* Task 4 */ },
     getCameraOffset() { return new THREE.Vector3() },  // Task 4
-    sweep(_dir: WindDir) { return Promise.resolve() }, // Task 2
-    halt() { /* Task 2 */ },
+    sweep(dir: WindDir): Promise<void> {
+      if (REDUCED || halted) {
+        // reduced motion (or an already-halted front): cross-fade out instead of marching
+        dischargeImpl('cataclysm')
+        return Promise.resolve()
+      }
+      const token = ++sweepToken
+      const from = frontDist
+      const to = SWEEP_TARGET
+      const started = performance.now()
+      azVel = 0
+      candidates = [dir]              // the storm commits to its real direction
+      return new Promise((resolve) => {
+        const step = () => {
+          if (token !== sweepToken) { sweepOverride = null; resolve(); return }
+          const t = Math.min(1, (performance.now() - started) / SWEEP_MS)
+          sweepOverride = from + (to - from) * (t * t)   // accelerating crossing
+          if (t >= 1) { sweepOverride = null; resolve() } else requestAnimationFrame(step)
+        }
+        requestAnimationFrame(step)
+      })
+    },
+    halt() {                          // lightning hush: the front freezes mid-air
+      halted = true
+      sweepToken++                    // cancels any sweep in flight (its promise resolves)
+    },
     update(dt: number) {
       oscT += dt
       if (vaneBroken) {
@@ -145,16 +228,41 @@ export function createStormSystem(scene: THREE.Scene) {
       }
       sleeping = intensity < 0.002 && progress === 0 && !discharging
 
+      const spread = SPREAD_MIN + (SPREAD_MAX - SPREAD_MIN) * intensity
+
       const u = mat.uniforms
       u.uAzimuth.value = azimuth
       u.uIntensity.value = intensity
-      u.uSpread.value = SPREAD_MIN + (SPREAD_MAX - SPREAD_MIN) * intensity
+      u.uSpread.value = spread
       u.uZenith.value += (zenithTarget - u.uZenith.value) * Math.min(1, dt * 2)
+
+      // curtain center distance: intensity-derived, unless a sweep is overriding it,
+      // unless the front is halted (frozen — no more advancing either way)
+      if (sweepOverride !== null) frontDist = sweepOverride
+      else if (!halted) frontDist = FRONT_FAR - (FRONT_FAR - FRONT_NEAR) * intensity
+
+      frontTime += dt
+      for (let i = 0; i < FRONT_COUNT; i++) {
+        const p = frontParticles[i]
+        const angle = azimuth + p.arcT * spread
+        const jitter = Math.sin(frontTime * 0.5 + p.jitterPhase) * p.jitterAmp
+        const dist = frontDist + jitter
+        const bob = Math.sin(frontTime * p.bobSpeed + p.bobPhase) * 0.6
+        frontPositions[i * 3] = Math.sin(angle) * dist
+        frontPositions[i * 3 + 1] = p.height + bob
+        frontPositions[i * 3 + 2] = Math.cos(angle) * dist
+      }
+      frontPosAttr.needsUpdate = true
+      // hidden entirely in zenith mode (calm forecast: nothing comes along the ground)
+      frontMat.opacity = 0.35 * intensity * (1 - u.uZenith.value)
     },
     dispose() {
       scene.remove(dome)
       geo.dispose()
       mat.dispose()
+      scene.remove(front)
+      frontGeo.dispose()
+      frontMat.dispose()
     },
   }
 }
