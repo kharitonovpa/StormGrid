@@ -3,6 +3,7 @@ import { chooseBotAction } from '../bot.js'
 import { GameEngine } from '../GameEngine.js'
 import { createInitialState, cloneState } from '../board.js'
 import { applyTick } from '../tick.js'
+import { resolveLightning } from '../lightning.js'
 import { resolveWind } from '../wind.js'
 import { resolveRain } from '../rain.js'
 import { SPAWN_PAIRS, TICKS_PER_ROUND, WIND_DIRS } from '@wheee/shared'
@@ -216,26 +217,28 @@ describe('chooseBotAction — full engine round', () => {
 })
 
 describe('chooseBotAction — lightning safety', () => {
-  it('under certain lightning the bot never ends the tick on a hill', () => {
-    // Bot as A on a +1 hill, forecast promises lightning, no wind, no rain.
+  it('under certain lightning the bot never ends the tick exposed', () => {
+    // Bot as A on a +1 hill, forecast promises certain lightning, no wind, no rain.
+    // Bot can survive by: moving off the hill, lowering the hill under itself, or making the opponent the taller target.
     const s = createInitialState({ A: { x: 3, y: 3 }, B: { x: 5, y: 5 } })
     s.board[3][3].height = 1
-    s.board[6][6].height = 1 // a rod exists — stepping off is fully safe
+    s.board[6][6].height = 1
     s.forecast = {
       windCandidates: [],
       rainProbability: 0,
       lightningProbability: 1.0,
       instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } },
     }
+
     for (let i = 0; i < 50; i++) {
       const a = chooseBotAction(s, 'A', { skip: 0, blunder: 0, hunt: false })
-      // Surviving choices: move off the hill, or lower the hill under itself.
+      // Standing still dies, so a considered bot must act
       expect(a).not.toBeNull()
-      if (a!.kind === 'move') {
-        // any move leaves (3,3), fine
-      } else {
-        expect(a).toEqual({ kind: 'lower', x: 3, y: 3 })
-      }
+
+      // Apply the action and verify the bot survives lightning
+      const after = applyTick(s, a ? { A: a } : {}).state
+      resolveLightning(after)
+      expect(after.players.A.alive).toBe(true)
     }
   })
 })
