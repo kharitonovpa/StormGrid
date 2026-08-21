@@ -155,7 +155,7 @@ export class Room {
     this.id = id
     this.practice = opts?.practice ?? false
     this.practiceTickTimeoutMs = opts?.practiceTickTimeoutMs ?? PRACTICE_TICK_TIMEOUT_MS
-    this.engine = new GameEngine()
+    this.engine = new GameEngine(undefined, this.practice)
     this.callbacks = callbacks
   }
 

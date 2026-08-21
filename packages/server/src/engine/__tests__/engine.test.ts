@@ -256,8 +256,11 @@ describe('GameEngine — lightning', () => {
     const r = engine.executeWeather()
     expect(r.deathCauses.A).toEqual({ type: 'lightning' })
     expect(r.deaths).toEqual(['A'])
-    // storm broke off: no wind path beyond standing cells, no water
+    // storm broke off: no wind path beyond standing cells, no water, and
+    // resolveWind never ran at all (windSpared stays at its unset default).
     expect(r.windPath.A.length).toBeLessThanOrEqual(1)
+    expect(r.windPath.B.length).toBeLessThanOrEqual(1)
+    expect(r.windSpared).toBeNull()
     expect(r.waterVolume).toBe(0)
     expect(r.boltCell.A).toEqual({ x: 3, y: 5 })
     expect(r.state.winner).toBe('B')
@@ -272,5 +275,39 @@ describe('GameEngine — lightning', () => {
     const r = engine.executeWeather()
     expect(r.boltCell).toEqual({ A: null, B: null })
     expect(r.lightningSpared).toBeNull()
+  })
+})
+
+describe('GameEngine — practice mode never draws lightning', () => {
+  it('a practice engine at round 5+ never produces a lightning-tagged forecast, across ~300 samples', () => {
+    // The owner ruled: practice/tutorial matches must never see lightning.
+    // The live schedule (WEATHER_SCHEDULE) lets lightning types in from round 3
+    // and escalates further past round 6 — sample well past that boundary.
+    // lightningProbability is 0 or 0.25 for a non-lightning decision and 0.75
+    // or 1.0 for a lightning one (see generateForecast), so < 0.5 cleanly
+    // discriminates without widening GameEngine's public API.
+    for (let sample = 0; sample < 300; sample++) {
+      const engine = new GameEngine(FIXED_SPAWN, true)
+      // Force the round counter past the point lightning would normally enter
+      // — practice must clamp the schedule regardless of the real round.
+      ;(engine as unknown as { state: { round: number } }).state.round = 5 + (sample % 20)
+      const s = engine.startRound()
+      expect(s.forecast.lightningProbability).toBeLessThan(0.5)
+    }
+  })
+
+  it('a non-practice engine at the same rounds does eventually draw lightning', () => {
+    // Sanity check for the test above: without the practice flag, the same
+    // round-forcing trick does produce lightning-tagged forecasts sometimes —
+    // proving the practice test isn't just vacuously true because rounds
+    // don't reach the lightning tiers.
+    let sawLightning = false
+    for (let sample = 0; sample < 300 && !sawLightning; sample++) {
+      const engine = new GameEngine(FIXED_SPAWN)
+      ;(engine as unknown as { state: { round: number } }).state.round = 5 + (sample % 20)
+      const s = engine.startRound()
+      if (s.forecast.lightningProbability >= 0.5) sawLightning = true
+    }
+    expect(sawLightning).toBe(true)
   })
 })

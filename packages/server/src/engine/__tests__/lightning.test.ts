@@ -114,4 +114,28 @@ describe('resolveLightning', () => {
     expect(r.boltCell.B).toEqual({ x: 5, y: 5 })
     expect(s.players.A.alive).toBe(true)
   })
+
+  test('margin arbitration is relative, not absolute: the smaller crown can still die', () => {
+    // Canonical board all -1 except (1,1) = 0. A at (1,1), B at (5,5).
+    // A: crown = h(1,1)*1 + 0.5 = 0 + 0.5 = 0.5; every other cell is -1 canonical
+    //    (sign +1) = -1, so maxOtherHeight = -1 → margin = 0.5 - (-1) = 1.5.
+    // B: crown = h(5,5)*-1 + 0.5 = (-1 * -1) + 0.5 = 1 + 0.5 = 1.5; every other
+    //    cell is -1 canonical except (1,1)=0, negated (sign -1) gives 1 and 0
+    //    respectively, so maxOtherHeight = 1 → margin = 1.5 - 1 = 0.5.
+    // A's absolute crown (0.5) is smaller than B's (1.5) — the rejected
+    // "absolute crown" rule would kill B. The ruled ("relative margin") rule
+    // instead kills A, since A's crown protrudes furthest above its own world
+    // (margin 1.5 > 0.5).
+    const heights: [number, number, Height][] = []
+    for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) heights.push([x, y, -1])
+    heights.push([1, 1, 0])
+    const s = makeState([1, 1], [5, 5], heights)
+    const r = resolveLightning(s)
+    expect(r.deaths).toEqual(['A'])
+    expect(r.spared).toBe('B')
+    expect(r.boltCell.A).toEqual({ x: 1, y: 1 })
+    expect(r.boltCell.B).toBeNull()
+    expect(s.players.A.alive).toBe(false)
+    expect(s.players.B.alive).toBe(true)
+  })
 })

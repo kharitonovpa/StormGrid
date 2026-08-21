@@ -22,9 +22,12 @@ import type { WeatherDecision } from './forecast.js'
 export class GameEngine {
   private state: GameState
   private weatherDecision: WeatherDecision | null = null
+  /** Practice/tutorial matches must never see lightning — owner ruling. */
+  private readonly practice: boolean
 
-  constructor(spawn?: typeof SPAWN_PAIRS[number]) {
+  constructor(spawn?: typeof SPAWN_PAIRS[number], practice = false) {
     this.state = createInitialState(spawn)
+    this.practice = practice
   }
 
   /** Set character choices before the game starts. */
@@ -35,7 +38,11 @@ export class GameEngine {
 
   /** Start round: generate weather decision + forecast, set phase. */
   startRound(): GameState {
-    this.weatherDecision = randomWeatherDecision(this.state.round)
+    // Practice matches must never see lightning: clamp the schedule round to
+    // the pre-lightning tier no matter how far the tutorial's round counter
+    // has climbed.
+    const scheduleRound = this.practice ? Math.min(this.state.round, 2) : this.state.round
+    this.weatherDecision = randomWeatherDecision(scheduleRound)
     this.state.forecast = generateForecast(this.weatherDecision)
     this.state.phase = 'forecast'
     this.state.tick = 0
