@@ -602,14 +602,15 @@ async function startReplay(roomId: string) {
   replayPlayer.value = createReplayPlayer(data.frames, (frame, _index, animate) => {
     terrainState.applyBoardState(frame.state.board)
     startAnimating()
+    // Every frame invalidates the last one's storm, animated or not: stepping back
+    // and restarting both land in the immediate branch, and a bolt still flashing
+    // from the frame they replaced must not bring its gale along afterwards.
+    const gen = ++replayStormGeneration
 
     if (animate && frame.weather && playersSystem) {
       const weather = frame.state.weather
       const paths = frame.weather.windPath as Record<'A' | 'B', { x: number; y: number }[]>
       const deaths = frame.weather.deaths as ('A' | 'B')[]
-      // A scrub can land on the next frame while the last bolt is still flashing;
-      // the gale that belonged to the abandoned frame must not arrive late.
-      const gen = ++replayStormGeneration
 
       const animateWind = () => {
         if (gen !== replayStormGeneration || !playersSystem) return
@@ -644,6 +645,9 @@ function exitReplay() {
   replayPlayer.value?.dispose()
   replayPlayer.value = null
   replayMode.value = false
+  // A bolt caught mid-flash owns no frame any more — its gale must not blow
+  // through the lobby and move the players about once the replay is closed.
+  replayStormGeneration++
 
   if (playersSystem) {
     playersSystem.playerA.resetAppearance()
@@ -979,7 +983,7 @@ const replayMode = ref(false)
 const replayPlayer = shallowRef<ReplayPlayer | null>(null)
 let lastRoomId: string | null = null
 let replayGeneration = 0
-/** Bumped per animated replay frame, so an abandoned storm cannot finish late. */
+/** Bumped on every replay frame and on exit, so an abandoned storm cannot finish late. */
 let replayStormGeneration = 0
 
 function selectOption(action: MenuAction) {
