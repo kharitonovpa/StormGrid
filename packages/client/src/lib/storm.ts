@@ -33,6 +33,8 @@ const FRONT_JITTER = HALF * 0.08      // per-particle radial jitter amplitude
 const SWEEP_MS = 1200
 const SWEEP_TARGET = -HALF * 1.2      // across and past the board
 const HOLD_RELEASE = 0.02             // intensity at which a swept front may leave its parking spot
+const REENTRY_TAU = 0.35              // seconds; how fast a dropped front walks back to where the mass wants it
+const REENTRY_EPS = HALF * 0.05       // close enough to stop easing and track the mass exactly
 
 interface FrontParticle {
   arcT: number         // slot along the arc, -1..1 (scaled by the dome's current spread)
@@ -144,12 +146,25 @@ export function createStormSystem(scene: THREE.Scene) {
    * not pop back to the horizon while it is still bright enough to be seen.
    */
   let sweepHold = false
+  /**
+   * Set whenever the override is dropped: the curtain walks back to wherever the
+   * mass wants it instead of teleporting there. On the ordinary path it is dropped
+   * at an invisible intensity and this costs nothing; on an interrupted one (a
+   * round:start landing mid-drain) it is what keeps 400 points from jumping the
+   * width of the world in a single frame.
+   */
+  let reentry = false
 
-  /** Hand the curtain's distance back to the intensity, wherever it is standing. */
-  function releaseSweepHold() {
-    if (!sweepHold) return
+  /** Give the curtain's distance back to the intensity — always eased, never a jump. */
+  function dropOverride() {
     sweepHold = false
     sweepOverride = null
+    reentry = true
+  }
+
+  /** Retire a parked, swept-through front. Nothing parked, nothing to do. */
+  function releaseSweepHold() {
+    if (sweepHold) dropOverride()
   }
 
   function shortestArc(from: number, to: number): number {
@@ -186,6 +201,9 @@ export function createStormSystem(scene: THREE.Scene) {
       // on the horizon and roams at random bearings, telling them nothing.
       zenithTarget = !broken && c.length === 0 && stormy ? 1 : 0
       discharging = null
+      // A newborn storm owns the curtain: whatever the last one swept through is
+      // handed back to the intensity here rather than left parked past the board
+      // for a whole round. Eased, so an interruption mid-drain does not pop.
       releaseSweepHold()
       // A dead sky may snap its azimuth to the newborn storm — invisible at intensity 0.
       if (sleeping && c.length > 0) { azimuth = DIR_AZIMUTH[c[0]]; azVel = 0 }
@@ -193,7 +211,7 @@ export function createStormSystem(scene: THREE.Scene) {
     setProgress(t: number) {
       progress = Math.max(0, Math.min(1, t))
       discharging = null
-      // A storm that is building again owns the curtain's distance; a hold left
+      // A storm that is building again owns the curtain's distance too; a hold left
       // over from the last one would park it past the board for the whole round.
       releaseSweepHold()
     },
@@ -219,7 +237,7 @@ export function createStormSystem(scene: THREE.Scene) {
       vaneBroken = false
       return new Promise((resolve) => {
         const step = () => {
-          if (token !== sweepToken) { sweepHold = false; sweepOverride = null; resolve(); return }
+          if (token !== sweepToken) { dropOverride(); resolve(); return }
           const t = Math.min(1, (performance.now() - started) / SWEEP_MS)
           sweepOverride = from + (to - from) * (t * t)   // accelerating crossing
           if (t >= 1) {
@@ -239,8 +257,9 @@ export function createStormSystem(scene: THREE.Scene) {
       halted = true
       sweepToken++                    // cancels any sweep in flight (its promise resolves)
       // A sweep that already finished has no frame left to run and would keep the
-      // override parked; dropping it here leaves the curtain frozen where the
-      // crossing left it, which is exactly what a halt means.
+      // override parked. Dropping it here leaves the curtain frozen where the
+      // crossing left it — exactly what a halt means — and the discharge that
+      // un-halts it later eases it home rather than snapping it back.
       releaseSweepHold()
     },
     update(dt: number) {
@@ -276,14 +295,22 @@ export function createStormSystem(scene: THREE.Scene) {
       u.uSpread.value = spread
       u.uZenith.value += (zenithTarget - u.uZenith.value) * Math.min(1, dt * 2)
 
-      // A swept-through front is held past the board until it is too faint to be
-      // caught returning; this is the only release on the completed-sweep path.
+      // A swept-through front waits past the board until it is too faint to be
+      // caught returning: the ordinary, invisible end of a crossing.
       if (sweepHold && intensity < HOLD_RELEASE) releaseSweepHold()
 
       // curtain center distance: intensity-derived, unless a sweep is overriding it,
-      // unless the front is halted (frozen — no more advancing either way)
+      // unless the front is halted (frozen — no more advancing either way). A front
+      // that has just been handed back eases home over a few tenths of a second
+      // instead of jumping there, then tracks the mass exactly again.
+      const distTarget = FRONT_FAR - (FRONT_FAR - FRONT_NEAR) * intensity
       if (sweepOverride !== null) frontDist = sweepOverride
-      else if (!halted) frontDist = FRONT_FAR - (FRONT_FAR - FRONT_NEAR) * intensity
+      else if (!halted) {
+        if (reentry) {
+          frontDist += (distTarget - frontDist) * Math.min(1, dt / REENTRY_TAU)
+          if (Math.abs(distTarget - frontDist) < REENTRY_EPS) reentry = false
+        } else frontDist = distTarget
+      }
 
       frontTime += dt
       for (let i = 0; i < FRONT_COUNT; i++) {
