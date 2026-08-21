@@ -28,7 +28,7 @@ function makePracticeRoom(onMatchEnd?: () => void, practiceTickTimeoutMs?: numbe
     onMatchEnd: onMatchEnd
       ? () => onMatchEnd()
       : undefined,
-  }, { practice: true, ...(practiceTickTimeoutMs ? { practiceTickTimeoutMs } : {}) })
+  }, { practice: true, lightningEnabled: false, ...(practiceTickTimeoutMs ? { practiceTickTimeoutMs } : {}) })
 }
 
 describe('Room — practice (tutorial) mode', () => {
@@ -150,7 +150,7 @@ describe('Room — practice (tutorial) mode', () => {
     const room = new Room('practice-dc', {
       onDispose: () => { disposed = true },
       gracePeriodMs: 30_000,
-    }, { practice: true })
+    }, { practice: true, lightningEnabled: false })
     const ws = makeFakeWs()
 
     room.join(ws as any, 'wheat')

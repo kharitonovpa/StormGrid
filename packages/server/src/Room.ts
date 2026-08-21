@@ -102,13 +102,16 @@ export type RoomOpts = {
   practiceTickTimeoutMs?: number
   /**
    * Backward-compat capability handshake: whether every human in this room
-   * declared `caps: ['lightning']` at matchmaking time. Defaults to `true` —
-   * matchmaking is the one place that computes `false` for a mismatched or
-   * old-client pairing; direct Room construction (tests, practice) opts in by
-   * default since the feature already ships end-to-end elsewhere. Practice
-   * always ends up disabled regardless — see `lightningEnabled` below.
+   * declared `caps: ['lightning']` at matchmaking time. Required, not
+   * optional — the field used to default to `true` when omitted, which put
+   * the fail-closed invariant ("an old client never gets lightning") in the
+   * memory of every call site instead of the type system. A room-creation
+   * site that forgets it now fails to compile rather than silently shipping
+   * lightning to an old client. (Room itself still keeps a fail-closed
+   * runtime fallback for the rare direct construction that skips `opts`
+   * entirely — see the constructor.)
    */
-  lightningEnabled?: boolean
+  lightningEnabled: boolean
 }
 
 export class Room {
@@ -170,7 +173,12 @@ export class Room {
     this.id = id
     this.practice = opts?.practice ?? false
     this.practiceTickTimeoutMs = opts?.practiceTickTimeoutMs ?? PRACTICE_TICK_TIMEOUT_MS
-    this.lightningEnabled = !this.practice && (opts?.lightningEnabled ?? true)
+    // Belt-and-suspenders, in two layers: `!this.practice` guards the
+    // tutorial no matter what opts says, and `?? false` is what a caller
+    // gets if it skips `opts` entirely — fail-closed, not fail-open, so a
+    // forgotten wire-up degrades to "no lightning" rather than "lightning
+    // for a client that never declared support for it".
+    this.lightningEnabled = !this.practice && (opts?.lightningEnabled ?? false)
     this.engine = new GameEngine(undefined, this.lightningEnabled)
     this.callbacks = callbacks
   }

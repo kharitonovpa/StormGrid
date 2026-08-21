@@ -424,7 +424,9 @@ const server = Bun.serve<WsData>({
           }
           matchmaking.dequeue(ws)
           const botCharacter = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
-          const room = roomManager.createRoom({ practice: true })
+          // Room forces lightning off for practice regardless, but the field is
+          // required now — spell out the intent rather than leaning on that.
+          const room = roomManager.createRoom({ practice: true, lightningEnabled: false })
           room.join(ws, msg.character, msg.streak)
           room.joinBot(botCharacter)
           break
