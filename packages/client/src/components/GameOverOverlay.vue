@@ -18,6 +18,8 @@ const props = defineProps<{
   windSpared?: PlayerId | null
   /** Player the water released because the other one went under first. */
   rainSpared?: PlayerId | null
+  /** Player spared because the other one stood taller and took the bolt. */
+  lightningSpared?: PlayerId | null
   showRewardedButton?: boolean
   /** A badge streak is about to be wiped and the one rescue is still unspent. */
   canRescueStreak?: boolean
@@ -66,6 +68,7 @@ const subtitle = computed(() => {
     const bCause = causes.B
     if (aCause?.type === 'wind' && bCause?.type === 'wind') return t('gameover.bothBlown')
     if (aCause?.type === 'rain' && bCause?.type === 'rain') return t('gameover.bothDrowned')
+    if (aCause?.type === 'lightning' && bCause?.type === 'lightning') return t('gameover.bothStruck')
     return t('gameover.bothFell')
   }
 
@@ -74,8 +77,10 @@ const subtitle = computed(() => {
     const cause = causes[loserId]
     if (props.windSpared === props.winner) return t('gameover.flewFirst', loserId)
     if (props.rainSpared === props.winner) return t('gameover.drownedFirst', loserId)
+    if (props.lightningSpared === props.winner) return t('gameover.stoodTaller', loserId)
     if (cause?.type === 'wind') return t('gameover.blownOff', loserId, dirLabel(cause.dir))
     if (cause?.type === 'rain') return t('gameover.drowned', loserId)
+    if (cause?.type === 'lightning') return t('gameover.struck', loserId)
     if (cause?.type === 'disconnect') return t('gameover.disconnected', loserId)
     return t('gameover.concluded')
   }
@@ -84,8 +89,10 @@ const subtitle = computed(() => {
     const oppCause = oppId ? causes[oppId] : null
     if (props.windSpared === myId) return t('gameover.opponentFlewFirst')
     if (props.rainSpared === myId) return t('gameover.opponentDrownedFirst')
+    if (props.lightningSpared === myId) return t('gameover.opponentStoodTaller')
     if (oppCause?.type === 'wind') return t('gameover.opponentBlown', dirLabel(oppCause.dir))
     if (oppCause?.type === 'rain') return t('gameover.opponentDrowned')
+    if (oppCause?.type === 'lightning') return t('gameover.opponentStruck')
     if (oppCause?.type === 'disconnect') return t('gameover.opponentDisconnected')
     return t('gameover.stormBends')
   }
@@ -93,8 +100,10 @@ const subtitle = computed(() => {
   const myCause = myId ? causes[myId] : null
   if (props.windSpared === oppId) return t('gameover.youFlewFirst')
   if (props.rainSpared === oppId) return t('gameover.youDrownedFirst')
+  if (props.lightningSpared === oppId) return t('gameover.youStoodTaller')
   if (myCause?.type === 'wind') return t('gameover.youBlown', dirLabel(myCause.dir))
   if (myCause?.type === 'rain') return t('gameover.youDrowned')
+  if (myCause?.type === 'lightning') return t('gameover.youStruck')
   return t('gameover.tryAgain')
 })
 

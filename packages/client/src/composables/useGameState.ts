@@ -106,6 +106,9 @@ export function useGameState() {
   /** Set when both players stood in water but one hollow filled first. */
   const rainSpared = computed<PlayerId | null>(() => weatherResult.value?.rainSpared ?? null)
 
+  /** Set when both players stood exposed but one stood taller and took the bolt. */
+  const lightningSpared = computed<PlayerId | null>(() => weatherResult.value?.lightningSpared ?? null)
+
   const forecast = computed<ForecastData | null>(() => gameState.value?.forecast ?? null)
 
   const myInstrumentsBroken = computed(() => {
@@ -321,6 +324,7 @@ export function useGameState() {
     opponentPlayer,
     windSpared,
     rainSpared,
+    lightningSpared,
     forecast,
     myInstrumentsBroken,
     isWatcher,

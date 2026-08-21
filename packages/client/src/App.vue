@@ -1970,6 +1970,7 @@ onUnmounted(() => {
     :death-causes="game.deathCauses.value"
     :wind-spared="game.windSpared.value"
     :rain-spared="game.rainSpared.value"
+    :lightning-spared="game.lightningSpared.value"
     :show-rewarded-button="hasRewardedAds"
     :can-rescue-streak="streakAtRisk && lostRescuable && hasRewardedAds"
     :streak-badge="streakLabel"
