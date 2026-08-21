@@ -66,6 +66,17 @@ export function getHeight(wx: number, wz: number): number {
   return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz
 }
 
+/**
+ * World-space top centre of a cell — the same x/z a character is placed on in
+ * `player.ts`, so anything aimed at a cell lands on whoever is standing there.
+ * The epsilon lifts it clear of the ground so a bolt tip is not z-fought away.
+ */
+export function cellTopWorld(cx: number, cz: number): THREE.Vector3 {
+  const wx = -HALF + (cx + 0.5) * CELL_SIZE
+  const wz = -HALF + (cz + 0.5) * CELL_SIZE
+  return new THREE.Vector3(wx, getHeight(wx, wz) + 0.05, wz)
+}
+
 // --- Perimeter & mesh rebuild ---
 function buildPerimeter(): number[] {
   const s = SEGMENTS + 1
@@ -330,6 +341,7 @@ export interface TerrainState {
   current: Float32Array[]
   getHeight(wx: number, wz: number): number
   getHeightRaw(wx: number, wz: number): number
+  cellTopWorld(cx: number, cz: number): THREE.Vector3
   rebuildHeightCache(): void
   invalidateHeightCache(): void
   generateTerrain(): void
@@ -355,6 +367,7 @@ export const terrainState: TerrainState = {
   current,
   getHeight,
   getHeightRaw,
+  cellTopWorld,
   rebuildHeightCache,
   invalidateHeightCache,
   generateTerrain,

@@ -43,6 +43,15 @@ const GLASS_GLOW_GAIN = 0.42
 const OPEN_SPEED = 6
 const CLOSE_SPEED = 1.5
 
+/**
+ * A bolt landing lights the slab it landed on, glass or not. The plate goes cold
+ * white for a breath and falls back to whatever glow it was holding — it never
+ * darkens past its resting state.
+ */
+const PULSE_COLOR = 0xcfe4ff
+const PULSE_GAIN = 0.9
+const PULSE_SECONDS = 0.32
+
 /** Patches the terrain material — every face of the slab turns at once. */
 export function createGlassSystem(material: THREE.MeshStandardMaterial) {
   const earthRoughness = material.roughness
@@ -52,21 +61,34 @@ export function createGlassSystem(material: THREE.MeshStandardMaterial) {
   // the middle of the storm.
   material.transparent = true
 
+  const restColor = new THREE.Color(GLASS_GLOW)
+  const flashColor = new THREE.Color(PULSE_COLOR)
+
   let wanted = false
   let open = 0
+  let pulseT = 0
 
   return {
     /** Holds the slab clear until close(). */
     open() { wanted = true },
     close() { wanted = false },
+    /** One strike's worth of light on the plate. */
+    pulse() { pulseT = PULSE_SECONDS },
     update(dt: number) {
       const target = wanted ? 1 : 0
-      if (open === target) return
-      const speed = wanted ? OPEN_SPEED : CLOSE_SPEED
-      open += Math.sign(target - open) * Math.min(Math.abs(target - open), dt * speed)
-      material.opacity = 1 - (1 - GLASS_OPACITY) * open
-      material.roughness = earthRoughness + (GLASS_ROUGHNESS - earthRoughness) * open
-      material.emissiveIntensity = GLASS_GLOW_GAIN * open
+      if (open !== target) {
+        const speed = wanted ? OPEN_SPEED : CLOSE_SPEED
+        open += Math.sign(target - open) * Math.min(Math.abs(target - open), dt * speed)
+        material.opacity = 1 - (1 - GLASS_OPACITY) * open
+        material.roughness = earthRoughness + (GLASS_ROUGHNESS - earthRoughness) * open
+        material.emissiveIntensity = GLASS_GLOW_GAIN * open
+      }
+      if (pulseT > 0) {
+        pulseT = Math.max(0, pulseT - dt)
+        const k = pulseT / PULSE_SECONDS
+        material.emissive.copy(restColor).lerp(flashColor, k)
+        material.emissiveIntensity = GLASS_GLOW_GAIN * open + PULSE_GAIN * k
+      }
     },
     dispose() {
       material.transparent = false

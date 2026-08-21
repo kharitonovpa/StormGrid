@@ -255,6 +255,15 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   const WIND_DEATH_OVERSHOOT = CELL_SIZE * 20
   const TURN_SPEED = 10
 
+  /**
+   * The bolt is over in a few frames, so the body it took has to say what happened
+   * on its own: the crop goes white-hot and eases back to its own colour. Nothing
+   * darkens and nothing chars — the same model is on the board again next round.
+   */
+  const FLASH_DURATION = 0.4
+  const FLASH_INTENSITY = 2.8
+  const FLASH_COLOR = new THREE.Color(0xffffff)
+
   function easeInOut(t: number): number {
     return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
   }
@@ -292,6 +301,55 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     let windT = 0
     let windResolve: (() => void) | null = null
 
+    /** Materials this player owns, with the emissive they rest at. */
+    let flashMats: { mat: THREE.MeshStandardMaterial; color: THREE.Color; intensity: number }[] = []
+    let flashT = 0
+    let ownsMaterials = false
+
+    /**
+     * `getModel` hands out clones that share the cached model's materials, so a
+     * flash on one crop would light every copy of it — the opponent's included.
+     * Each player takes its own copy of whatever it is wearing.
+     */
+    function ownMaterials() {
+      flashMats = []
+      flashT = 0
+      ownsMaterials = true
+      mesh.traverse(child => {
+        const m = child as THREE.Mesh
+        if (!m.isMesh || !m.material) return
+        const shared = Array.isArray(m.material) ? m.material : [m.material]
+        const owned = shared.map(src => {
+          const copy = src.clone()
+          if (copy instanceof THREE.MeshStandardMaterial) {
+            flashMats.push({ mat: copy, color: copy.emissive.clone(), intensity: copy.emissiveIntensity })
+          }
+          return copy
+        })
+        m.material = Array.isArray(m.material) ? owned : owned[0]
+      })
+    }
+
+    /** The copies go with the model that wore them; the cached geometry stays. */
+    function releaseMaterials(root: THREE.Object3D) {
+      if (!ownsMaterials) return
+      root.traverse(child => {
+        const m = child as THREE.Mesh
+        if (!m.isMesh || !m.material) return
+        const mats = Array.isArray(m.material) ? m.material : [m.material]
+        for (const mat of mats) mat.dispose()
+      })
+      ownsMaterials = false
+    }
+
+    function restEmissive() {
+      flashT = 0
+      for (const f of flashMats) {
+        f.mat.emissive.copy(f.color)
+        f.mat.emissiveIntensity = f.intensity
+      }
+    }
+
     function cellWorldPos(cx?: number, cz?: number) {
       const _cx = cx ?? state.cx
       const _cz = cz ?? state.cz
@@ -328,13 +386,19 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         const vis = mesh.visible
         const oldMesh = mesh
         scene.remove(oldMesh)
+        releaseMaterials(oldMesh)
         mesh = getModel(type)
         mesh.position.copy(pos)
         mesh.rotation.y = rot
         mesh.visible = vis
         mesh.scale.set(baseScale, surface === 'top' ? baseScale : -baseScale, baseScale)
         scene.add(mesh)
+        ownMaterials()
         currentCharacter = modelsLoaded() ? type : null
+      },
+      /** Bright white surge easing back over ~400 ms — what the bolt leaves behind. */
+      flash() {
+        flashT = FLASH_DURATION
       },
       moveTo(cx: number, cz: number) {
         targetFacingY = angleTo(state.cx, state.cz, cx, cz)
@@ -363,6 +427,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         windSliding = false
         windDied = false
         if (windResolve) { windResolve(); windResolve = null }
+        restEmissive()
         mesh.visible = true
       },
       startWindSlide(path: { x: number; y: number }[], died: boolean): Promise<void> {
@@ -460,6 +525,15 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
           facingY = targetFacingY
         }
         mesh.rotation.y = facingY
+
+        if (flashT > 0) {
+          flashT = Math.max(0, flashT - dt)
+          const k = flashT / FLASH_DURATION
+          for (const f of flashMats) {
+            f.mat.emissive.copy(f.color).lerp(FLASH_COLOR, k)
+            f.mat.emissiveIntensity = f.intensity + (FLASH_INTENSITY - f.intensity) * k
+          }
+        }
       },
     }
   }
@@ -592,6 +666,10 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     applyPositionsImmediate,
     animateWindPaths,
     setActivePlayer,
+    /** The bolt took this one: a white surge on the crop, no charring left behind. */
+    flashDeath(pid: 'A' | 'B') {
+      (pid === 'A' ? playerA : playerB).flash()
+    },
     isOccupied(cx: number, cz: number) {
       const a = playerA.state, b = playerB.state
       return (a.cx === cx && a.cz === cz) || (b.cx === cx && b.cz === cz)
