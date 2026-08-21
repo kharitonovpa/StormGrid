@@ -215,6 +215,31 @@ describe('chooseBotAction — full engine round', () => {
   })
 })
 
+describe('chooseBotAction — lightning safety', () => {
+  it('under certain lightning the bot never ends the tick on a hill', () => {
+    // Bot as A on a +1 hill, forecast promises lightning, no wind, no rain.
+    const s = createInitialState({ A: { x: 3, y: 3 }, B: { x: 5, y: 5 } })
+    s.board[3][3].height = 1
+    s.board[6][6].height = 1 // a rod exists — stepping off is fully safe
+    s.forecast = {
+      windCandidates: [],
+      rainProbability: 0,
+      lightningProbability: 1.0,
+      instrumentsBroken: { A: { vane: false, barometer: false }, B: { vane: false, barometer: false } },
+    }
+    for (let i = 0; i < 50; i++) {
+      const a = chooseBotAction(s, 'A', { skip: 0, blunder: 0, hunt: false })
+      // Surviving choices: move off the hill, or lower the hill under itself.
+      expect(a).not.toBeNull()
+      if (a!.kind === 'move') {
+        // any move leaves (3,3), fine
+      } else {
+        expect(a).toEqual({ kind: 'lower', x: 3, y: 3 })
+      }
+    }
+  })
+})
+
 describe('botStrengthForStreak — queue difficulty ramp', () => {
   it('gives a fresh player (streak 0) a gentle, non-hunting bot', async () => {
     const { botStrengthForStreak, BOT_MATCH } = await import('../bot.js')

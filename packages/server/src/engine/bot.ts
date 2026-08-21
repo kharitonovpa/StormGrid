@@ -2,6 +2,7 @@ import type { Action, GameState, PlayerId, MoveDir, WindDir } from '@wheee/share
 import { BOARD_SIZE, MOVE_DIRS, WIND_DIRS } from '@wheee/shared'
 import { cloneState, inBounds } from './board.js'
 import { applyTick } from './tick.js'
+import { resolveLightning } from './lightning.js'
 import { resolveWind } from './wind.js'
 import { resolveRain } from './rain.js'
 
@@ -52,7 +53,7 @@ export function botStrengthForStreak(streak: number): BotStrength {
  */
 export const BOT_PRACTICE: BotStrength = { skip: 0.08, blunder: 0.35, hunt: false }
 
-type Weather = { dir: WindDir | null; rain: boolean }
+type Weather = { dir: WindDir | null; rain: boolean; lightning: boolean }
 
 /**
  * What the bot is still allowed to believe. A watcher who broke the vane or the
@@ -61,7 +62,7 @@ type Weather = { dir: WindDir | null; rain: boolean }
  * round — the architect can call rain without wind.
  */
 function possibleWeather(state: GameState, pid: PlayerId): Weather[] {
-  const { windCandidates, rainProbability, instrumentsBroken } = state.forecast
+  const { windCandidates, rainProbability, lightningProbability, instrumentsBroken } = state.forecast
   const broken = instrumentsBroken[pid]
 
   const dirs: readonly (WindDir | null)[] = broken.vane
@@ -69,10 +70,13 @@ function possibleWeather(state: GameState, pid: PlayerId): Weather[] {
     : windCandidates.length > 0 ? windCandidates : [null]
   // The barometer only ever reads 0/0.25 for a dry round and 0.75/1 for a wet one.
   const rains = broken.barometer ? [false, true] : [rainProbability >= 0.5]
+  const lightnings = broken.barometer ? [false, true] : [lightningProbability >= 0.5]
 
   const out: Weather[] = []
   for (const dir of dirs) {
-    for (const rain of rains) out.push({ dir, rain })
+    for (const rain of rains) {
+      for (const lightning of lightnings) out.push({ dir, rain, lightning })
+    }
   }
   return out
 }
@@ -119,9 +123,9 @@ function judge(
   let kill = 0
   for (const w of weather) {
     const s = cloneState(after)
-    const blown = w.dir ? resolveWind(s, w.dir).deaths.length > 0 : false
-    // Same order the round uses: a wind death breaks the storm off before the rain.
-    if (w.rain && !blown) resolveRain(s)
+    const struck = w.lightning ? resolveLightning(s).deaths.length > 0 : false
+    const blown = !struck && w.dir ? resolveWind(s, w.dir).deaths.length > 0 : false
+    if (w.rain && !struck && !blown) resolveRain(s)
     if (s.players[pid].alive) survive++
     if (!s.players[opp].alive) kill++
   }
