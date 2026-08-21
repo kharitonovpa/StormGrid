@@ -242,3 +242,35 @@ describe('GameEngine — architect weather override', () => {
     expect(result.state.weather!.type).toBe('rain')
   })
 })
+
+describe('GameEngine — lightning', () => {
+  it('lightning kill ends the storm before wind and rain', () => {
+    const engine = new GameEngine(FIXED_SPAWN)
+    engine.startRound()
+    engine.setWeatherDecision('wind_rain_lightning', 'S')
+    engine.beginTicking()
+    // A raises their own cell over five ticks is impossible (cap +1) — one raise
+    // under A makes A the tallest crown; B digs a B-side rod (canonical raise = B pit... use lower).
+    engine.submitTick({ A: { kind: 'raise', x: 3, y: 5 }, B: { kind: 'lower', x: 6, y: 6 } })
+    for (let i = 0; i < 4; i++) engine.submitTick({})
+    const r = engine.executeWeather()
+    expect(r.deathCauses.A).toEqual({ type: 'lightning' })
+    expect(r.deaths).toEqual(['A'])
+    // storm broke off: no wind path beyond standing cells, no water
+    expect(r.windPath.A.length).toBeLessThanOrEqual(1)
+    expect(r.waterVolume).toBe(0)
+    expect(r.boltCell.A).toEqual({ x: 3, y: 5 })
+    expect(r.state.winner).toBe('B')
+  })
+
+  it('no lightning in the decision leaves boltCell empty', () => {
+    const engine = new GameEngine(FIXED_SPAWN)
+    engine.startRound()
+    engine.setWeatherDecision('wind', 'N')
+    engine.beginTicking()
+    for (let i = 0; i < 5; i++) engine.submitTick({})
+    const r = engine.executeWeather()
+    expect(r.boltCell).toEqual({ A: null, B: null })
+    expect(r.lightningSpared).toBeNull()
+  })
+})

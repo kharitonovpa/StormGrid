@@ -10,11 +10,12 @@ import type {
   WeatherResult,
   CharacterType,
 } from '@wheee/shared'
-import { BOARD_SIZE, TICKS_PER_ROUND, SPAWN_PAIRS } from '@wheee/shared'
+import { BOARD_SIZE, TICKS_PER_ROUND, SPAWN_PAIRS, hasWind, hasRain, hasLightning } from '@wheee/shared'
 import { createInitialState, cloneState } from './board.js'
 import { applyTick } from './tick.js'
 import { resolveWind } from './wind.js'
 import { resolveRain } from './rain.js'
+import { resolveLightning } from './lightning.js'
 import { generateForecast, randomWeatherDecision } from './forecast.js'
 import type { WeatherDecision } from './forecast.js'
 
@@ -94,8 +95,20 @@ export class GameEngine {
     let floodedCellsB: { x: number; y: number }[] = []
     let rainSpared: PlayerId | null = null
     let waterVolume = 0
+    let boltCell: Record<PlayerId, { x: number; y: number } | null> = { A: null, B: null }
+    let lightningSpared: PlayerId | null = null
 
-    if (decision.type === 'wind' || decision.type === 'wind_rain') {
+    if (hasLightning(decision.type)) {
+      const lr = resolveLightning(this.state)
+      deaths.push(...lr.deaths)
+      Object.assign(deathCauses, lr.deathCauses)
+      boltCell = lr.boltCell
+      lightningSpared = lr.spared
+    }
+
+    // The storm breaks off on the first death: a bolt that took someone ends
+    // the round before the gale, exactly as the gale ends it before the rain.
+    if (hasWind(decision.type) && deaths.length === 0) {
       const wr = resolveWind(this.state, decision.dir)
       deaths.push(...wr.deaths)
       Object.assign(deathCauses, wr.deathCauses)
@@ -103,9 +116,7 @@ export class GameEngine {
       windSpared = wr.spared
     }
 
-    // The storm breaks off on the first death: once the wind has taken someone,
-    // the round is decided and the rain never comes down.
-    const rains = (decision.type === 'rain' || decision.type === 'wind_rain') && deaths.length === 0
+    const rains = hasRain(decision.type) && deaths.length === 0
 
     if (rains) {
       const rr = resolveRain(this.state)
@@ -133,8 +144,8 @@ export class GameEngine {
       floodedCellsB,
       rainSpared,
       waterVolume,
-      boltCell: { A: null, B: null },
-      lightningSpared: null,
+      boltCell,
+      lightningSpared,
     }
   }
 

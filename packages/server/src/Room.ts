@@ -752,6 +752,7 @@ export class Room {
         deaths: result.deaths,
         windPath: result.windPath as Record<PlayerId, { x: number; y: number }[]>,
         floodedCells: [...result.floodedCells, ...result.floodedCellsB],
+        boltCell: result.boltCell,
       },
     })
     this.sendEach((pid) => ({ type: 'weather:result', result: resultForPlayer(result, pid) }))
