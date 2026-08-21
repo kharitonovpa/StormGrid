@@ -48,13 +48,24 @@ const weatherTypes = computed(() => [
   { id: 'wind' as WeatherType, label: t('architect.wind'), icon: '💨' },
   { id: 'wind_rain' as WeatherType, label: t('architect.storm'), icon: '⛈' },
   { id: 'rain' as WeatherType, label: t('architect.rain'), icon: '🌧' },
+  { id: 'lightning' as WeatherType, label: t('architect.lightning'), icon: '🌩' },
 ])
+
+const addLightning = ref(false)
+
+const COMBINE: Partial<Record<WeatherType, WeatherType>> = {
+  wind: 'wind_lightning',
+  wind_rain: 'wind_rain_lightning',
+  rain: 'rain_lightning',
+}
 
 const directions: WindDir[] = ['N', 'E', 'S', 'W']
 
 function confirmWeather() {
   if (props.weatherSubmitted) return
-  emit('setWeather', weatherType.value, windDir.value)
+  const base = weatherType.value
+  const finalType = addLightning.value ? (COMBINE[base] ?? base) : base
+  emit('setWeather', finalType, windDir.value)
 }
 
 function selectBonus(type: BonusType) {
@@ -93,6 +104,15 @@ defineExpose({ startCountdown, resetBonusState })
           <span class="ah-wt-label">{{ wt.label }}</span>
         </button>
       </div>
+
+      <button
+        class="ah-lightning-toggle"
+        :class="{ active: addLightning }"
+        :disabled="weatherType === 'lightning'"
+        @click="addLightning = !addLightning"
+      >
+        ⚡ {{ t('architect.addLightning') }}
+      </button>
 
       <div class="ah-compass">
         <button
@@ -228,6 +248,42 @@ defineExpose({ startCountdown, resetBonusState })
 }
 
 .ah-wt.active .ah-wt-label { opacity: 0.9; }
+
+/* ── Lightning Toggle ── */
+
+.ah-lightning-toggle {
+  display: block;
+  width: 100%;
+  padding: 6px 0;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(180, 170, 200, 0.5);
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ah-lightning-toggle:hover:not(:disabled) {
+  background: rgba(160, 120, 220, 0.08);
+  color: rgba(200, 180, 230, 0.8);
+}
+
+.ah-lightning-toggle.active {
+  background: rgba(220, 200, 100, 0.14);
+  color: rgba(240, 220, 140, 0.95);
+  box-shadow: 0 0 14px rgba(220, 200, 100, 0.12);
+}
+
+.ah-lightning-toggle:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
 
 /* ── Compass Direction Picker ── */
 
@@ -378,6 +434,7 @@ defineExpose({ startCountdown, resetBonusState })
   .ah-wt-label { font-size: 9px; }
   .ah-dir { width: 44px; height: 44px; font-size: 12px; }
   .ah-confirm { min-height: 44px; font-size: 12px; }
+  .ah-lightning-toggle { min-height: 36px; font-size: 11px; }
   .ah-bonus { padding: 8px 10px 4px; }
   .ah-bonus-label { font-size: 9px; }
   .ah-hint { font-size: 9px; }

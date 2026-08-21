@@ -168,6 +168,33 @@ describe('architect — set weather', () => {
     p2.ws.close()
     arch.ws.close()
   }, 20_000)
+
+  it('architect can order a dry thunderstorm', async () => {
+    const { p1, p2, arch } = await setupMatchWithArchitect()
+
+    await waitForMessage(arch.messages, 'architect:prompt')
+
+    const beforeP1 = p1.messages.length
+
+    send(arch.ws, {
+      type: 'architect:set_weather',
+      weatherType: 'wind_lightning',
+      dir: 'E',
+    })
+
+    await sleep(200)
+
+    const roundUpdate = await waitForMessageFrom(p1.messages, 'round:start', beforeP1, 5_000)
+    expect(roundUpdate.type).toBe('round:start')
+    if (roundUpdate.type === 'round:start') {
+      expect(roundUpdate.state.forecast.lightningProbability).toBeGreaterThanOrEqual(0.5)
+      expect(roundUpdate.state.forecast.windCandidates).toContain('E')
+    }
+
+    p1.ws.close()
+    p2.ws.close()
+    arch.ws.close()
+  }, 20_000)
 })
 
 describe('architect — place bonus', () => {
