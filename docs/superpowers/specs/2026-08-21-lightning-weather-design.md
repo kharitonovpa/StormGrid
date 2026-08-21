@@ -110,9 +110,11 @@ match on type move to the predicates as they're touched.
 
 `DeathCause` gains `{ type: 'lightning' }`. `WeatherResult` gains
 `boltCell: Record<PlayerId, {x,y} | null>` — where the bolt landed on each side (the
-player's cell on a kill, the absorbing rod otherwise), for rendering. Rod pick when
-several cells tie as highest: nearest to the player, then lowest (y, x) —
-deterministic for replays.
+player's cell on a kill, the absorbing rod otherwise), for rendering — and
+`lightningSpared: PlayerId | null`, mirroring `windSpared`/`rainSpared`: the player
+the bolt passed over because the other crown stood taller. Rod pick when several
+cells tie as highest: nearest to the player, then lowest (y, x) — deterministic for
+replays.
 
 ## Engine & bot
 
@@ -186,7 +188,21 @@ Zero-asset tricks that carry the punch:
 - Tutorial: unchanged (rounds 1–2 have no lightning; the practice bot keeps
   `BOT_PRACTICE`). The «How to play» copy gains one line: «Гроза бьёт в самую высокую
   точку — не будь ею.»
-- Game-over screen: lightning death cause text EN/RU.
+- **Game-over screen** (`GameOverOverlay.vue` `subtitle` + i18n EN/RU): the cause
+  system is per-perspective — every branch that handles wind/rain gets a lightning
+  sibling, none may fall through to the generic text:
+  - loser: `gameover.youStruck` — "Lightning found you — the tallest point around" /
+    «Молния нашла тебя — самую высокую точку в округе»
+  - winner: `gameover.opponentStruck` — "Lightning found the opponent" / «Молния нашла
+    соперника»
+  - spectator: `gameover.struck` — "{0} struck by lightning" / «{0} поражён молнией»
+  - draw (equal crowns): `gameover.bothStruck` — "One bolt, two equal crowns" /
+    «Один разряд — две равные макушки»
+  - tie-break via `lightningSpared` (both exposed, taller crown died), mirroring the
+    flewFirst/drownedFirst trio: `gameover.youStoodTaller`, `gameover.opponentStoodTaller`,
+    `gameover.stoodTaller` — "Both stood exposed — {the taller one} took the bolt".
+  - Wire `lightningSpared` through `useGameState.ts` → `App.vue` → the overlay props,
+    exactly as `windSpared`/`rainSpared` travel today.
 
 ## Non-goals / deferred
 
@@ -206,7 +222,8 @@ Zero-asset tricks that carry the punch:
   anywhere saves a 0-level player; +1 stander dies through any rod; tick-5 undercut
   kills; both exposed → higher crown dies, storm stops; equal crowns → draw;
   lightning kill skips wind and rain; per-side resolution for player B (negated
-  heights); deterministic rod pick.
+  heights); deterministic rod pick; `lightningSpared` set on the taller-crown
+  tie-break and null otherwise; `deathCauses` carry `{type:'lightning'}`.
 - Bot sanity: under a lightning-certain forecast the full-strength bot never ends a
   tick standing on +1 and builds/keeps a rod when at 0.
 - ws suite: new weather types over the wire, architect set_weather with lightning,
