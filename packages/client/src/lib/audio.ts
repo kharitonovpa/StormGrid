@@ -167,6 +167,11 @@ export function createAudioSystem() {
   const activeLoops = new Set<SoundId>()
   const pendingTimers = new Set<ReturnType<typeof setTimeout>>()
   let sceneTimers: ReturnType<typeof setTimeout>[] = []
+  // A fadeOut's h.stop() runs id-less, so it stops every instance of that Howl —
+  // if anything restarts the same loop before this timer lands, a stray stop
+  // would silence the fresh instance too. Tracked per id so a restart can
+  // cancel the stop it would otherwise be run over by.
+  const pendingStops = new Map<SoundId, ReturnType<typeof setTimeout>>()
 
   function safeTimeout(fn: () => void, ms: number) {
     const id = setTimeout(() => {
@@ -217,6 +222,15 @@ export function createAudioSystem() {
 
   // ------ Loop management ------
 
+  /** Cancel a fadeOut's pending id-less stop for `id`, if one is scheduled. */
+  function cancelPendingStop(id: SoundId) {
+    const t = pendingStops.get(id)
+    if (t === undefined) return
+    clearTimeout(t)
+    pendingTimers.delete(t)
+    pendingStops.delete(id)
+  }
+
   function fadeIn(id: SoundId, duration = 800) {
     if (disposed) return
     const h = howls.get(id)!
@@ -224,9 +238,16 @@ export function createAudioSystem() {
     const target = d.baseVolume * layerGain(d.layer)
 
     if (h.state() === 'unloaded') h.load()
+    // A restart must never land under a stop scheduled by an earlier fadeOut —
+    // that stop is id-less and would silence this fresh instance right along
+    // with the one it was meant for.
+    cancelPendingStop(id)
 
-    if (activeLoops.has(id) && h.playing()) {
+    if (h.playing()) {
+      // Still sounding (mid fade-out, most likely): reuse the instance rather
+      // than layering a second one on top of it.
       h.fade(h.volume() as number, target, duration)
+      activeLoops.add(id)
       return
     }
 
@@ -240,12 +261,15 @@ export function createAudioSystem() {
     const h = howls.get(id)
     if (!h || !h.playing()) {
       activeLoops.delete(id)
+      cancelPendingStop(id)
       return
     }
     const cur = h.volume() as number
     h.fade(cur, 0, duration)
     activeLoops.delete(id)
-    safeTimeout(() => { h.stop() }, duration + 50)
+    cancelPendingStop(id)
+    const timer = safeTimeout(() => { h.stop(); pendingStops.delete(id) }, duration + 50)
+    pendingStops.set(id, timer)
   }
 
   function fadeOutLayer(layer: 'ambient' | 'music' | 'sfx', duration = 600) {
@@ -315,8 +339,10 @@ export function createAudioSystem() {
     if (bedLevel > 0) {
       if (!activeLoops.has('wind-loop')) {
         if (h.state() === 'unloaded') h.load()
-        h.volume(0)
-        h.play()
+        // Same hazard as fadeIn: a fadeOut's pending id-less stop must not be
+        // left free to land on the instance we are about to reuse or start.
+        cancelPendingStop('wind-loop')
+        if (!h.playing()) { h.volume(0); h.play() }
         activeLoops.add('wind-loop')
         bedOwned = true
       }
@@ -458,6 +484,7 @@ export function createAudioSystem() {
     cancelSceneTimers()
     for (const id of pendingTimers) clearTimeout(id)
     pendingTimers.clear()
+    pendingStops.clear()
     for (const h of howls.values()) h.unload()
     howls.clear()
     activeLoops.clear()
