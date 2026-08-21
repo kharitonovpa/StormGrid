@@ -39,6 +39,7 @@ export function generateForecast(decision: WeatherDecision): ForecastData {
   return {
     windCandidates,
     rainProbability,
+    lightningProbability: 0,
     instrumentsBroken: {
       A: { vane: false, barometer: false },
       B: { vane: false, barometer: false },

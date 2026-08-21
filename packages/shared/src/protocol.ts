@@ -111,6 +111,7 @@ export type ReplayFrame = {
     deaths: PlayerId[]
     windPath: Record<PlayerId, { x: number; y: number }[]>
     floodedCells: { x: number; y: number }[]
+    boltCell?: Record<PlayerId, { x: number; y: number } | null>
   }
 }
 

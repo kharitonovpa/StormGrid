@@ -35,6 +35,7 @@ function cloneForecast(f: ForecastData): ForecastData {
   return {
     windCandidates: [...f.windCandidates],
     rainProbability: f.rainProbability,
+    lightningProbability: f.lightningProbability,
     instrumentsBroken: {
       A: { ...f.instrumentsBroken.A },
       B: { ...f.instrumentsBroken.B },
@@ -72,6 +73,7 @@ export function createInitialState(spawn?: typeof SPAWN_PAIRS[number]): GameStat
     forecast: {
       windCandidates: [],
       rainProbability: 0,
+      lightningProbability: 0,
       instrumentsBroken: {
         A: { vane: false, barometer: false },
         B: { vane: false, barometer: false },

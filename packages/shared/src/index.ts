@@ -44,6 +44,11 @@ export {
   BADGE_TIERS,
   BADGE_REPLACES_FLAG_FROM,
   badgeFor,
+  CROWN_HEIGHT,
+  hasWind,
+  hasRain,
+  hasLightning,
+  WEATHER_SCHEDULE,
 } from './constants.js'
 
 export { WAR_AND_PEACE_SURNAMES } from './names.js'

@@ -29,11 +29,14 @@ export type WindDir = 'N' | 'S' | 'E' | 'W'
 
 export type MoveDir = 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW'
 
-export type WeatherType = 'wind' | 'rain' | 'wind_rain'
+export type WeatherType =
+  | 'wind' | 'rain' | 'wind_rain'
+  | 'lightning' | 'wind_lightning' | 'rain_lightning' | 'wind_rain_lightning'
 
 export type ForecastData = {
   windCandidates: WindDir[]
   rainProbability: number
+  lightningProbability: number
   instrumentsBroken: Record<PlayerId, { vane: boolean; barometer: boolean }>
 }
 
@@ -102,6 +105,7 @@ export type GameState = {
 export type DeathCause =
   | { type: 'wind'; dir: WindDir }
   | { type: 'rain' }
+  | { type: 'lightning' }
   | { type: 'disconnect' }
 
 /* ── Tick / Weather results ── */
@@ -127,6 +131,10 @@ export type WeatherResult = {
    * min(1, waterVolume / N) of its depth. 0 means the rain never fell.
    */
   waterVolume: number
+  /** Where the bolt landed on each side: the player's cell on a kill, the absorbing rod otherwise. Null when no lightning fell on that side. */
+  boltCell: Record<PlayerId, { x: number; y: number } | null>
+  /** Player the bolt passed over because the other crown stood taller. */
+  lightningSpared: PlayerId | null
 }
 
 /* ── Watcher ── */

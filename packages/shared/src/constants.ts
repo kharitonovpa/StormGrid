@@ -12,7 +12,10 @@ export const HEIGHTS = [-1, 0, 1] as const
 
 export const WIND_DIRS: readonly WindDir[] = ['N', 'S', 'E', 'W']
 
-export const WEATHER_TYPES: readonly WeatherType[] = ['wind', 'rain', 'wind_rain']
+export const WEATHER_TYPES: readonly WeatherType[] = [
+  'wind', 'rain', 'wind_rain',
+  'lightning', 'wind_lightning', 'rain_lightning', 'wind_rain_lightning',
+]
 
 export const CHARACTERS: readonly CharacterType[] = ['wheat', 'rice', 'corn']
 
@@ -70,3 +73,32 @@ export function badgeFor(streak: number): string | null {
   }
   return emoji
 }
+
+/* ── Lightning ── */
+
+/** A standing character pokes half a cell above the ground — the crown the bolt aims at. */
+export const CROWN_HEIGHT = 0.5
+
+export function hasWind(t: WeatherType): boolean {
+  return t === 'wind' || t === 'wind_rain' || t === 'wind_lightning' || t === 'wind_rain_lightning'
+}
+
+export function hasRain(t: WeatherType): boolean {
+  return t === 'rain' || t === 'wind_rain' || t === 'rain_lightning' || t === 'wind_rain_lightning'
+}
+
+export function hasLightning(t: WeatherType): boolean {
+  return t === 'lightning' || t === 'wind_lightning' || t === 'rain_lightning' || t === 'wind_rain_lightning'
+}
+
+/**
+ * Round-gated weather mix. Lightning never falls in rounds 1–2 (newcomers meet
+ * only today's weather); late rounds escalate so matches must end. Playtest draft —
+ * tune weights here, nowhere else.
+ */
+export const WEATHER_SCHEDULE: { upToRound: number; weights: [WeatherType, number][] }[] = [
+  { upToRound: 2, weights: [['wind', 55], ['wind_rain', 45]] },
+  { upToRound: 4, weights: [['wind', 40], ['wind_rain', 35], ['wind_lightning', 15], ['lightning', 10]] },
+  { upToRound: 6, weights: [['wind', 25], ['wind_rain', 25], ['wind_lightning', 25], ['wind_rain_lightning', 15], ['lightning', 10]] },
+  { upToRound: Infinity, weights: [['wind_rain_lightning', 40], ['wind_lightning', 30], ['wind_rain', 20], ['lightning', 10]] },
+]

@@ -133,6 +133,8 @@ export class GameEngine {
       floodedCellsB,
       rainSpared,
       waterVolume,
+      boltCell: { A: null, B: null },
+      lightningSpared: null,
     }
   }
 
