@@ -155,6 +155,11 @@ export function createStormSystem(scene: THREE.Scene) {
    */
   let reentry = false
 
+  /* ── Tremor (tick 5: the last, worst tick before the strike) ── */
+  let tremorActive = false
+  let tremorAmp = 0                  // eased 0..1 envelope, never a snap on/off
+  const tremorOffset = new THREE.Vector3()
+
   /** Give the curtain's distance back to the intensity — always eased, never a jump. */
   function dropOverride() {
     sweepHold = false
@@ -216,8 +221,8 @@ export function createStormSystem(scene: THREE.Scene) {
       releaseSweepHold()
     },
     discharge: dischargeImpl,
-    setTremor(_active: boolean) { /* Task 4 */ },
-    getCameraOffset() { return new THREE.Vector3() },  // Task 4
+    setTremor(active: boolean) { tremorActive = active },
+    getCameraOffset() { return tremorOffset },
     sweep(dir: WindDir): Promise<void> {
       if (REDUCED || halted) {
         // reduced motion (or an already-halted front): cross-fade out instead of marching
@@ -326,6 +331,14 @@ export function createStormSystem(scene: THREE.Scene) {
       frontPosAttr.needsUpdate = true
       // hidden entirely in zenith mode (calm forecast: nothing comes along the ground)
       frontMat.opacity = 0.35 * intensity * (1 - u.uZenith.value)
+
+      // Tremor: an eased envelope (never a snap on/off) driving a small jittery
+      // offset off the shared oscillator clock. Reduced motion kills it outright.
+      tremorAmp += ((tremorActive && !REDUCED ? 1 : 0) - tremorAmp) * Math.min(1, dt * 2.5)
+      if (tremorAmp > 0.001) {
+        const t = oscT * 9 * 2 * Math.PI
+        tremorOffset.set(Math.sin(t) * 0.05, Math.sin(t * 1.31) * 0.03, Math.cos(t * 0.87) * 0.05).multiplyScalar(tremorAmp)
+      } else tremorOffset.set(0, 0, 0)
     },
     dispose() {
       scene.remove(dome)

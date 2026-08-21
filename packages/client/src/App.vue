@@ -1073,6 +1073,8 @@ function resetVisuals() {
   // Nor is anything owed to a storm nobody is watching any more: the mass drains
   // off in a few frames rather than being cut away mid-sky.
   stormSystem?.discharge('fast')
+  audio.setStormBed(0)
+  stormSystem?.setTremor(false)
   waterSystem?.clear()
   pendingWaterVolume = null
   // Never leave the storm waiting on water that will not come.
@@ -1276,7 +1278,16 @@ unsubMessage2 = socket.onMessage((msg) => {
       // Every tick spent is the front a fifth of the way closer; by the last one
       // it is standing at the board's edge. Live matches only — replay frames
       // arrive out of order and never build toward anything.
-      if (!replayMode.value) stormSystem?.setProgress((msg.tick + 1) / TICKS_PER_ROUND)
+      if (!replayMode.value) {
+        stormSystem?.setProgress((msg.tick + 1) / TICKS_PER_ROUND)
+        // The wind hums up ahead of the cataclysm: silent on tick 1, full bed
+        // hum by tick 5. setStormBed(0) is a no-op once startWind() has taken
+        // ownership, so this never fights the real gale.
+        audio.setStormBed(msg.tick >= 1 ? (msg.tick + 1) / TICKS_PER_ROUND : 0)
+        // The fifth tick (0-based: 4) is the worst of it — a shiver in the camera
+        // right up to the strike.
+        stormSystem?.setTremor(msg.tick === 4)
+      }
       break
     }
     case 'tick:resolve': {
@@ -1287,6 +1298,11 @@ unsubMessage2 = socket.onMessage((msg) => {
       break
     }
     case 'weather:result': {
+      // The cataclysm takes the soundscape and the camera over from here —
+      // whatever the tick-driven bed and tremor were doing, this is the last
+      // word.
+      audio.setStormBed(0)
+      stormSystem?.setTremor(false)
       // The hush plus a two-act strike stretches this chain to ~1.4s of real
       // time, wide enough for a watcher:redirect, a reconnect, or a fresh
       // round:start to land underneath it (any of which calls resetVisuals()
@@ -1941,7 +1957,14 @@ onMounted(() => {
     glass.update(dt)
     bonus.update(dt)
     audio.update(dt)
-    renderer.render(scene, camera)
+    const tremorOffset = storm.getCameraOffset()
+    if (tremorOffset.lengthSq() > 0) {
+      camera.position.add(tremorOffset)
+      renderer.render(scene, camera)
+      camera.position.sub(tremorOffset)
+    } else {
+      renderer.render(scene, camera)
+    }
   }
 
   animate()

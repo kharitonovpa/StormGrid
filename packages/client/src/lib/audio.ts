@@ -286,13 +286,45 @@ export function createAudioSystem() {
 
   // ------ Weather ------
 
-  function startWind() { fadeIn('wind-loop', 600) }
+  function startWind() { bedOwned = false; fadeIn('wind-loop', 600) }
   function startRain() { fadeIn('rain-loop', 600) }
 
   function stopWeather() {
     fadeOut('wind-loop', 800)
     fadeOut('rain-loop', 800)
+    bedOwned = false
     setStormAmbience(false)
+  }
+
+  // ------ Storm bed (rising wind ahead of the cataclysm) ------
+
+  let bedLevel = 0
+  let bedOwned = false   // true while the bed, not the cataclysm, owns wind-loop
+
+  /**
+   * The forecast's own hum, well under the cataclysm's wind: rises with the
+   * ticks so the storm is heard building before startWind()/beginHush() ever
+   * run. Whenever the cataclysm actually claims wind-loop (startWind()) it
+   * hands ownership away here and this stops touching the loop's volume —
+   * the bed never fights the real gale for the fader.
+   */
+  function setStormBed(level: number) {
+    if (disposed) return
+    bedLevel = Math.max(0, Math.min(1, level))
+    const h = howls.get('wind-loop')!
+    if (bedLevel > 0) {
+      if (!activeLoops.has('wind-loop')) {
+        if (h.state() === 'unloaded') h.load()
+        h.volume(0)
+        h.play()
+        activeLoops.add('wind-loop')
+        bedOwned = true
+      }
+      if (bedOwned) h.fade(h.volume() as number, resolveVolume('wind-loop') * 0.35 * bedLevel, 500)
+    } else if (bedOwned && activeLoops.has('wind-loop')) {
+      fadeOut('wind-loop', 800)
+      bedOwned = false
+    }
   }
 
   // ------ Storm effects (hush, duck, ambience, crackle) ------
@@ -442,6 +474,7 @@ export function createAudioSystem() {
     startWind,
     startRain,
     stopWeather,
+    setStormBed,
     beginHush,
     endHush,
     duckMusic,
