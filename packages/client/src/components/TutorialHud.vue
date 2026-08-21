@@ -47,6 +47,14 @@ const md = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
 
 const hintHtml = computed(() => (hintKey.value ? md(t(hintKey.value)) : ''))
 const reminderHtml = computed(() => md(t('tutorial.actToContinue')))
+
+/**
+ * The closing card is the tutorial's last word, so it carries the warnings for
+ * the weather the practice rounds never show: rain (in the card's own copy) and
+ * lightning, which the schedule only lets fall from round 3 on.
+ */
+const showLightningNote = computed(() => hintKey.value === 'tutorial.round2')
+const lightningHtml = computed(() => md(t('tutorial.lightning')))
 </script>
 
 <template>
@@ -56,6 +64,8 @@ const reminderHtml = computed(() => md(t('tutorial.actToContinue')))
         <div class="tut-badge">{{ t('tutorial.badge') }}</div>
         <!-- eslint-disable-next-line vue/no-v-html — content comes from our own i18n table -->
         <div class="tut-text" v-html="hintHtml" />
+        <!-- eslint-disable-next-line vue/no-v-html — content comes from our own i18n table -->
+        <div v-if="showLightningNote" class="tut-text" v-html="lightningHtml" />
         <!-- eslint-disable-next-line vue/no-v-html — content comes from our own i18n table -->
         <div v-if="showActReminder" class="tut-reminder" v-html="reminderHtml" />
       </div>

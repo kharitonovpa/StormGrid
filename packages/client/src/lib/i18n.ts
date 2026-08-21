@@ -139,6 +139,7 @@ const messages: Record<string, Record<string, string>> = {
     'tutorial.lastTick': 'Last move before the storm. Check the **compass** and hold your ground!',
     'tutorial.weather': '**Cataclysm!** Whoever failed to prepare gets swept away.',
     'tutorial.round2': 'You\'re on your own now — **beat the bot!** Watch out: **rain** floods pits.',
+    'tutorial.lightning': 'Lightning strikes the tallest point around — don\'t be it.',
 
     'replay.prev': 'Previous frame',
     'replay.pause': 'Pause',
@@ -296,6 +297,7 @@ const messages: Record<string, Record<string, string>> = {
     'tutorial.lastTick': 'Последний ход перед бурей. Проверь **компас** и держись!',
     'tutorial.weather': '**Катаклизм!** Кто не подготовился — того сдует.',
     'tutorial.round2': 'Дальше сам — **победи бота!** И осторожно: **дождь** затапливает ямы.',
+    'tutorial.lightning': 'Молния бьёт в самую высокую точку в округе — не будь ею.',
 
     'replay.prev': 'Предыдущий кадр',
     'replay.pause': 'Пауза',
