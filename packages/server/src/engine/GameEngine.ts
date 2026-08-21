@@ -22,12 +22,19 @@ import type { WeatherDecision } from './forecast.js'
 export class GameEngine {
   private state: GameState
   private weatherDecision: WeatherDecision | null = null
-  /** Practice/tutorial matches must never see lightning — owner ruling. */
-  private readonly practice: boolean
+  /**
+   * Gates lightning entirely. Two callers land on this one flag: practice
+   * (tutorial matches must never see lightning — owner ruling) and rooms
+   * where not every human client declared the `lightning` capability (old
+   * portal build on the client side — backward-compat handshake). Room
+   * computes `!practice && opts.lightningEnabled` and passes the result
+   * here; the engine itself doesn't know or care which reason applies.
+   */
+  private readonly lightningEnabled: boolean
 
-  constructor(spawn?: typeof SPAWN_PAIRS[number], practice = false) {
+  constructor(spawn?: typeof SPAWN_PAIRS[number], lightningEnabled = true) {
     this.state = createInitialState(spawn)
-    this.practice = practice
+    this.lightningEnabled = lightningEnabled
   }
 
   /** Set character choices before the game starts. */
@@ -38,11 +45,7 @@ export class GameEngine {
 
   /** Start round: generate weather decision + forecast, set phase. */
   startRound(): GameState {
-    // Practice matches must never see lightning: clamp the schedule round to
-    // the pre-lightning tier no matter how far the tutorial's round counter
-    // has climbed.
-    const scheduleRound = this.practice ? Math.min(this.state.round, 2) : this.state.round
-    this.weatherDecision = randomWeatherDecision(scheduleRound)
+    this.weatherDecision = randomWeatherDecision(this.clampedRound())
     this.state.forecast = generateForecast(this.weatherDecision)
     this.state.phase = 'forecast'
     this.state.tick = 0
@@ -51,12 +54,23 @@ export class GameEngine {
   }
 
   /**
-   * Override weather decision (Architect mode).
+   * Override weather decision (Architect mode). With lightning disabled, a
+   * lightning-bearing order is coerced to its base type — the architect
+   * keeps their wind/rain call, just without the bolt.
    * Must be called after startRound() and before any tick.
    */
   setWeatherDecision(type: WeatherType, dir: WindDir): void {
-    this.weatherDecision = { type, dir }
+    this.weatherDecision = { type: this.lightningEnabled ? type : stripLightning(type), dir }
     this.state.forecast = generateForecast(this.weatherDecision)
+  }
+
+  /**
+   * The one clamp: when lightning is disabled, the schedule round is capped
+   * at the pre-lightning tier no matter how far the real round counter has
+   * climbed (practice's tutorial round count included).
+   */
+  private clampedRound(): number {
+    return this.lightningEnabled ? this.state.round : Math.min(this.state.round, 2)
   }
 
   /** Begin the ticking phase (after forecast is shown). */
@@ -193,4 +207,16 @@ export class GameEngine {
       this.state.phase = 'finished'
     }
   }
+}
+
+/** lightning → wind, wind_lightning → wind, rain_lightning → rain, wind_rain_lightning → wind_rain. */
+const LIGHTNING_BASE_TYPE: Partial<Record<WeatherType, WeatherType>> = {
+  lightning: 'wind',
+  wind_lightning: 'wind',
+  rain_lightning: 'rain',
+  wind_rain_lightning: 'wind_rain',
+}
+
+function stripLightning(type: WeatherType): WeatherType {
+  return LIGHTNING_BASE_TYPE[type] ?? type
 }

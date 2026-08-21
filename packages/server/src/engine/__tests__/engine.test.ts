@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'bun:test'
 import { GameEngine } from '../GameEngine.js'
 import { stateForPlayer } from '../board.js'
-import { BOARD_SIZE, TICKS_PER_ROUND, SPAWN_PAIRS } from '@wheee/shared'
+import { BOARD_SIZE, TICKS_PER_ROUND, SPAWN_PAIRS, hasLightning } from '@wheee/shared'
+import type { WeatherType } from '@wheee/shared'
 
 const FIXED_SPAWN = SPAWN_PAIRS[0]
 
@@ -278,29 +279,32 @@ describe('GameEngine — lightning', () => {
   })
 })
 
-describe('GameEngine — practice mode never draws lightning', () => {
-  it('a practice engine at round 5+ never produces a lightning-tagged forecast, across ~300 samples', () => {
-    // The owner ruled: practice/tutorial matches must never see lightning.
+describe('GameEngine — lightningEnabled: false never draws lightning', () => {
+  // Practice/tutorial matches and rooms where not every human declared the
+  // `lightning` capability both route through this one constructor flag —
+  // there is no separate "practice" clamp any more (Room computes
+  // `!practice && opts.lightningEnabled` and hands the engine the result).
+  it('a disabled engine at round 5+ never produces a lightning-tagged forecast, across ~300 samples', () => {
     // The live schedule (WEATHER_SCHEDULE) lets lightning types in from round 3
     // and escalates further past round 6 — sample well past that boundary.
     // lightningProbability is 0 or 0.25 for a non-lightning decision and 0.75
     // or 1.0 for a lightning one (see generateForecast), so < 0.5 cleanly
     // discriminates without widening GameEngine's public API.
     for (let sample = 0; sample < 300; sample++) {
-      const engine = new GameEngine(FIXED_SPAWN, true)
+      const engine = new GameEngine(FIXED_SPAWN, false)
       // Force the round counter past the point lightning would normally enter
-      // — practice must clamp the schedule regardless of the real round.
+      // — disabled must clamp the schedule regardless of the real round.
       ;(engine as unknown as { state: { round: number } }).state.round = 5 + (sample % 20)
       const s = engine.startRound()
       expect(s.forecast.lightningProbability).toBeLessThan(0.5)
     }
   })
 
-  it('a non-practice engine at the same rounds does eventually draw lightning', () => {
-    // Sanity check for the test above: without the practice flag, the same
-    // round-forcing trick does produce lightning-tagged forecasts sometimes —
-    // proving the practice test isn't just vacuously true because rounds
-    // don't reach the lightning tiers.
+  it('an enabled engine at the same rounds does eventually draw lightning', () => {
+    // Sanity check for the test above: with the flag left at its default
+    // (enabled), the same round-forcing trick does produce lightning-tagged
+    // forecasts sometimes — proving the disabled test isn't just vacuously
+    // true because rounds don't reach the lightning tiers.
     let sawLightning = false
     for (let sample = 0; sample < 300 && !sawLightning; sample++) {
       const engine = new GameEngine(FIXED_SPAWN)
@@ -309,5 +313,44 @@ describe('GameEngine — practice mode never draws lightning', () => {
       if (s.forecast.lightningProbability >= 0.5) sawLightning = true
     }
     expect(sawLightning).toBe(true)
+  })
+})
+
+describe('GameEngine — architect orders are coerced when lightning is disabled', () => {
+  it('setWeatherDecision(wind_lightning) yields a dry forecast, wind direction kept', () => {
+    const engine = new GameEngine(FIXED_SPAWN, false)
+    engine.startRound()
+    engine.setWeatherDecision('wind_lightning', 'E')
+    const s = engine.getState()
+    expect(s.forecast.lightningProbability).toBeLessThan(0.5)
+    expect(s.forecast.windCandidates).toContain('E')
+  })
+
+  it('coerces all four lightning-bearing types to their base type', () => {
+    const cases: [WeatherType, WeatherType][] = [
+      ['lightning', 'wind'],
+      ['wind_lightning', 'wind'],
+      ['rain_lightning', 'rain'],
+      ['wind_rain_lightning', 'wind_rain'],
+    ]
+    for (const [ordered, expectedBase] of cases) {
+      const engine = new GameEngine(FIXED_SPAWN, false)
+      engine.startRound()
+      engine.setWeatherDecision(ordered, 'N')
+      engine.beginTicking()
+      for (let i = 0; i < 5; i++) engine.submitTick({})
+      const r = engine.executeWeather()
+      expect(r.state.weather!.type).toBe(expectedBase)
+      expect(hasLightning(r.state.weather!.type)).toBe(false)
+    }
+  })
+
+  it('leaves the decision untouched when lightning is enabled', () => {
+    const engine = new GameEngine(FIXED_SPAWN)
+    engine.startRound()
+    engine.setWeatherDecision('wind_lightning', 'E')
+    const s = engine.getState()
+    expect(s.forecast.lightningProbability).toBeGreaterThanOrEqual(0.5)
+    expect(s.forecast.windCandidates).toContain('E')
   })
 })

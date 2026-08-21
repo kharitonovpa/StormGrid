@@ -78,8 +78,13 @@ async function setupMatchWithArchitect() {
   const p1 = await connectClient()
   const p2 = await connectClient()
 
-  send(p1.ws, { type: 'queue:join', character: 'wheat' })
-  send(p2.ws, { type: 'queue:join', character: 'rice' })
+  // Both declare the lightning capability so the room enables it — the
+  // "dry thunderstorm" architect test below needs a lightning-enabled room
+  // to observe an uncoerced order. A room where either side is an old,
+  // caps-less client would coerce the order down to its base type instead
+  // (see the backward-compat handshake, GameEngine.setWeatherDecision).
+  send(p1.ws, { type: 'queue:join', character: 'wheat', caps: ['lightning'] })
+  send(p2.ws, { type: 'queue:join', character: 'rice', caps: ['lightning'] })
 
   const start1 = await waitForMessage(p1.messages, 'game:start') as { type: 'game:start'; playerId: string }
   await waitForMessage(p2.messages, 'game:start')

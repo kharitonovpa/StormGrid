@@ -63,6 +63,16 @@ const VALID_BONUS_TYPES = new Set(['time_extend', 'intel', 'clear_sky'])
 const VALID_CHARACTERS = new Set(CHARACTERS)
 /** Server codes are 6 chars, but stay tolerant of case and future lengths. */
 const FRIEND_CODE_RE = /^[a-zA-Z0-9]{4,12}$/
+/** `caps` is client-supplied and only ever a short client-feature list — cap
+ * its shape hard so a hostile client can't use it to smuggle in a large payload. */
+const MAX_CAPS = 8
+const MAX_CAP_LEN = 32
+
+function isValidCaps(v: unknown): boolean {
+  if (v === undefined) return true
+  return Array.isArray(v) && v.length <= MAX_CAPS
+    && v.every((c) => typeof c === 'string' && c.length <= MAX_CAP_LEN)
+}
 
 function isValidAction(a: unknown): boolean {
   if (typeof a !== 'object' || a === null) return false
@@ -95,6 +105,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         // Cosmetic and self-reported, but still has to be a sane number.
         if (msg.streak !== undefined
           && (!Number.isInteger(msg.streak) || msg.streak < 0 || msg.streak > 9999)) return null
+        // practice:start has no use for caps — practice is already lightning-free.
+        if (msg.type !== 'practice:start' && !isValidCaps(msg.caps)) return null
         return msg
       case 'queue:leave':
       case 'friend:cancel':

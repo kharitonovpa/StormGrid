@@ -2,8 +2,14 @@ import type { Action, BonusType, CharacterType, DeathCause, GameState, PlayerId,
 
 /* ── Client → Server ── */
 
-/** `streak` is the player's badge length, self-reported: it is cosmetic only. */
-export type QueueJoinMsg = { type: 'queue:join'; character: CharacterType; streak?: number }
+/**
+ * `streak` is the player's badge length, self-reported: it is cosmetic only.
+ * `caps` declares client-side feature support (currently just `'lightning'`)
+ * so a room can tell an up-to-date client from an old portal build that
+ * cannot render the bolt — see GameEngine's lightningEnabled flag. Absence of
+ * the field means an old client: never assume support that wasn't declared.
+ */
+export type QueueJoinMsg = { type: 'queue:join'; character: CharacterType; streak?: number; caps?: string[] }
 export type QueueLeaveMsg = { type: 'queue:leave' }
 export type PracticeStartMsg = { type: 'practice:start'; character: CharacterType; streak?: number }
 /**
@@ -11,7 +17,7 @@ export type PracticeStartMsg = { type: 'practice:start'; character: CharacterTyp
  * buys: the wait already exists (BOT_MATCH_DELAY_MS), so nothing is invented to
  * sell. A full match in every other way — it counts, unlike practice.
  */
-export type InstantStartMsg = { type: 'instant:start'; character: CharacterType; streak?: number }
+export type InstantStartMsg = { type: 'instant:start'; character: CharacterType; streak?: number; caps?: string[] }
 export type ActionSubmitMsg = { type: 'action:submit'; action: Action }
 
 /**
@@ -19,9 +25,9 @@ export type ActionSubmitMsg = { type: 'action:submit'; action: Action }
  * (no bot fallback — the wait is for one specific person); `friend:join` is what
  * the invited side sends after opening the link with that code.
  */
-export type FriendCreateMsg = { type: 'friend:create'; character: CharacterType; streak?: number }
+export type FriendCreateMsg = { type: 'friend:create'; character: CharacterType; streak?: number; caps?: string[] }
 export type FriendCancelMsg = { type: 'friend:cancel' }
-export type FriendJoinMsg = { type: 'friend:join'; code: string; character: CharacterType; streak?: number }
+export type FriendJoinMsg = { type: 'friend:join'; code: string; character: CharacterType; streak?: number; caps?: string[] }
 
 export type WatchJoinMsg = { type: 'watch:join' }
 export type WatchLeaveMsg = { type: 'watch:leave' }

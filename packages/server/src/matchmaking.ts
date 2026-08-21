@@ -24,10 +24,20 @@ export type MatchmakingOpts = {
   onLoneWaiter?: (info: { name: string; waitMs: number }) => void
 }
 
-type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType; streak: number }
+type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType; streak: number; caps: string[] }
 
 /** A parked friend invite: the creator waits for one specific person, no bot fallback. */
 type InviteEntry = QueueEntry & { createdAt: number }
+
+/**
+ * Backward-compat capability handshake (owner ruling): a room enables
+ * lightning only if every human in it declared support. Absence of `caps`
+ * means an old client — never assume support that wasn't declared.
+ */
+const LIGHTNING_CAP = 'lightning'
+export function capsHaveLightning(caps: string[]): boolean {
+  return caps.includes(LIGHTNING_CAP)
+}
 
 const INVITE_TTL_MS = 10 * 60_000
 /** No 0/O/1/I — the code may end up read aloud or retyped from a screenshot. */
@@ -67,13 +77,13 @@ export class Matchmaking {
     return idle > 0 ? BOT_MATCH_DELAY_LONG_MS : BOT_MATCH_DELAY_MS
   }
 
-  enqueue(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0): void {
+  enqueue(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0, caps: string[] = []): void {
     if (this.queueSet.has(ws)) return
     // The public queue supersedes a parked invite — nobody waits in two lines.
     this.cancelInvite(ws)
 
     const waitMs = this.pickBotDelayMs(ws)
-    this.queue.push({ ws, character, streak })
+    this.queue.push({ ws, character, streak, caps })
     this.queueSet.add(ws)
     send(ws, { type: 'queue:waiting', maxWaitMs: waitMs })
 
@@ -101,7 +111,7 @@ export class Matchmaking {
 
   /* ── Friend invites ── */
 
-  createInvite(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0): string {
+  createInvite(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0, caps: string[] = []): string {
     // One live invite per socket; re-creating replaces the old code.
     this.cancelInvite(ws)
     this.dequeue(ws)
@@ -110,7 +120,7 @@ export class Matchmaking {
     let code = generateCode()
     while (this.invites.has(code)) code = generateCode()
 
-    this.invites.set(code, { ws, character, streak, createdAt: Date.now() })
+    this.invites.set(code, { ws, character, streak, caps, createdAt: Date.now() })
     this.inviteBySocket.set(ws, code)
     send(ws, { type: 'friend:waiting', code })
     return code
@@ -123,7 +133,7 @@ export class Matchmaking {
     this.invites.delete(code)
   }
 
-  joinInvite(ws: ServerWebSocket<WsData>, code: string, character: CharacterType, streak = 0): boolean {
+  joinInvite(ws: ServerWebSocket<WsData>, code: string, character: CharacterType, streak = 0, caps: string[] = []): boolean {
     this.sweepInvites()
     const entry = this.invites.get(code.toUpperCase())
     // A creator whose socket died is as gone as an expired code. (1 = OPEN)
@@ -135,7 +145,8 @@ export class Matchmaking {
     this.inviteBySocket.delete(entry.ws)
     this.dequeue(ws)
 
-    const room = this.roomManager.createRoom()
+    const lightningEnabled = capsHaveLightning(entry.caps) && capsHaveLightning(caps)
+    const room = this.roomManager.createRoom({ lightningEnabled })
     room.join(entry.ws, entry.character, entry.streak)
     room.join(ws, character, streak)
     return true
@@ -163,7 +174,8 @@ export class Matchmaking {
       this.queueSet.delete(entryA.ws)
       this.queueSet.delete(entryB.ws)
 
-      const room = this.roomManager.createRoom()
+      const lightningEnabled = capsHaveLightning(entryA.caps) && capsHaveLightning(entryB.caps)
+      const room = this.roomManager.createRoom({ lightningEnabled })
       room.join(entryA.ws, entryA.character, entryA.streak)
       room.join(entryB.ws, entryB.character, entryB.streak)
     }
@@ -183,7 +195,9 @@ export class Matchmaking {
     this.queueSet.delete(entry.ws)
 
     const botCharacter = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
-    const room = this.roomManager.createRoom()
+    // The bot has no client of its own to declare support — the lone human's
+    // caps are the whole decision.
+    const room = this.roomManager.createRoom({ lightningEnabled: capsHaveLightning(entry.caps) })
     room.join(entry.ws, entry.character, entry.streak)
     room.joinBot(botCharacter, botStrengthForStreak(entry.streak))
   }

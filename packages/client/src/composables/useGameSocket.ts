@@ -17,6 +17,13 @@ const IN_MATCH_MAX_RECONNECT_ATTEMPTS = 100
 /** Comfortably inside the server's 120 s idle timeout. */
 const HEARTBEAT_MS = 25_000
 
+/**
+ * Declared on every matchmaking-entry message so the server can tell this
+ * build apart from an old portal client that cannot render the bolt — a room
+ * only enables lightning once every human in it has declared the cap.
+ */
+const CLIENT_CAPS = ['lightning']
+
 export function useGameSocket() {
   const connected = ref(false)
   const reconnecting = ref(false)
@@ -121,7 +128,7 @@ export function useGameSocket() {
   }
 
   function joinQueue(character: CharacterType = 'wheat', streak = 0) {
-    return send({ type: 'queue:join', character, streak })
+    return send({ type: 'queue:join', character, streak, caps: CLIENT_CAPS })
   }
 
   function startPractice(character: CharacterType = 'wheat', streak = 0) {
@@ -130,7 +137,7 @@ export function useGameSocket() {
 
   /** Straight into a bot match, no queue — what the rewarded ad pays for. */
   function startInstant(character: CharacterType = 'wheat', streak = 0) {
-    return send({ type: 'instant:start', character, streak })
+    return send({ type: 'instant:start', character, streak, caps: CLIENT_CAPS })
   }
 
   function leaveQueue() {
@@ -139,7 +146,7 @@ export function useGameSocket() {
 
   /** Park under a short code and wait for the invited friend. */
   function createFriendInvite(character: CharacterType = 'wheat', streak = 0) {
-    return send({ type: 'friend:create', character, streak })
+    return send({ type: 'friend:create', character, streak, caps: CLIENT_CAPS })
   }
 
   function cancelFriendInvite() {
@@ -148,7 +155,7 @@ export function useGameSocket() {
 
   /** Join the match behind a challenge link's code. */
   function joinFriend(code: string, character: CharacterType = 'wheat', streak = 0) {
-    return send({ type: 'friend:join', code, character, streak })
+    return send({ type: 'friend:join', code, character, streak, caps: CLIENT_CAPS })
   }
 
   function submitAction(action: Action) {

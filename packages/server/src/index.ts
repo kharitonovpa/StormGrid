@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { CHARACTERS } from '@wheee/shared'
 import { RoomManager } from './RoomManager.js'
-import { Matchmaking } from './matchmaking.js'
+import { Matchmaking, capsHaveLightning } from './matchmaking.js'
 import { ReplayStore } from './ReplayStore.js'
 import { parseClientMessage, send } from './protocol.js'
 import type { WsData } from './protocol.js'
@@ -379,7 +379,7 @@ const server = Bun.serve<WsData>({
             send(ws, { type: 'error', message: 'Already in a game' })
             return
           }
-          matchmaking.enqueue(ws, msg.character, msg.streak)
+          matchmaking.enqueue(ws, msg.character, msg.streak, msg.caps)
           broadcastLobbyStatus()
           break
         }
@@ -397,7 +397,7 @@ const server = Bun.serve<WsData>({
             send(ws, { type: 'error', message: 'Already in a game' })
             return
           }
-          matchmaking.createInvite(ws, msg.character, msg.streak)
+          matchmaking.createInvite(ws, msg.character, msg.streak, msg.caps)
           break
         }
 
@@ -411,7 +411,7 @@ const server = Bun.serve<WsData>({
             send(ws, { type: 'error', message: 'Already in a game' })
             return
           }
-          if (matchmaking.joinInvite(ws, msg.code, msg.character, msg.streak)) {
+          if (matchmaking.joinInvite(ws, msg.code, msg.character, msg.streak, msg.caps)) {
             broadcastLobbyStatus()
           }
           break
@@ -440,7 +440,9 @@ const server = Bun.serve<WsData>({
           }
           matchmaking.dequeue(ws)
           const botCharacter = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
-          const room = roomManager.createRoom()
+          // No Matchmaking pairing here — it's always vs a bot, which has no
+          // client of its own, so the lone human's caps are the whole decision.
+          const room = roomManager.createRoom({ lightningEnabled: capsHaveLightning(msg.caps ?? []) })
           room.join(ws, msg.character, msg.streak)
           room.joinBot(botCharacter)
           broadcastLobbyStatus()

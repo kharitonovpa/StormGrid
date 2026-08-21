@@ -100,11 +100,26 @@ export type RoomOpts = {
   practice?: boolean
   /** Override the untimed-tick backstop. Tests use a short one; production takes the default. */
   practiceTickTimeoutMs?: number
+  /**
+   * Backward-compat capability handshake: whether every human in this room
+   * declared `caps: ['lightning']` at matchmaking time. Defaults to `true` —
+   * matchmaking is the one place that computes `false` for a mismatched or
+   * old-client pairing; direct Room construction (tests, practice) opts in by
+   * default since the feature already ships end-to-end elsewhere. Practice
+   * always ends up disabled regardless — see `lightningEnabled` below.
+   */
+  lightningEnabled?: boolean
 }
 
 export class Room {
   readonly id: string
   readonly practice: boolean
+  /**
+   * The one flag the engine gates lightning on: `!practice && caller's
+   * lightningEnabled opt`. Practice always disables it regardless of what
+   * was passed in — the tutorial must never see lightning (owner ruling).
+   */
+  readonly lightningEnabled: boolean
   private readonly practiceTickTimeoutMs: number
   private engine: GameEngine
   private players: Partial<Record<PlayerId, PlayerSlot>> = {}
@@ -155,7 +170,8 @@ export class Room {
     this.id = id
     this.practice = opts?.practice ?? false
     this.practiceTickTimeoutMs = opts?.practiceTickTimeoutMs ?? PRACTICE_TICK_TIMEOUT_MS
-    this.engine = new GameEngine(undefined, this.practice)
+    this.lightningEnabled = !this.practice && (opts?.lightningEnabled ?? true)
+    this.engine = new GameEngine(undefined, this.lightningEnabled)
     this.callbacks = callbacks
   }
 
