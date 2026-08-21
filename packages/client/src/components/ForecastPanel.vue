@@ -5,6 +5,7 @@ import type { WindDir } from '@wheee/shared'
 const props = defineProps<{
   windCandidates: WindDir[]
   rainProbability: number
+  lightningProbability: number
   vaneBroken: boolean
   barometerBroken: boolean
 }>()
@@ -49,12 +50,81 @@ function rainLevel(p: number): number {
   if (p < 0.15) return 0
   if (p < 0.35) return 1
   if (p < 0.55) return 2
-  if (p < 0.8) return 3
-  return 4
+  return 3
 }
 
 const targetLevel = computed(() => rainLevel(props.rainProbability))
-const iconLevel = computed(() => Math.max(0, Math.min(4, Math.round(displayLevel.value))))
+const iconLevel = computed(() => Math.max(0, Math.min(3, Math.round(displayLevel.value))))
+
+/* ── Lightning: icon override + rim sparks ── */
+
+const stormy = computed(() => props.lightningProbability >= 0.5)
+const brokenStormy = ref(false)
+
+// icon key: 'sun'|'partly'|'cloudy'|'rain' from iconLevel, overridden by storms:
+// (stormy || brokenStormy when barometer is broken) && rain>=0.5 → 'storm'
+// (stormy || brokenStormy when barometer is broken) && rain<0.5  → 'drystorm'
+const activeStormy = computed(() => (props.barometerBroken ? brokenStormy.value : stormy.value))
+
+type IconKey = 'sun' | 'partly' | 'cloudy' | 'rain' | 'storm' | 'drystorm'
+
+const iconKey = computed<IconKey>(() => {
+  if (activeStormy.value) {
+    return iconLevel.value === 3 ? 'storm' : 'drystorm'
+  }
+  const level = iconLevel.value
+  if (level === 0) return 'sun'
+  if (level === 1) return 'partly'
+  if (level === 2) return 'cloudy'
+  return 'rain'
+})
+
+const sparkTier = computed(() => {
+  const p = props.lightningProbability
+  if (p >= 0.9) return 3
+  if (p >= 0.5) return 2
+  if (p >= 0.15) return 1
+  return 0
+})
+
+const sparks = ref<{ angle: number; len: number; delay: number }[]>([])
+let sparkT = 0
+
+function regenSparks() {
+  const count = [0, 1, 4, 8][sparkTier.value]
+  const next: { angle: number; len: number; delay: number }[] = []
+  for (let i = 0; i < count; i++) {
+    next.push({
+      angle: Math.random() * 360,
+      len: 4 + Math.random() * 5,
+      delay: Math.random() * 1.2,
+    })
+  }
+  sparks.value = next
+}
+
+function sparkPoints(angle: number, len: number): string {
+  const rad = (angle - 90) * Math.PI / 180
+  const r0 = 92 - len / 2
+  const cx = 100 + r0 * Math.cos(rad)
+  const cy = 100 + r0 * Math.sin(rad)
+  // tangent direction along the ring
+  const tx = -Math.sin(rad)
+  const ty = Math.cos(rad)
+  // normal (radial) direction for the jag
+  const nx = Math.cos(rad)
+  const ny = Math.sin(rad)
+  const jag = len * 0.35
+  const p1x = cx - tx * (len / 2)
+  const p1y = cy - ty * (len / 2)
+  const p2x = cx - tx * (len / 6) + nx * jag
+  const p2y = cy - ty * (len / 6) + ny * jag
+  const p3x = cx + tx * (len / 6) - nx * jag
+  const p3y = cy + ty * (len / 6) - ny * jag
+  const p4x = cx + tx * (len / 2)
+  const p4y = cy + ty * (len / 2)
+  return `${p1x},${p1y} ${p2x},${p2y} ${p3x},${p3y} ${p4x},${p4y}`
+}
 
 /* ── Break flash ── */
 
@@ -147,7 +217,8 @@ function tick(time: number) {
   if (props.barometerBroken) {
     brokenBaroT += dt
     if (brokenBaroT > 0.12 + Math.random() * 0.18) {
-      displayLevel.value = Math.floor(Math.random() * 5)
+      displayLevel.value = Math.floor(Math.random() * 4)
+      brokenStormy.value = Math.random() < 0.5
       brokenBaroT = 0
     }
   } else {
@@ -159,10 +230,18 @@ function tick(time: number) {
       displayLevel.value = tl
     }
   }
+
+  /* Rim sparks */
+  sparkT += dt
+  if (sparkT > 1.2) {
+    sparkT = 0
+    regenSparks()
+  }
 }
 
 onMounted(() => {
   prevTime = 0
+  regenSparks()
   animId = requestAnimationFrame(tick)
 })
 
@@ -210,6 +289,17 @@ onUnmounted(() => {
         <circle cx="100" cy="100" r="92" fill="none" stroke="#1e3048" stroke-width="2" />
         <circle cx="100" cy="100" r="90" fill="none" stroke="#0e1828" stroke-width="0.5" />
 
+        <!-- Rim sparks (lightning) -->
+        <g class="rim-sparks">
+          <circle v-if="sparkTier === 3" cx="100" cy="100" r="94" class="rim-glow" />
+          <polyline
+            v-for="(s, i) in sparks" :key="'spark' + i"
+            :points="sparkPoints(s.angle, s.len)"
+            class="rim-spark"
+            :style="{ animationDelay: s.delay + 's' }"
+          />
+        </g>
+
         <!-- Inner rings -->
         <circle cx="100" cy="100" r="66" fill="none" stroke="#141e2e" stroke-width="0.4" />
         <circle cx="100" cy="100" r="30" fill="none" stroke="#141e2e" stroke-width="0.4" />
@@ -253,8 +343,8 @@ onUnmounted(() => {
       <!-- Weather icon in compass center -->
       <div class="baro-center" :class="{ broken: barometerBroken }">
         <Transition name="wicon" mode="out-in">
-          <!-- Level 0: Sun -->
-          <svg v-if="iconLevel === 0" key="sun" class="weather-icon" viewBox="0 0 50 50">
+          <!-- Sun -->
+          <svg v-if="iconKey === 'sun'" key="sun" class="weather-icon" viewBox="0 0 50 50">
             <circle cx="25" cy="25" r="8.5" fill="#FFB040" />
             <g stroke="#FFB040" stroke-width="2.2" stroke-linecap="round" opacity="0.6">
               <line x1="25" y1="6" x2="25" y2="12" />
@@ -268,8 +358,8 @@ onUnmounted(() => {
             </g>
           </svg>
 
-          <!-- Level 1: Partly cloudy -->
-          <svg v-else-if="iconLevel === 1" key="partly" class="weather-icon" viewBox="0 0 50 50">
+          <!-- Partly cloudy -->
+          <svg v-else-if="iconKey === 'partly'" key="partly" class="weather-icon" viewBox="0 0 50 50">
             <circle cx="17" cy="16" r="7" fill="#FFB040" opacity="0.75" />
             <g stroke="#FFB040" stroke-width="1.5" stroke-linecap="round" opacity="0.4">
               <line x1="17" y1="3" x2="17" y2="7" />
@@ -281,16 +371,16 @@ onUnmounted(() => {
             <circle cx="35" cy="28" r="5.5" fill="#7a90a8" />
           </svg>
 
-          <!-- Level 2: Overcast -->
-          <svg v-else-if="iconLevel === 2" key="cloudy" class="weather-icon" viewBox="0 0 50 50">
+          <!-- Overcast -->
+          <svg v-else-if="iconKey === 'cloudy'" key="cloudy" class="weather-icon" viewBox="0 0 50 50">
             <circle cx="18" cy="19" r="5" fill="#d0a840" opacity="0.25" />
             <ellipse cx="27" cy="27" rx="13" ry="8" fill="#5a7088" />
             <circle cx="20" cy="22" r="7" fill="#6a8098" />
             <circle cx="34" cy="25" r="6" fill="#5a7088" />
           </svg>
 
-          <!-- Level 3: Rain -->
-          <svg v-else-if="iconLevel === 3" key="rain" class="weather-icon" viewBox="0 0 50 50">
+          <!-- Rain -->
+          <svg v-else-if="iconKey === 'rain'" key="rain" class="weather-icon" viewBox="0 0 50 50">
             <ellipse cx="27" cy="21" rx="13" ry="8" fill="#4a6878" />
             <circle cx="20" cy="16" r="7" fill="#5a7888" />
             <circle cx="34" cy="19" r="6" fill="#4a6878" />
@@ -301,7 +391,16 @@ onUnmounted(() => {
             </g>
           </svg>
 
-          <!-- Level 4: Storm -->
+          <!-- Dry storm: lightning without rain -->
+          <svg v-else-if="iconKey === 'drystorm'" key="drystorm" class="weather-icon" viewBox="0 0 50 50">
+            <ellipse cx="27" cy="18" rx="13" ry="8" fill="#3a4a60" />
+            <circle cx="20" cy="13" r="7" fill="#445870" />
+            <circle cx="34" cy="16" r="6" fill="#3a4a60" />
+            <polygon points="29,25 23,34 27,34 21,45 33,31 28,31 34,25"
+              fill="#ffe566" opacity="0.85" class="bolt" />
+          </svg>
+
+          <!-- Storm: lightning with rain -->
           <svg v-else key="storm" class="weather-icon" viewBox="0 0 50 50">
             <ellipse cx="27" cy="18" rx="13" ry="8" fill="#3a4a60" />
             <circle cx="20" cy="13" r="7" fill="#445870" />
@@ -473,6 +572,40 @@ onUnmounted(() => {
   0%   { opacity: 1; transform: scale(0.95); }
   40%  { opacity: 0.8; transform: scale(1.06); }
   100% { opacity: 0; transform: scale(1); }
+}
+
+/* ── Rim sparks (lightning) ── */
+
+.rim-sparks {
+  pointer-events: none;
+}
+
+.rim-spark {
+  stroke: #9fd0ff;
+  stroke-width: 1.1;
+  fill: none;
+  opacity: 0;
+  animation: spark-flick 1.2s linear infinite;
+}
+
+@keyframes spark-flick {
+  0%, 100% { opacity: 0; }
+  8%       { opacity: .9; }
+  16%      { opacity: .1; }
+  22%      { opacity: .7; }
+  30%      { opacity: 0; }
+}
+
+.rim-glow {
+  stroke: #7a5cff;
+  stroke-width: 1.5;
+  fill: none;
+  opacity: .25;
+  filter: drop-shadow(0 0 4px #7a5cff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rim-spark { animation: none; opacity: .5; }
 }
 
 /* ── Mobile ── */

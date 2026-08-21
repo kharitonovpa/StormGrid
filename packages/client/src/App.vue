@@ -1936,6 +1936,7 @@ onUnmounted(() => {
     v-if="showHud && game.forecast.value"
     :wind-candidates="game.forecast.value.windCandidates"
     :rain-probability="game.forecast.value.rainProbability"
+    :lightning-probability="game.forecast.value.lightningProbability"
     :vane-broken="game.myInstrumentsBroken.value.vane"
     :barometer-broken="game.myInstrumentsBroken.value.barometer"
   />
