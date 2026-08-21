@@ -34,7 +34,7 @@ export class GameEngine {
 
   /** Start round: generate weather decision + forecast, set phase. */
   startRound(): GameState {
-    this.weatherDecision = randomWeatherDecision()
+    this.weatherDecision = randomWeatherDecision(this.state.round)
     this.state.forecast = generateForecast(this.weatherDecision)
     this.state.phase = 'forecast'
     this.state.tick = 0

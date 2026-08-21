@@ -1,5 +1,5 @@
 import type { ForecastData, WeatherType, WindDir } from '@wheee/shared'
-import { WIND_DIRS } from '@wheee/shared'
+import { WIND_DIRS, WEATHER_SCHEDULE, hasWind, hasRain, hasLightning } from '@wheee/shared'
 
 export type WeatherDecision = {
   type: WeatherType
@@ -17,11 +17,12 @@ export type WeatherDecision = {
  * weather type and direction. The forecast is a noisy hint derived from it.
  */
 export function generateForecast(decision: WeatherDecision): ForecastData {
-  const hasWind = decision.type === 'wind' || decision.type === 'wind_rain'
-  const hasRain = decision.type === 'rain' || decision.type === 'wind_rain'
+  const windy = hasWind(decision.type)
+  const rainy = hasRain(decision.type)
+  const stormy = hasLightning(decision.type)
 
   const windCandidates: WindDir[] = []
-  if (hasWind) {
+  if (windy) {
     windCandidates.push(decision.dir)
     if (Math.random() < 0.5) {
       const others = WIND_DIRS.filter(d => d !== decision.dir)
@@ -30,16 +31,20 @@ export function generateForecast(decision: WeatherDecision): ForecastData {
   }
 
   let rainProbability: number
-  if (hasRain) {
+  if (rainy) {
     rainProbability = Math.random() < 0.4 ? 0.75 : 1.0
   } else {
     rainProbability = Math.random() < 0.3 ? 0.25 : 0
   }
 
+  const lightningProbability = stormy
+    ? (Math.random() < 0.4 ? 0.75 : 1.0)
+    : (Math.random() < 0.3 ? 0.25 : 0)
+
   return {
     windCandidates,
     rainProbability,
-    lightningProbability: 0,
+    lightningProbability,
     instrumentsBroken: {
       A: { vane: false, barometer: false },
       B: { vane: false, barometer: false },
@@ -48,12 +53,18 @@ export function generateForecast(decision: WeatherDecision): ForecastData {
 }
 
 /**
- * Generate a random weather decision for a round.
- * Wind is always present; rain may accompany it.
- * Weights: wind-only 55%, wind+rain 45%
+ * Weather for the round, drawn from the round-gated schedule: rounds 1–2 are
+ * today's game, lightning creeps in from round 3, late rounds must end matches.
  */
-export function randomWeatherDecision(): WeatherDecision {
-  const type: WeatherType = Math.random() < 0.55 ? 'wind' : 'wind_rain'
+export function randomWeatherDecision(round: number): WeatherDecision {
+  const tier = WEATHER_SCHEDULE.find(t => round <= t.upToRound) ?? WEATHER_SCHEDULE[WEATHER_SCHEDULE.length - 1]
+  const total = tier.weights.reduce((s, [, w]) => s + w, 0)
+  let roll = Math.random() * total
+  let type: WeatherType = tier.weights[0][0]
+  for (const [t, w] of tier.weights) {
+    roll -= w
+    if (roll <= 0) { type = t; break }
+  }
   const dir = WIND_DIRS[Math.floor(Math.random() * WIND_DIRS.length)]
   return { type, dir }
 }
