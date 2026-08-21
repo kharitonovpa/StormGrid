@@ -1269,10 +1269,18 @@ unsubMessage2 = socket.onMessage((msg) => {
       }
 
       /**
-       * The cataclysm, in order: the sky goes quiet, then it breaks. The gale is
-       * held back until the bolt has landed — a hush you can hear the wind through
-       * is no hush at all.
+       * The cataclysm, in order: the sky goes quiet, the leader crawls down, and
+       * everything loud lands on the frame it touches. The gale is held back until
+       * then — a hush you can hear the wind through is no hush at all.
        */
+      const touchdown = () => {
+        audio.play('thunder-crack')
+        audio.duckMusic(300)
+        if ('vibrate' in navigator) navigator.vibrate?.(40)
+        for (const pid of struckDead) playersSystem?.flashDeath(pid)
+        glassSystem?.pulse()
+      }
+
       const runStorm = async () => {
         if (!stormy) return
         audio.beginHush()
@@ -1280,14 +1288,10 @@ unsubMessage2 = socket.onMessage((msg) => {
         // Watchers and the architect have no side; they stand where A stands.
         const mySide = game.myPlayerId.value ?? 'A'
         const bolt = msg.result.boltCell?.[mySide] ?? null
-        audio.play('thunder-crack')
-        audio.duckMusic(300)
-        if ('vibrate' in navigator) navigator.vibrate?.(40)
-        for (const pid of struckDead) playersSystem?.flashDeath(pid)
-        glassSystem?.pulse()
-        // Null on the side the bolt passed over: the thunder still carries, but
-        // there is nothing to show falling on this half of the slab.
-        if (bolt) await lightningSystem?.strike(bolt, terrainState)
+        // Null on the side the bolt passed over: nothing falls on this half of the
+        // slab, so the thunder is all there is, and it carries at once.
+        if (bolt && lightningSystem) await lightningSystem.strike(bolt, terrainState, touchdown)
+        else touchdown()
         audio.endHush()
       }
 
@@ -1500,7 +1504,7 @@ onMounted(() => {
   windSystem = wind
   const rain = createRainSystem(scene, terrainState)
   rainSystem = rain
-  const lightning = createLightningSystem(scene)
+  const lightning = createLightningSystem(scene, camera)
   lightningSystem = lightning
   const compass = createCompassSystem(scene)
   const preview = createPreviewSystem(scene, terrainState)
