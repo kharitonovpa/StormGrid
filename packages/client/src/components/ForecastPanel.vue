@@ -79,7 +79,17 @@ const iconKey = computed<IconKey>(() => {
   return 'rain'
 })
 
+/**
+ * When the barometer is broken, only the center icon is scrambled
+ * (activeStormy/brokenStormy) — the rim sparks below still counted straight
+ * off the real lightningProbability, which made ring-counting a perfect
+ * oracle for the true forecast. Re-roll a broken tier on the same cadence
+ * as brokenStormy so the rim lies exactly as chaotically as the icon.
+ */
+const brokenSparkTier = ref(0)
+
 const sparkTier = computed(() => {
+  if (props.barometerBroken) return brokenSparkTier.value
   const p = props.lightningProbability
   if (p >= 0.9) return 3
   if (p >= 0.5) return 2
@@ -219,6 +229,7 @@ function tick(time: number) {
     if (brokenBaroT > 0.12 + Math.random() * 0.18) {
       displayLevel.value = Math.floor(Math.random() * 4)
       brokenStormy.value = Math.random() < 0.5
+      brokenSparkTier.value = Math.floor(Math.random() * 4)
       brokenBaroT = 0
     }
   } else {

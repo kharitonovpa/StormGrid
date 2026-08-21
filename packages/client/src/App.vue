@@ -985,6 +985,16 @@ let lastRoomId: string | null = null
 let replayGeneration = 0
 /** Bumped on every replay frame and on exit, so an abandoned storm cannot finish late. */
 let replayStormGeneration = 0
+/**
+ * The live-match analogue of replayStormGeneration: bumped by resetVisuals(),
+ * which every visual-invalidating transition already calls (watcher:redirect,
+ * reconnect, a fresh round:start, leaving the match, ...). A weather:result
+ * handler captures the value it saw on entry and compares against this on
+ * each async continuation — if they differ, the chain is stale and must not
+ * apply wind/rain visuals or old position data. concludeStorm() must still
+ * run either way, so a deferred game:end is never left stuck in pendingGameEnd.
+ */
+let liveStormGeneration = 0
 
 function selectOption(action: MenuAction) {
   handleAction?.(action)
@@ -1037,6 +1047,10 @@ function applyGameState(state: GameState) {
 }
 
 function resetVisuals() {
+  // Invalidates any in-flight weather:result chain: a watcher:redirect,
+  // reconnect, fresh round:start, or exit that lands here mid-storm must not
+  // let that stale chain's wind/rain visuals or old position data through.
+  liveStormGeneration++
   clearTimeout(cratePopupTimer)
   cratePopup.value = null
   windSystem?.setVisible(false)
@@ -1228,6 +1242,12 @@ unsubMessage2 = socket.onMessage((msg) => {
       break
     }
     case 'weather:result': {
+      // The hush plus a two-act strike stretches this chain to ~1.4s of real
+      // time, wide enough for a watcher:redirect, a reconnect, or a fresh
+      // round:start to land underneath it (any of which calls resetVisuals()
+      // and so bumps liveStormGeneration). Captured synchronously, before any
+      // of that async work starts.
+      const gen = liveStormGeneration
       terrainState.applyBoardState(msg.result.state.board)
       const weather = msg.result.state.weather
       const stormy = weather ? hasLightning(weather.type) : false
@@ -1298,28 +1318,44 @@ unsubMessage2 = socket.onMessage((msg) => {
       // Whatever the sky does, the wind, the water and the verdict still have to
       // follow: a thrown prelude must never be what strands the round.
       runStorm().catch(err => console.warn('[storm] the bolt sequence failed', err)).then(() => {
-        if (weather && hasWind(weather.type)) {
+        // Stale means some later transition (redirect, reconnect, a fresh
+        // round:start, ...) already reset the visuals this chain was built
+        // for. Skip applying wind/rain/position visuals from the old message
+        // onto whatever is on screen now — but concludeStorm() below still
+        // has to run either way, or a game:end deferred into pendingGameEnd
+        // while this chain was in flight would be stuck there forever.
+        const stale = gen !== liveStormGeneration
+
+        // A lethal bolt cancels the wind and the rain in the engine (deaths.length
+        // === 0 gates both there), so the client must not start visuals or loops
+        // that nothing will ever turn off before Play Again.
+        if (!stale && weather && hasWind(weather.type) && struckDead.length === 0) {
           windSystem?.setDirection(weather.dir)
           windSystem?.setVisible(true)
           audio.startWind()
         }
-        if (weather && hasRain(weather.type)) {
+        if (!stale && weather && hasRain(weather.type) && struckDead.length === 0) {
           rainSystem?.setVisible(true)
           audio.startRain()
         }
 
         if (playersSystem) {
           const paths = msg.result.windPath as Record<'A' | 'B', { x: number; y: number }[]>
-          if (paths.A.length > 1 || paths.B.length > 1) audio.play('wind-push')
+          if (!stale && (paths.A.length > 1 || paths.B.length > 1)) audio.play('wind-push')
           // The storm is over once the wind has carried everyone it could and the
           // water has stopped rising — only then is the round decided out loud.
-          const storm: Promise<unknown>[] = [playersSystem.animateWindPaths(paths, blownAway)]
+          // A stale chain skips the actual animation (it would move today's
+          // players along yesterday's path) and resolves that leg at once —
+          // concludeStorm() below still needs to run, just without waiting
+          // out a movement nobody should see.
+          const storm: Promise<unknown>[] = [stale ? Promise.resolve() : playersSystem.animateWindPaths(paths, blownAway)]
           if (floodWait) storm.push(floodWait)
           Promise.all(storm).then(() => {
-            if (!playersSystem) return
-            playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B, drowned)
+            if (gen === liveStormGeneration && playersSystem) {
+              playersSystem.applyPositions(msg.result.state.players.A, msg.result.state.players.B, drowned)
+              if (deaths.length > 0) audio.play('death')
+            }
             audio.stopWeather()
-            if (deaths.length > 0) audio.play('death')
             concludeStorm()
           })
         } else {
