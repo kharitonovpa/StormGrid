@@ -45,10 +45,16 @@ Everything else derives from this one sentence:
 - **Cross-side texture:** every rod I raise is a pit on the opponent's side — my
   lightning defense digs their rain traps. No new rule needed.
 
-**Both exposed:** one bolt, it picks the **higher crown** (compare each player's
-experienced height); on an exact tie both die — a draw, consistent with equal run-up
-(wind) and equal volume (rain). No mixed-cause double deaths: like the other elements,
-the storm stops at the first death.
+**Both exposed:** one bolt, and it picks the player who **sticks out further above
+their own world**: margin = crown − (highest experienced height among all OTHER cells
+on their side). The larger margin takes the bolt; on an exact tie both die — a draw,
+consistent with equal run-up (wind) and equal volume (rain). The margin is relative,
+like exposure itself: uniformly lowering your whole side changes nothing (comparing
+absolute experienced crowns was rejected — it made global digging win every mutual
+tie-break, the exact exploit the relativity rule exists to kill). The spared player's
+`boltCell` is null — the single bolt went to the other side, and no rod absorbed
+anything on theirs. No mixed-cause double deaths: like the other elements, the storm
+stops at the first death.
 
 ## Order of elements
 
