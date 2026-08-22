@@ -338,6 +338,7 @@ onUnmounted(() => {
 
 .lobby-title-area {
   padding: 40px 48px;
+  padding-top: calc(var(--sg-safe-top, 0px) + 40px);
   animation: titleIn 1s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -749,8 +750,8 @@ onUnmounted(() => {
 
 .recent-corner {
   position: fixed;
-  top: 40px;
-  right: 48px;
+  top: calc(var(--sg-safe-top, 0px) + 40px);
+  right: calc(var(--sg-safe-right, 0px) + 48px);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -981,7 +982,7 @@ onUnmounted(() => {
 /* ── Mobile ── */
 
 @media (max-width: 640px) {
-  .lobby-title-area { padding: 24px 24px; }
+  .lobby-title-area { padding: 24px 24px; padding-top: calc(var(--sg-safe-top, 0px) + 24px); }
   .lobby-title { font-size: 36px; letter-spacing: 4px; }
   .lobby-tagline { font-size: 11px; }
 
