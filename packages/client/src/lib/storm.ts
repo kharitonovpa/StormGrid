@@ -32,13 +32,21 @@ const DISCHARGE_RATES = { cataclysm: 1 / 1.8, exhale: 1 / 2.0, fast: 1 / 0.3 }
 
 const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-const FRONT_COUNT = 1800              // a wall of mist needs numbers; each mote is large and faint
+const FRONT_COUNT = 3000              // a wall of mist needs numbers; each mote is large and faint
 const FRONT_FAR = HALF * 3            // far horizon distance at intensity 0
-const FRONT_NEAR = HALF * 1.15        // just beyond the board edge at tick 5 (intensity 1)
+// The board is a SQUARE, not a circle: the distance from its centre to its
+// boundary along bearing θ is HALF / max(|sin θ|, |cos θ|) — HALF at 0°/90°,
+// 1.41*HALF at 45°. FRONT_NEAR_MARGIN is the clearance added on top of that
+// (recomputed every frame in update(), since the bearing drifts between
+// candidates) so the wall never sits on the tiles at any bearing.
+const FRONT_NEAR_MARGIN = HALF * 0.25
 const FRONT_HEIGHT = 9
 const FRONT_SIZE_MIN = 2.2            // point size, scaled by 200/depth like wind.ts's dust
 const FRONT_SIZE_MAX = 5.5
-const FRONT_JITTER = HALF * 0.08      // per-particle radial jitter amplitude
+const FRONT_LATERAL = HALF * 1.3      // half-width of the wall, wider than the board so it reads as a front, not a smear
+const FRONT_ROWS = 3                  // depth rows, leading (row 0, nearest the board) through trailing
+const FRONT_DEPTH = HALF * 0.6        // total depth span across those rows
+const FRONT_JITTER = HALF * 0.08      // per-particle jitter amplitude, along the wind axis
 const SWEEP_MS = 1200
 const SWEEP_TARGET = -HALF * 1.2      // across and past the board
 const SWEEP_AZ_TAU = 0.25             // seconds; how fast the mass commits to the true bearing mid-sweep
@@ -47,7 +55,9 @@ const REENTRY_TAU = 0.35              // seconds; how fast a dropped front walks
 const REENTRY_EPS = HALF * 0.05       // close enough to stop easing and track the mass exactly
 
 interface FrontParticle {
-  arcT: number         // slot along the arc, -1..1 (scaled by the dome's current spread)
+  lateral: number       // offset perpendicular to the wind axis; spans the wall's width
+  depthOffset: number   // offset along the wind axis, placing the particle in one of a few depth rows
+  rowMul: number        // brightness/size falloff from the leading row (nearest the board) back through the trailing ones
   jitterPhase: number
   jitterAmp: number
   height: number
@@ -57,9 +67,16 @@ interface FrontParticle {
 
 function makeFrontParticles(): FrontParticle[] {
   const arr: FrontParticle[] = []
+  const rowSpacing = FRONT_DEPTH / (FRONT_ROWS - 1)
   for (let i = 0; i < FRONT_COUNT; i++) {
+    // Rows biased toward the leading edge (row 0, nearest the board) so the
+    // wall is denser where it is advancing, not just brighter there.
+    const r = Math.random()
+    const row = r < 0.5 ? 0 : r < 0.8 ? 1 : 2
     arr.push({
-      arcT: Math.random() * 2 - 1,
+      lateral: (Math.random() * 2 - 1) * FRONT_LATERAL,
+      depthOffset: row * rowSpacing + (Math.random() - 0.5) * FRONT_JITTER,
+      rowMul: 1 - row * 0.25,
       jitterPhase: Math.random() * Math.PI * 2,
       jitterAmp: Math.random() * FRONT_JITTER,
       // biased low: the mass is thickest along the ground and thins out upward
@@ -101,11 +118,13 @@ export function createStormSystem(scene: THREE.Scene) {
       void main() {
         float ang = atan(vDir.x, vDir.z);
         float d = abs(mod(ang - uAzimuth + 3.14159265, 6.2831853) - 3.14159265);
-        // horizon sector: strongest at the horizon, fading by 45 degrees up.
+        // horizon sector: strongest at the horizon, fading by 45 degrees up,
+        // and fading out again just BELOW the horizon so no mass glows under
+        // the slab when the camera looks down at it from a high angle.
         // Killed outright in zenith mode (the darkness moved overhead) and in
         // calm-clean mode (no wind coming and no bolt to hide either — a
         // horizon sector here would paint a bearing the vane never gave).
-        float horizon = smoothstep(uSpread, 0.0, d) * smoothstep(0.7, 0.05, vDir.y) * (1.0 - uZenith) * (1.0 - uCalmClean);
+        float horizon = smoothstep(uSpread, 0.0, d) * smoothstep(0.7, 0.05, vDir.y) * smoothstep(-0.25, 0.02, vDir.y) * (1.0 - uZenith) * (1.0 - uCalmClean);
         // zenith mode: darkness pools overhead instead
         float zenith = smoothstep(0.25, 0.9, vDir.y) * uZenith;
         float mass = clamp(horizon + zenith, 0.0, 1.0) * uIntensity;
@@ -131,8 +150,15 @@ export function createStormSystem(scene: THREE.Scene) {
   const frontSizes = new Float32Array(FRONT_COUNT)
   const frontAlphas = new Float32Array(FRONT_COUNT)
   for (let i = 0; i < FRONT_COUNT; i++) {
-    frontSizes[i] = FRONT_SIZE_MIN + Math.random() * (FRONT_SIZE_MAX - FRONT_SIZE_MIN)
-    frontAlphas[i] = 0.2 + Math.random() * 0.6
+    const p = frontParticles[i]
+    // Vertical taper: dense/large/bright near the ground, sparse/small/faint
+    // higher up (density itself comes from height's low-biased distribution
+    // above); rowMul layers the leading-edge gradient on top of that.
+    const heightT = p.height / FRONT_HEIGHT
+    const sizeMul = (1.2 - 0.65 * heightT) * p.rowMul
+    const alphaMul = (1.0 - 0.82 * heightT) * p.rowMul
+    frontSizes[i] = (FRONT_SIZE_MIN + Math.random() * (FRONT_SIZE_MAX - FRONT_SIZE_MIN)) * sizeMul
+    frontAlphas[i] = (0.2 + Math.random() * 0.6) * alphaMul
   }
   const frontGeo = new THREE.BufferGeometry()
   frontGeo.setAttribute('position', new THREE.BufferAttribute(frontPositions, 3))
@@ -451,18 +477,34 @@ export function createStormSystem(scene: THREE.Scene) {
       // caught returning: the ordinary, invisible end of a crossing.
       if (sweepHold && intensity < HOLD_RELEASE) releaseSweepHold()
 
-      // The curtain costs real per-frame work (1800 particles, 4 trig calls
-      // each, a 21.6KB attribute re-upload) for zero visual return whenever the
+      // The curtain costs real per-frame work (3000 particles, a handful of
+      // trig calls, a 36KB attribute re-upload) for zero visual return whenever the
       // storm is asleep — lobby, replays, menus, the whole time nothing is
       // building. Skipped outright there, and the mesh hidden so a frozen,
       // stale buffer never gets a frame to render.
       front.visible = !sleeping
       if (!sleeping) {
+        // Front placement follows the sweep's true source bearing while one
+        // is in flight or parked in its hold; otherwise it tracks the dome's
+        // own (never-jumping) spring azimuth exactly as before. This is the
+        // SAME bearing convention the dome uses: axis = (sin, cos) points at
+        // the source; perp (axis rotated 90°) is the wall's own width, so the
+        // curtain is a straight line perpendicular to the bearing rather than
+        // an arc — a line clears the board's square corners at every angle,
+        // where a circle of fixed radius cuts across them.
+        const angle = sweepAngle ?? azimuth
+        const axisX = Math.sin(angle), axisZ = Math.cos(angle)
+        const perpX = -axisZ, perpZ = axisX
         // curtain center distance: intensity-derived, unless a sweep is overriding it,
         // unless the front is halted (frozen — no more advancing either way). A front
         // that has just been handed back eases home over a few tenths of a second
         // instead of jumping there, then tracks the mass exactly again.
-        const distTarget = FRONT_FAR - (FRONT_FAR - FRONT_NEAR) * intensity
+        //
+        // The board is a square, so "just beyond the edge" is bearing-dependent:
+        // HALF at 0°/90°, HALF*1.41 at 45°. Recomputed every frame — the bearing
+        // drifts between candidates — so the wall never overlaps the tiles.
+        const edgeClear = HALF / Math.max(Math.abs(axisX), Math.abs(axisZ)) + FRONT_NEAR_MARGIN
+        const distTarget = FRONT_FAR - (FRONT_FAR - edgeClear) * intensity
         if (sweepOverride !== null) frontDist = sweepOverride
         else if (!halted) {
           if (reentry) {
@@ -474,16 +516,13 @@ export function createStormSystem(scene: THREE.Scene) {
         frontTime += dt
         for (let i = 0; i < FRONT_COUNT; i++) {
           const p = frontParticles[i]
-          // Front placement follows the sweep's true source bearing while one
-          // is in flight or parked in its hold; otherwise it tracks the dome's
-          // own (never-jumping) spring azimuth exactly as before.
-          const angle = (sweepAngle ?? azimuth) + p.arcT * spread
           const jitter = Math.sin(frontTime * 0.5 + p.jitterPhase) * p.jitterAmp
-          const dist = frontDist + jitter
+          const dist = frontDist + p.depthOffset + jitter
           const bob = Math.sin(frontTime * p.bobSpeed + p.bobPhase) * 0.6
-          frontPositions[i * 3] = Math.sin(angle) * dist
-          frontPositions[i * 3 + 1] = p.height + bob
-          frontPositions[i * 3 + 2] = Math.cos(angle) * dist
+          const idx = i * 3
+          frontPositions[idx] = axisX * dist + perpX * p.lateral
+          frontPositions[idx + 1] = p.height + bob
+          frontPositions[idx + 2] = axisZ * dist + perpZ * p.lateral
         }
         frontPosAttr.needsUpdate = true
         // hidden entirely in zenith mode (calm+stormy: nothing comes along the
