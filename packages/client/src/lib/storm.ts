@@ -74,6 +74,7 @@ export function createStormSystem(scene: THREE.Scene) {
       uIntensity: { value: 0 },
       uSpread:    { value: SPREAD_MIN },
       uZenith:    { value: 0 },      // 1 = calm+stormy: menace overhead, horizon clean
+      uCalmClean: { value: 0 },      // 1 = calm+dry: no horizon mass, no zenith either — dim only
       uBase:  { value: BASE },
       uStorm: { value: STORM },
       uDim:   { value: DIM },
@@ -86,14 +87,17 @@ export function createStormSystem(scene: THREE.Scene) {
       }
     `,
     fragmentShader: /* glsl */ `
-      uniform float uAzimuth, uIntensity, uSpread, uZenith;
+      uniform float uAzimuth, uIntensity, uSpread, uZenith, uCalmClean;
       uniform vec3 uBase, uStorm, uDim;
       varying vec3 vDir;
       void main() {
         float ang = atan(vDir.x, vDir.z);
         float d = abs(mod(ang - uAzimuth + 3.14159265, 6.2831853) - 3.14159265);
-        // horizon sector: strongest at the horizon, fading by 45 degrees up
-        float horizon = smoothstep(uSpread, 0.0, d) * smoothstep(0.7, 0.05, vDir.y) * (1.0 - uZenith);
+        // horizon sector: strongest at the horizon, fading by 45 degrees up.
+        // Killed outright in zenith mode (the darkness moved overhead) and in
+        // calm-clean mode (no wind coming and no bolt to hide either — a
+        // horizon sector here would paint a bearing the vane never gave).
+        float horizon = smoothstep(uSpread, 0.0, d) * smoothstep(0.7, 0.05, vDir.y) * (1.0 - uZenith) * (1.0 - uCalmClean);
         // zenith mode: darkness pools overhead instead
         float zenith = smoothstep(0.25, 0.9, vDir.y) * uZenith;
         float mass = clamp(horizon + zenith, 0.0, 1.0) * uIntensity;
@@ -127,6 +131,10 @@ export function createStormSystem(scene: THREE.Scene) {
   frontGeo.setAttribute('aSize', new THREE.BufferAttribute(frontSizes, 1))
   frontGeo.setAttribute('aAlpha', new THREE.BufferAttribute(frontAlphas, 1))
   const frontPosAttr = frontGeo.getAttribute('position') as THREE.BufferAttribute
+  // Rewritten every active frame (see update()); StaticDrawUsage's default
+  // hint would ask the driver to optimize for a buffer that almost never
+  // changes, which this one is the opposite of.
+  frontPosAttr.setUsage(THREE.DynamicDrawUsage)
   /**
    * Soft round motes, the same shape wind.ts's dust uses. A plain PointsMaterial
    * draws hard axis-aligned squares, which read as glitch artefacts rather than
@@ -166,12 +174,20 @@ export function createStormSystem(scene: THREE.Scene) {
     `,
   })
   const front = new THREE.Points(frontGeo, frontMat)
+  // The boundingSphere three.js culls against is computed once from frame-1
+  // positions and never invalidated as the curtain marches — orbiting or
+  // zooming toward the board can cull the whole front while the dome still
+  // darkens above it. The same idiom lightning.ts already uses for its bolts.
+  front.frustumCulled = false
   scene.add(front)
 
   /* ── State ── */
   let candidates: WindDir[] = []
   let vaneBroken = false
-  let zenithTarget = 0
+  let stormyRaw = false             // the true lightningProbability >= 0.5, as setForecast last gave it
+  let barometerBroken = false
+  let brokenStormyVal = false       // barometer-broken stand-in for stormyRaw, re-rolled below
+  let brokenStormyT = 0
   let azimuth = 0
   let azVel = 0
   let oscT = 0
@@ -243,16 +259,23 @@ export function createStormSystem(scene: THREE.Scene) {
   }
 
   return {
-    setForecast(c: WindDir[], broken: boolean, stormy: boolean) {
+    setForecast(c: WindDir[], broken: boolean, stormy: boolean, baroBroken: boolean) {
       candidates = [...c]
       vaneBroken = broken
-      // Zenith mode says out loud what a broken vane is meant to keep quiet: the
-      // dial's needle spins whether or not any wind is coming, so a sky that
-      // pooled its darkness overhead only on calm rounds would hand that player
-      // a perfect calm-or-wind oracle. With the vane broken the mass always sits
-      // on the horizon and roams at random bearings, telling them nothing.
-      zenithTarget = !broken && c.length === 0 && stormy ? 1 : 0
-      discharging = null
+      stormyRaw = stormy
+      barometerBroken = baroBroken
+      // Zenith mode (and its calm-clean opposite, see update()) are computed
+      // every frame there, not here — the barometer scramble below has its own
+      // cadence and must keep re-rolling between forecasts, not just at the
+      // instant one arrives.
+      //
+      // Note: `discharging = null` deliberately does NOT live here any more.
+      // This watcher re-fires on every gameState change, so a mid-match
+      // resetVisuals() -> discharge('fast') used to get cancelled within the
+      // same flush, stretching the ~0.3s fast fade into the ~1s ease. Progress
+      // resets (setProgress) still cancel a stale discharge; a forecast update
+      // must not.
+      //
       // A newborn storm owns the curtain: whatever the last one swept through is
       // handed back to the intensity here rather than left parked past the board
       // for a whole round. Eased, so an interruption mid-drain does not pop.
@@ -323,6 +346,17 @@ export function createStormSystem(scene: THREE.Scene) {
           brokenT = 0
         }
       }
+      // A broken barometer is what hides rain/lightning from the whole sky, not
+      // just the dial: re-roll a stand-in for "is it stormy" on the same cadence
+      // ForecastPanel's own brokenStormy uses (~0.12-0.30s), so orbiting up to
+      // read zenith mode is no better an oracle than staring at the cracked icon.
+      if (barometerBroken) {
+        brokenStormyT += dt
+        if (brokenStormyT > 0.12 + Math.random() * 0.18) {
+          brokenStormyVal = Math.random() < 0.5
+          brokenStormyT = 0
+        }
+      }
       // azimuth spring (drifting mass, never a visible jump)
       const force = shortestArc(azimuth, azimuthTarget()) * SPRING_K - azVel * SPRING_D
       azVel += force * dt
@@ -341,43 +375,63 @@ export function createStormSystem(scene: THREE.Scene) {
 
       const spread = SPREAD_MIN + (SPREAD_MAX - SPREAD_MIN) * intensity
 
+      // A calm forecast is one where the vane has nothing to point at: intact
+      // and given zero candidates. A broken vane must keep the horizon mass
+      // roaming at random bearings (that ambiguity is deliberate), so it never
+      // counts as calm. Calm+stormy pools the darkness overhead (zenith mode,
+      // unchanged); calm+dry shows neither — just the global dim.
+      const calm = !vaneBroken && candidates.length === 0
+      const effectiveStormy = barometerBroken ? brokenStormyVal : stormyRaw
+      const zenithTarget = calm && effectiveStormy ? 1 : 0
+      const calmCleanTarget = calm && !effectiveStormy ? 1 : 0
+
       const u = mat.uniforms
       u.uAzimuth.value = azimuth
       u.uIntensity.value = intensity
       u.uSpread.value = spread
       u.uZenith.value += (zenithTarget - u.uZenith.value) * Math.min(1, dt * 2)
+      u.uCalmClean.value += (calmCleanTarget - u.uCalmClean.value) * Math.min(1, dt * 2)
 
       // A swept-through front waits past the board until it is too faint to be
       // caught returning: the ordinary, invisible end of a crossing.
       if (sweepHold && intensity < HOLD_RELEASE) releaseSweepHold()
 
-      // curtain center distance: intensity-derived, unless a sweep is overriding it,
-      // unless the front is halted (frozen — no more advancing either way). A front
-      // that has just been handed back eases home over a few tenths of a second
-      // instead of jumping there, then tracks the mass exactly again.
-      const distTarget = FRONT_FAR - (FRONT_FAR - FRONT_NEAR) * intensity
-      if (sweepOverride !== null) frontDist = sweepOverride
-      else if (!halted) {
-        if (reentry) {
-          frontDist += (distTarget - frontDist) * Math.min(1, dt / REENTRY_TAU)
-          if (Math.abs(distTarget - frontDist) < REENTRY_EPS) reentry = false
-        } else frontDist = distTarget
-      }
+      // The curtain costs real per-frame work (1800 particles, 4 trig calls
+      // each, a 21.6KB attribute re-upload) for zero visual return whenever the
+      // storm is asleep — lobby, replays, menus, the whole time nothing is
+      // building. Skipped outright there, and the mesh hidden so a frozen,
+      // stale buffer never gets a frame to render.
+      front.visible = !sleeping
+      if (!sleeping) {
+        // curtain center distance: intensity-derived, unless a sweep is overriding it,
+        // unless the front is halted (frozen — no more advancing either way). A front
+        // that has just been handed back eases home over a few tenths of a second
+        // instead of jumping there, then tracks the mass exactly again.
+        const distTarget = FRONT_FAR - (FRONT_FAR - FRONT_NEAR) * intensity
+        if (sweepOverride !== null) frontDist = sweepOverride
+        else if (!halted) {
+          if (reentry) {
+            frontDist += (distTarget - frontDist) * Math.min(1, dt / REENTRY_TAU)
+            if (Math.abs(distTarget - frontDist) < REENTRY_EPS) reentry = false
+          } else frontDist = distTarget
+        }
 
-      frontTime += dt
-      for (let i = 0; i < FRONT_COUNT; i++) {
-        const p = frontParticles[i]
-        const angle = azimuth + p.arcT * spread
-        const jitter = Math.sin(frontTime * 0.5 + p.jitterPhase) * p.jitterAmp
-        const dist = frontDist + jitter
-        const bob = Math.sin(frontTime * p.bobSpeed + p.bobPhase) * 0.6
-        frontPositions[i * 3] = Math.sin(angle) * dist
-        frontPositions[i * 3 + 1] = p.height + bob
-        frontPositions[i * 3 + 2] = Math.cos(angle) * dist
+        frontTime += dt
+        for (let i = 0; i < FRONT_COUNT; i++) {
+          const p = frontParticles[i]
+          const angle = azimuth + p.arcT * spread
+          const jitter = Math.sin(frontTime * 0.5 + p.jitterPhase) * p.jitterAmp
+          const dist = frontDist + jitter
+          const bob = Math.sin(frontTime * p.bobSpeed + p.bobPhase) * 0.6
+          frontPositions[i * 3] = Math.sin(angle) * dist
+          frontPositions[i * 3 + 1] = p.height + bob
+          frontPositions[i * 3 + 2] = Math.cos(angle) * dist
+        }
+        frontPosAttr.needsUpdate = true
+        // hidden entirely in zenith mode (calm+stormy: nothing comes along the
+        // ground) and in calm-clean mode (calm+dry: no front was ever coming)
+        frontMat.uniforms.uOpacity.value = 0.5 * intensity * (1 - u.uZenith.value) * (1 - u.uCalmClean.value)
       }
-      frontPosAttr.needsUpdate = true
-      // hidden entirely in zenith mode (calm forecast: nothing comes along the ground)
-      frontMat.uniforms.uOpacity.value = 0.5 * intensity * (1 - u.uZenith.value)
 
       // Tremor: an eased envelope (never a snap on/off) driving a small jittery
       // offset off the shared oscillator clock. Reduced motion kills it outright.
