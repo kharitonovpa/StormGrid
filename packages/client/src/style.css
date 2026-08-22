@@ -5,6 +5,21 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+:root {
+  /*
+   * Inset from each viewport edge that top/bottom/left/right-anchored UI must
+   * clear. Defaults to the OS-reported notch/home-indicator inset (iOS Safari,
+   * 0 elsewhere) so web/yandex/gamepush and desktop need no further setup.
+   * Platforms with extra chrome the OS doesn't know about — Telegram's own
+   * in-app header — override these with an inline style on this element; see
+   * lib/platform/safeArea.ts.
+   */
+  --sg-safe-top: env(safe-area-inset-top, 0px);
+  --sg-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --sg-safe-left: env(safe-area-inset-left, 0px);
+  --sg-safe-right: env(safe-area-inset-right, 0px);
+}
+
 html, body, #app {
   width: 100%;
   height: 100%;

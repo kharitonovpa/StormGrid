@@ -126,8 +126,8 @@ onUnmounted(() => {
 .vol-root {
   position: fixed;
   /* --sticky-inset is the platform banner's height; 0 when there is none. */
-  bottom: calc(18px + var(--sticky-inset, 0px));
-  right: 18px;
+  bottom: calc(18px + var(--sg-safe-bottom, 0px) + var(--sticky-inset, 0px));
+  right: calc(18px + var(--sg-safe-right, 0px));
   z-index: 300;
   font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
 }
@@ -286,7 +286,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
-  .vol-root { bottom: calc(12px + var(--sticky-inset, 0px)); right: 12px; }
+  .vol-root { bottom: calc(12px + var(--sg-safe-bottom, 0px) + var(--sticky-inset, 0px)); right: calc(12px + var(--sg-safe-right, 0px)); }
   .vol-btn { width: 44px; height: 44px; }
 }
 </style>

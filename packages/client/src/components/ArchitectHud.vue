@@ -160,8 +160,8 @@ defineExpose({ startCountdown, resetBonusState })
 <style scoped>
 .ah {
   position: fixed;
-  top: 18px;
-  left: 18px;
+  top: calc(var(--sg-safe-top, 0px) + 18px);
+  left: calc(var(--sg-safe-left, 0px) + 18px);
   z-index: 55;
   display: flex;
   flex-direction: column;

@@ -447,8 +447,8 @@ onUnmounted(() => {
 <style scoped>
 .forecast-panel {
   position: fixed;
-  top: 16px;
-  right: 16px;
+  top: calc(var(--sg-safe-top, 0px) + 16px);
+  right: calc(var(--sg-safe-right, 0px) + 16px);
   z-index: 55;
   pointer-events: none;
   animation: fp-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1);
@@ -622,7 +622,7 @@ onUnmounted(() => {
 /* ── Mobile ── */
 
 @media (max-width: 640px) {
-  .forecast-panel { top: 10px; right: 10px; }
+  .forecast-panel { top: calc(var(--sg-safe-top, 0px) + 10px); right: calc(var(--sg-safe-right, 0px) + 10px); }
   .compass-svg { width: 120px; height: 120px; }
   .cardinal { font-size: 10px; }
   .cardinal-n { font-size: 11px; }

@@ -228,7 +228,9 @@ watch(() => props.phase, (newPhase, oldPhase) => {
 <style scoped>
 .hud {
   position: fixed;
-  top: 0;
+  /* .choose-banner below is absolutely positioned inside this element, so shifting
+     this top also shifts it — no separate safe-area handling needed there. */
+  top: var(--sg-safe-top, 0px);
   left: 0;
   right: 0;
   z-index: 50;
@@ -652,8 +654,8 @@ watch(() => props.phase, (newPhase, oldPhase) => {
 .flip-btn {
   position: fixed;
   /* --sticky-inset is the platform banner's height; 0 when there is none. */
-  bottom: calc(18px + var(--sticky-inset, 0px));
-  right: 66px;
+  bottom: calc(18px + var(--sg-safe-bottom, 0px) + var(--sticky-inset, 0px));
+  right: calc(66px + var(--sg-safe-right, 0px));
   height: 40px;
   box-sizing: border-box;
   border-radius: 20px;
@@ -741,7 +743,7 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   .forecast-strip { gap: 8px; }
   .cataclysm-banner { padding: 10px 24px; }
   .cataclysm-text { font-size: 16px; letter-spacing: 2px; }
-  .flip-btn { bottom: calc(12px + var(--sticky-inset, 0px)); right: 60px; height: 44px; padding: 0 12px; }
+  .flip-btn { bottom: calc(12px + var(--sg-safe-bottom, 0px) + var(--sticky-inset, 0px)); right: calc(60px + var(--sg-safe-right, 0px)); height: 44px; padding: 0 12px; }
   .flip-btn svg { width: 18px; height: 18px; }
   .flip-label { font-size: 9px; }
   .status-col { min-width: 90px; }

@@ -77,7 +77,7 @@ const lightningHtml = computed(() => md(t('tutorial.lightning')))
 .tut-root {
   position: fixed;
   /* --sticky-inset is the platform banner's height; 0 when there is none. */
-  bottom: calc(76px + var(--sticky-inset, 0px));
+  bottom: calc(76px + var(--sg-safe-bottom, 0px) + var(--sticky-inset, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
@@ -157,7 +157,7 @@ const lightningHtml = computed(() => md(t('tutorial.lightning')))
 
 @media (max-width: 640px) {
   .tut-root {
-    bottom: calc(68px + var(--sticky-inset, 0px));
+    bottom: calc(68px + var(--sg-safe-bottom, 0px) + var(--sticky-inset, 0px));
     width: calc(100vw - 20px);
   }
   .tut-card { padding: 10px 14px; }

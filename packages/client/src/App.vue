@@ -2760,7 +2760,7 @@ onUnmounted(() => {
 
 .crate-banner {
   position: fixed;
-  top: 92px;
+  top: calc(var(--sg-safe-top, 0px) + 92px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 320;
@@ -2848,7 +2848,7 @@ onUnmounted(() => {
 
 .opponent-dc-banner {
   position: fixed;
-  top: 16px;
+  top: calc(var(--sg-safe-top, 0px) + 16px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 7000;

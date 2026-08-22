@@ -2,10 +2,49 @@ import type { UserInfo } from '@wheee/shared'
 import type { PlatformAdapter } from './types'
 import { createLocalStorage, createLocalSound, noSticky } from './defaults'
 import { API_BASE } from '../config'
+import { setSafeAreaInset } from './safeArea'
 
 let user: UserInfo | null = null
 let token: string | null = null
 const authCallbacks = new Set<() => void>()
+
+/**
+ * Clients old enough to lack both inset fields still run under a Telegram header
+ * on mobile — this is a conservative estimate of its height so the UI doesn't sit
+ * underneath it. Desktop/web Telegram clients don't have this chrome.
+ */
+const TG_HEADER_FALLBACK_PX = 56
+const TG_MOBILE_PLATFORMS = new Set(['ios', 'android'])
+
+/**
+ * Telegram's two inset fields compose: `safeAreaInset` is the device's own notch
+ * / home-indicator, `contentSafeAreaInset` is Telegram's own header and bottom
+ * bar on top of that. Both are Bot API 8.0+ and must be feature-detected.
+ */
+function applyTelegramSafeArea(wa: TelegramWebApp): void {
+  const content = wa.contentSafeAreaInset
+  const device = wa.safeAreaInset
+  const hasInsets = content !== undefined || device !== undefined
+  const top = hasInsets
+    ? (content?.top ?? 0) + (device?.top ?? 0)
+    : (TG_MOBILE_PLATFORMS.has(wa.platform) ? TG_HEADER_FALLBACK_PX : 0)
+
+  setSafeAreaInset({
+    top,
+    bottom: (content?.bottom ?? 0) + (device?.bottom ?? 0),
+    left: (content?.left ?? 0) + (device?.left ?? 0),
+    right: (content?.right ?? 0) + (device?.right ?? 0),
+  })
+}
+
+/** `onEvent` is safe to call with an unrecognized name, but older clients may not
+ * have the method at all — guard each subscription independently. */
+function subscribeSafeArea(wa: TelegramWebApp): void {
+  const handler = () => applyTelegramSafeArea(wa)
+  for (const eventType of ['safeAreaChanged', 'contentSafeAreaChanged', 'viewportChanged']) {
+    try { wa.onEvent?.(eventType, handler) } catch { /* unsupported on this client */ }
+  }
+}
 
 export default class TelegramAdapter implements PlatformAdapter {
   readonly type = 'telegram' as const
@@ -27,6 +66,8 @@ export default class TelegramAdapter implements PlatformAdapter {
       wa.ready()
       wa.expand()
       wa.disableVerticalSwipes()
+      applyTelegramSafeArea(wa)
+      subscribeSafeArea(wa)
     }
     await this.loginWithRetry()
   }
