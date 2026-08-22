@@ -44,9 +44,8 @@ const FRONT_HEIGHT = 9
 const FRONT_SIZE_MIN = 2.2            // point size, scaled by 200/depth like wind.ts's dust
 const FRONT_SIZE_MAX = 5.5
 const FRONT_LATERAL = HALF * 1.3      // half-width of the wall, wider than the board so it reads as a front, not a smear
-const FRONT_ROWS = 3                  // depth rows, leading (row 0, nearest the board) through trailing
-const FRONT_DEPTH = HALF * 0.6        // total depth span across those rows
-const FRONT_JITTER = HALF * 0.08      // per-particle jitter amplitude, along the wind axis
+const FRONT_DEPTH = HALF * 0.4        // total depth span of the wall, leading edge through trailing haze
+const FRONT_JITTER = HALF * 0.15      // per-particle jitter amplitude, along the wind axis — big enough that no depth band can appear
 const SWEEP_MS = 1200
 const SWEEP_TARGET = -HALF * 1.2      // across and past the board
 const SWEEP_AZ_TAU = 0.25             // seconds; how fast the mass commits to the true bearing mid-sweep
@@ -56,8 +55,8 @@ const REENTRY_EPS = HALF * 0.05       // close enough to stop easing and track t
 
 interface FrontParticle {
   lateral: number       // offset perpendicular to the wind axis; spans the wall's width
-  depthOffset: number   // offset along the wind axis, placing the particle in one of a few depth rows
-  rowMul: number        // brightness/size falloff from the leading row (nearest the board) back through the trailing ones
+  depthOffset: number   // offset along the wind axis, placing the particle within the wall's depth
+  depthT: number        // 0 = leading edge (nearest the board), 1 = trailing haze; drives the brightness/size gradient continuously
   jitterPhase: number
   jitterAmp: number
   height: number
@@ -67,16 +66,16 @@ interface FrontParticle {
 
 function makeFrontParticles(): FrontParticle[] {
   const arr: FrontParticle[] = []
-  const rowSpacing = FRONT_DEPTH / (FRONT_ROWS - 1)
   for (let i = 0; i < FRONT_COUNT; i++) {
-    // Rows biased toward the leading edge (row 0, nearest the board) so the
-    // wall is denser where it is advancing, not just brighter there.
-    const r = Math.random()
-    const row = r < 0.5 ? 0 : r < 0.8 ? 1 : 2
+    // Continuous depth, biased toward the leading edge (depthT near 0, nearest
+    // the board) so the wall is denser where it is advancing, not just
+    // brighter there — squaring a uniform random skews the distribution low
+    // without any discrete rows for gaps to open up between.
+    const depthT = Math.pow(Math.random(), 2)
     arr.push({
       lateral: (Math.random() * 2 - 1) * FRONT_LATERAL,
-      depthOffset: row * rowSpacing + (Math.random() - 0.5) * FRONT_JITTER,
-      rowMul: 1 - row * 0.25,
+      depthOffset: depthT * FRONT_DEPTH + (Math.random() - 0.5) * FRONT_JITTER,
+      depthT,
       jitterPhase: Math.random() * Math.PI * 2,
       jitterAmp: Math.random() * FRONT_JITTER,
       // biased low: the mass is thickest along the ground and thins out upward
@@ -153,10 +152,11 @@ export function createStormSystem(scene: THREE.Scene) {
     const p = frontParticles[i]
     // Vertical taper: dense/large/bright near the ground, sparse/small/faint
     // higher up (density itself comes from height's low-biased distribution
-    // above); rowMul layers the leading-edge gradient on top of that.
+    // above); the continuous depthT gradient layers the leading-edge falloff
+    // on top of that instead of a handful of discrete row brightnesses.
     const heightT = p.height / FRONT_HEIGHT
-    const sizeMul = (1.2 - 0.65 * heightT) * p.rowMul
-    const alphaMul = (1.0 - 0.82 * heightT) * p.rowMul
+    const sizeMul = (1.2 - 0.65 * heightT) * (1 - 0.45 * p.depthT)
+    const alphaMul = (1.0 - 0.82 * heightT) * (1 - 0.45 * p.depthT)
     frontSizes[i] = (FRONT_SIZE_MIN + Math.random() * (FRONT_SIZE_MAX - FRONT_SIZE_MIN)) * sizeMul
     frontAlphas[i] = (0.2 + Math.random() * 0.6) * alphaMul
   }
