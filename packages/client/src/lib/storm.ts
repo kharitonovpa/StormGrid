@@ -9,7 +9,14 @@ const BASE = new THREE.Color(0x0a0e14)          // today's void, exactly
 const STORM = new THREE.Color(0x1a1230)         // deep slate-violet mass
 const DIM = new THREE.Color(0x070a10)           // the rest of the sky sinks slightly
 
-const DIR_AZIMUTH: Record<WindDir, number> = { N: Math.PI, E: Math.PI / 2, S: 0, W: -Math.PI / 2 }
+// CONVENTION: WindDir ('N'/'E'/'S'/'W') names the direction the wind TRAVELS
+// (see DIRECTIONS in packages/shared/src/constants.ts and pushPlayer in
+// packages/server/src/engine/wind.ts — 'N' pushes players toward -z). The sky
+// mass, by contrast, sits over the horizon the wind is coming FROM — the
+// upwind/source bearing, which is the opposite of the travel bearing. Do not
+// "fix" this back to the travel bearing: that is the inversion this comment
+// exists to prevent. N travels toward -z, so its source is +z: atan2(0,+1) = 0.
+const DIR_AZIMUTH: Record<WindDir, number> = { N: 0, E: -Math.PI / 2, S: Math.PI, W: Math.PI / 2 }
 
 // The dial needle's spring feel (ForecastPanel), slowed for a sky-sized mass.
 const SPRING_K = 3.2
