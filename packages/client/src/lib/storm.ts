@@ -25,10 +25,12 @@ const DISCHARGE_RATES = { cataclysm: 1 / 1.8, exhale: 1 / 2.0, fast: 1 / 0.3 }
 
 const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-const FRONT_COUNT = 400
+const FRONT_COUNT = 1800              // a wall of mist needs numbers; each mote is large and faint
 const FRONT_FAR = HALF * 3            // far horizon distance at intensity 0
 const FRONT_NEAR = HALF * 1.15        // just beyond the board edge at tick 5 (intensity 1)
 const FRONT_HEIGHT = 9
+const FRONT_SIZE_MIN = 2.2            // point size, scaled by 200/depth like wind.ts's dust
+const FRONT_SIZE_MAX = 5.5
 const FRONT_JITTER = HALF * 0.08      // per-particle radial jitter amplitude
 const SWEEP_MS = 1200
 const SWEEP_TARGET = -HALF * 1.2      // across and past the board
@@ -52,7 +54,8 @@ function makeFrontParticles(): FrontParticle[] {
       arcT: Math.random() * 2 - 1,
       jitterPhase: Math.random() * Math.PI * 2,
       jitterAmp: Math.random() * FRONT_JITTER,
-      height: Math.random() * FRONT_HEIGHT,
+      // biased low: the mass is thickest along the ground and thins out upward
+      height: Math.pow(Math.random(), 1.7) * FRONT_HEIGHT,
       bobPhase: Math.random() * Math.PI * 2,
       bobSpeed: 0.3 + Math.random() * 0.4,
     })
@@ -96,6 +99,13 @@ export function createStormSystem(scene: THREE.Scene) {
         float mass = clamp(horizon + zenith, 0.0, 1.0) * uIntensity;
         vec3 sky = mix(uBase, uDim, uIntensity * 0.6);   // the whole world dims a little
         gl_FragColor = vec4(mix(sky, uStorm, mass), 1.0);
+        // Colour management: THREE.Color holds linear-sRGB, and three.js appends the
+        // output transform only to its own materials — a ShaderMaterial that writes
+        // gl_FragColor has to ask for it. Without this line every colour above is
+        // written raw into an sRGB framebuffer and the whole sky lands ~9x too dark:
+        // BASE #0a0e14 renders as #010102 and the storm mass as #030208, which is
+        // both invisible and darker than the scene background it replaces.
+        #include <colorspace_fragment>
       }
     `,
   })
@@ -106,17 +116,54 @@ export function createStormSystem(scene: THREE.Scene) {
   /* ── Front curtain ── */
   const frontParticles = makeFrontParticles()
   const frontPositions = new Float32Array(FRONT_COUNT * 3)
+  const frontSizes = new Float32Array(FRONT_COUNT)
+  const frontAlphas = new Float32Array(FRONT_COUNT)
+  for (let i = 0; i < FRONT_COUNT; i++) {
+    frontSizes[i] = FRONT_SIZE_MIN + Math.random() * (FRONT_SIZE_MAX - FRONT_SIZE_MIN)
+    frontAlphas[i] = 0.2 + Math.random() * 0.6
+  }
   const frontGeo = new THREE.BufferGeometry()
   frontGeo.setAttribute('position', new THREE.BufferAttribute(frontPositions, 3))
+  frontGeo.setAttribute('aSize', new THREE.BufferAttribute(frontSizes, 1))
+  frontGeo.setAttribute('aAlpha', new THREE.BufferAttribute(frontAlphas, 1))
   const frontPosAttr = frontGeo.getAttribute('position') as THREE.BufferAttribute
-  const frontMat = new THREE.PointsMaterial({
-    color: 0xb8a9e6,
-    size: 1.6,
-    sizeAttenuation: true,
+  /**
+   * Soft round motes, the same shape wind.ts's dust uses. A plain PointsMaterial
+   * draws hard axis-aligned squares, which read as glitch artefacts rather than
+   * as weather — the radial falloff on gl_PointCoord is what makes the front a
+   * mist instead of a scatter of cubes.
+   */
+  const frontMat = new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 0,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor: { value: new THREE.Color(0x9d8fd0) },
+      uOpacity: { value: 0 },
+    },
+    vertexShader: /* glsl */ `
+      attribute float aSize;
+      attribute float aAlpha;
+      varying float vAlpha;
+      void main() {
+        vAlpha = aAlpha;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = aSize * (200.0 / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      varying float vAlpha;
+      void main() {
+        float d = length(gl_PointCoord - 0.5) * 2.0;
+        float alpha = smoothstep(1.0, 0.2, d) * vAlpha * uOpacity;
+        if (alpha <= 0.0) discard;
+        gl_FragColor = vec4(uColor, alpha);
+        #include <colorspace_fragment>
+      }
+    `,
   })
   const front = new THREE.Points(frontGeo, frontMat)
   scene.add(front)
@@ -330,7 +377,7 @@ export function createStormSystem(scene: THREE.Scene) {
       }
       frontPosAttr.needsUpdate = true
       // hidden entirely in zenith mode (calm forecast: nothing comes along the ground)
-      frontMat.opacity = 0.35 * intensity * (1 - u.uZenith.value)
+      frontMat.uniforms.uOpacity.value = 0.5 * intensity * (1 - u.uZenith.value)
 
       // Tremor: an eased envelope (never a snap on/off) driving a small jittery
       // offset off the shared oscillator clock. Reduced motion kills it outright.
