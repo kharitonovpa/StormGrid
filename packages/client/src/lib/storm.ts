@@ -41,6 +41,7 @@ const FRONT_SIZE_MAX = 5.5
 const FRONT_JITTER = HALF * 0.08      // per-particle radial jitter amplitude
 const SWEEP_MS = 1200
 const SWEEP_TARGET = -HALF * 1.2      // across and past the board
+const SWEEP_AZ_TAU = 0.25             // seconds; how fast the mass commits to the true bearing mid-sweep
 const HOLD_RELEASE = 0.02             // intensity at which a swept front may leave its parking spot
 const REENTRY_TAU = 0.35              // seconds; how fast a dropped front walks back to where the mass wants it
 const REENTRY_EPS = HALF * 0.05       // close enough to stop easing and track the mass exactly
@@ -208,6 +209,27 @@ export function createStormSystem(scene: THREE.Scene) {
   let frontDist = FRONT_FAR          // curtain center distance, frozen while halted
   let frontTime = 0                  // clock for jitter/bob animation
   let sweepOverride: number | null = null   // takes precedence over the intensity-derived distance
+  /**
+   * The true source bearing for the in-flight (or held) sweep, set the instant
+   * `sweep(dir)` fires and used ONLY for the front curtain's placement — never
+   * for the dome's `azimuth` spring, which must never visibly jump. Without
+   * this the curtain marches wherever the still-oscillating spring's `azimuth`
+   * happens to be (up to ~3s to settle, longer than the whole crossing), which
+   * can leave it visibly on the wrong horizon for a two-candidate round.
+   */
+  let sweepAngle: number | null = null
+  /**
+   * The sweepToken that last set `sweepAngle`. Guards a stale sweep's own
+   * cleanup (the `token !== sweepToken` branch in `sweep()`'s step loop) from
+   * clobbering a NEWER sweep's angle: if sweep B supersedes sweep A while A's
+   * step loop still has one more animation-frame tick queued, that queued tick
+   * fires after B has already set its own `sweepAngle` — without this guard
+   * A's stale cleanup would null it right back out, and B's front would march
+   * on the wrong bearing for its entire crossing. `sweepOverride` doesn't need
+   * this because B's step loop re-sets it every frame; `sweepAngle` is set
+   * once per sweep and never refreshed, so it has no other way to self-heal.
+   */
+  let sweepAngleGen = 0
   let sweepToken = 0
   let halted = false
   /**
@@ -230,10 +252,17 @@ export function createStormSystem(scene: THREE.Scene) {
   let tremorAmp = 0                  // eased 0..1 envelope, never a snap on/off
   const tremorOffset = new THREE.Vector3()
 
-  /** Give the curtain's distance back to the intensity — always eased, never a jump. */
-  function dropOverride() {
+  /**
+   * Give the curtain's distance back to the intensity — always eased, never a
+   * jump. Pass `ownerToken` when calling from a sweep's own step loop (the
+   * only call site that can race a newer, superseding sweep): `sweepAngle` is
+   * only cleared if no newer sweep has claimed it since. Call sites outside a
+   * step loop (releaseSweepHold, halt) have no such race — they always clear.
+   */
+  function dropOverride(ownerToken?: number) {
     sweepHold = false
     sweepOverride = null
+    if (ownerToken === undefined || sweepAngleGen === ownerToken) sweepAngle = null
     reentry = true
   }
 
@@ -313,13 +342,19 @@ export function createStormSystem(scene: THREE.Scene) {
       azVel = 0
       sweepHold = false
       candidates = [dir]              // the storm commits to its real direction
+      // The crossing itself must always follow the TRUE source bearing, not
+      // wherever the pre-round oscillator spring happens to be — that spring
+      // can take ~3s to settle, longer than the whole SWEEP_MS crossing. See
+      // sweepAngle's declaration and its use in update()'s particle placement.
+      sweepAngleGen = token
+      sweepAngle = DIR_AZIMUTH[dir]
       // By now the direction is public — weather:result has already announced it —
       // so a broken vane stops mattering: the front must march the same way the
       // gale and the bodies do, not off at the needle's last random bearing.
       vaneBroken = false
       return new Promise((resolve) => {
         const step = () => {
-          if (token !== sweepToken) { dropOverride(); resolve(); return }
+          if (token !== sweepToken) { dropOverride(token); resolve(); return }
           const t = Math.min(1, (performance.now() - started) / SWEEP_MS)
           sweepOverride = from + (to - from) * (t * t)   // accelerating crossing
           if (t >= 1) {
@@ -364,10 +399,23 @@ export function createStormSystem(scene: THREE.Scene) {
           brokenStormyT = 0
         }
       }
-      // azimuth spring (drifting mass, never a visible jump)
-      const force = shortestArc(azimuth, azimuthTarget()) * SPRING_K - azVel * SPRING_D
-      azVel += force * dt
-      azimuth += azVel * dt
+      // azimuth spring (drifting mass, never a visible jump). While a sweep is
+      // actually in flight (not yet parked in its hold), the dome commits to
+      // the true bearing on a fast ~0.25s time constant instead of chasing the
+      // (soon-stale, possibly two-candidate) oscillator target — still eased,
+      // never a teleport, so it stops visibly contradicting the curtain for
+      // the last stretch of the crossing without violating "azimuth never
+      // jumps while visible." Outside a sweep the ordinary spring feel is
+      // untouched, including the broken-vane roaming target.
+      if (sweepAngle !== null && !sweepHold) {
+        const diff = shortestArc(azimuth, sweepAngle)
+        azimuth += diff * Math.min(1, dt / SWEEP_AZ_TAU)
+        azVel = 0
+      } else {
+        const force = shortestArc(azimuth, azimuthTarget()) * SPRING_K - azVel * SPRING_D
+        azVel += force * dt
+        azimuth += azVel * dt
+      }
 
       // intensity: eased toward progress, or drained by a discharge
       if (discharging) {
@@ -426,7 +474,10 @@ export function createStormSystem(scene: THREE.Scene) {
         frontTime += dt
         for (let i = 0; i < FRONT_COUNT; i++) {
           const p = frontParticles[i]
-          const angle = azimuth + p.arcT * spread
+          // Front placement follows the sweep's true source bearing while one
+          // is in flight or parked in its hold; otherwise it tracks the dome's
+          // own (never-jumping) spring azimuth exactly as before.
+          const angle = (sweepAngle ?? azimuth) + p.arcT * spread
           const jitter = Math.sin(frontTime * 0.5 + p.jitterPhase) * p.jitterAmp
           const dist = frontDist + jitter
           const bob = Math.sin(frontTime * p.bobSpeed + p.bobPhase) * 0.6
