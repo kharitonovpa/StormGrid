@@ -686,7 +686,9 @@ onUnmounted(() => {
 
 .actions-secondary {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
+  row-gap: 10px;
   margin-top: 12px;
 }
 
@@ -702,6 +704,7 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.5px;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -1012,5 +1015,19 @@ onUnmounted(() => {
   .online-badge { justify-content: center; }
 
   .recent-corner { display: none; }
+}
+
+/* Narrow phones: keep the three secondary actions readable on one line,
+   falling back to a centered two-row wrap only if 320px is too tight. */
+@media (max-width: 420px) {
+  .actions-secondary { gap: 6px; row-gap: 8px; }
+
+  .btn-role {
+    font-size: 11px;
+    gap: 3px;
+    padding: 6px 6px;
+  }
+
+  .btn-role svg { width: 12px; height: 12px; }
 }
 </style>
