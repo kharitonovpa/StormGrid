@@ -201,8 +201,11 @@ unsubMessage1 = socket.onMessage((msg) => {
     }
     // A match that ends outside the storm animation — a forfeit, a disconnect,
     // a verdict during the forecast — still owes the sky an exit, or the mass
-    // hangs over the overlay and follows the player into the lobby.
+    // hangs over the overlay and follows the player into the lobby. The tick 5
+    // tremor is the same story: dischargeImpl never touches it, so without this
+    // the camera keeps shaking at 9Hz behind the game-over overlay.
     stormSystem?.discharge('exhale')
+    stormSystem?.setTremor(false)
     nameplateSystem?.setVisible(false)
     audio.enterFinished()
     const w = (msg as { winner: 'A' | 'B' | 'draw' }).winner
@@ -1089,19 +1092,47 @@ function resetVisuals() {
 /**
  * The storm is heard before it is seen. Distant rumbles from a quarter chance up,
  * mains-hum crackle once the dial is all but certain — driven straight off the
- * forecast, so a watcher hears the same sky the players are reading. -1 stands for
- * "no forecast to listen to", which silences both.
+ * forecast, so a watcher hears the same sky the players are reading. null stands
+ * for "no forecast to listen to", which silences both.
+ *
+ * A broken barometer is what hides rain/lightning in the first place
+ * (GAME_DESIGN.md: it blinds the whole sky, not just its own dial reading), so
+ * the raw probability must never reach these two once it's broken — that would
+ * leak the true forecast through distant thunder and rim crackle even while the
+ * dial itself is scrambled. Gated the same way the dome's zenith mode is:
+ * re-rolled on the dial's own broken cadence (~0.12-0.30s) rather than simply
+ * silenced, so listening in tells a watcher nothing truer than looking would.
  */
+let baroAmbienceTimer: ReturnType<typeof setInterval> | null = null
 watch(
   () => {
     const p = game.gameState.value?.phase
-    if (p !== 'forecast' && p !== 'ticking') return -1
-    return game.forecast.value?.lightningProbability ?? -1
+    if (p !== 'forecast' && p !== 'ticking') return null
+    const f = game.forecast.value
+    if (!f) return null
+    return { prob: f.lightningProbability, barometerBroken: game.myInstrumentsBroken.value.barometer }
   },
-  (prob) => {
-    audio.setStormAmbience(prob >= 0.25)
-    if (prob >= 0.75) audio.startCrackle()
-    else audio.stopCrackle()
+  (v) => {
+    if (baroAmbienceTimer !== null) { clearInterval(baroAmbienceTimer); baroAmbienceTimer = null }
+    if (!v) {
+      audio.setStormAmbience(false)
+      audio.stopCrackle()
+      return
+    }
+    if (!v.barometerBroken) {
+      audio.setStormAmbience(v.prob >= 0.25)
+      if (v.prob >= 0.75) audio.startCrackle()
+      else audio.stopCrackle()
+      return
+    }
+    const reroll = () => {
+      const fake = Math.random()
+      audio.setStormAmbience(fake >= 0.25)
+      if (fake >= 0.75) audio.startCrackle()
+      else audio.stopCrackle()
+    }
+    reroll()
+    baroAmbienceTimer = setInterval(reroll, 200)
   },
 )
 
@@ -1124,11 +1155,15 @@ watch(
       // working instruments, so they see the storm's honest bearing.
       vane: game.myInstrumentsBroken.value.vane,
       stormy: f.lightningProbability >= 0.5,
+      // Passed through, not resolved here: a broken barometer must not leak
+      // the true reading into the sky either, so storm.ts does its own
+      // scrambling of zenith mode rather than trusting this value outright.
+      barometerBroken: game.myInstrumentsBroken.value.barometer,
     }
   },
   (f) => {
     if (!f) return
-    stormSystem?.setForecast(f.candidates, f.vane, f.stormy)
+    stormSystem?.setForecast(f.candidates, f.vane, f.stormy, f.barometerBroken)
   },
 )
 
@@ -2058,6 +2093,7 @@ onUnmounted(() => {
   clearTimeout(celebrateTimer)
   clearTimeout(contextLostTimer)
   clearTimeout(menuListenerId)
+  if (baroAmbienceTimer !== null) clearInterval(baroAmbienceTimer)
   disposeCelebrate()
   pendingGameEnd = null
   unsubMessage1?.()
