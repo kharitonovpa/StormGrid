@@ -58,7 +58,8 @@ def write(name, data):
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes(data.tobytes())
         tmp = f.name
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp,
-                    "-codec:a", "libmp3lame", "-qscale:a", "4", os.path.join(OUT, name + ".mp3")], check=True)
+                    "-codec:a", "libmp3lame", "-qscale:a", "4", "-bitexact", "-map_metadata", "-1",
+                    os.path.join(OUT, name + ".mp3")], check=True)
     os.unlink(tmp)
 
 if __name__ == "__main__":
