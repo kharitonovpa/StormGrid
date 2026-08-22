@@ -732,7 +732,20 @@ watch(() => props.phase, (newPhase, oldPhase) => {
 
 @media (max-width: 640px) {
   .hud { padding: 10px; }
-  .hud-strip { gap: 10px; padding: 8px 14px 8px 10px; }
+  /* The forecast dial sits fixed top-right (see ForecastPanel.vue). Pin the
+     strip to the left instead of letting it be centred across the full
+     viewport — centring a pill this wide would run it under the dial on
+     narrow phones no matter how far the text inside is trimmed. */
+  .hud-strip, .forecast-wrapper { margin-right: auto; }
+  .hud-strip {
+    gap: 10px;
+    padding: 8px 14px 8px 10px;
+    flex-wrap: wrap;
+    /* Reserve the dial's footprint (120px wide + 10px right offset) plus a
+       gutter so the strip can never reach under it — the status line wraps
+       onto its own row inside the pill instead of pushing the pill wider. */
+    max-width: calc(100vw - 20px - 120px - 10px - 14px - var(--sg-safe-right, 0px));
+  }
   .timer-ring, .ring-svg { width: 40px; height: 40px; }
   .ring-num { font-size: 14px; }
   .phase-icon { width: 30px; height: 30px; border-radius: 8px; }
@@ -746,9 +759,9 @@ watch(() => props.phase, (newPhase, oldPhase) => {
   .flip-btn { bottom: calc(12px + var(--sg-safe-bottom, 0px) + var(--sticky-inset, 0px)); right: calc(60px + var(--sg-safe-right, 0px)); height: 44px; padding: 0 12px; }
   .flip-btn svg { width: 18px; height: 18px; }
   .flip-label { font-size: 9px; }
-  .status-col { min-width: 90px; }
-  .my-action-text { font-size: 10px; }
-  .opp-status { font-size: 9px; }
+  .status-col { min-width: 0; flex: 1 1 100%; gap: 4px; }
+  .my-action-text { font-size: 10px; white-space: normal; }
+  .opp-status { font-size: 9px; white-space: normal; }
   .choose-banner { top: 56px; padding: 6px 16px; }
   .choose-text { font-size: 10px; letter-spacing: 0.8px; }
 }
