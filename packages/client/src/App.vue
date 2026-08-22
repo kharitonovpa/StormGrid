@@ -746,6 +746,8 @@ function fitCameraToBoard(cam: THREE.PerspectiveCamera) {
 
   const v = new THREE.Vector3()
   // A corner's screen position is not linear in the distance, so close in on it.
+  // The margin is applied once at the end — folding it into every iteration would
+  // compound it (1.04^5 ≈ 1.22), pushing the camera much further back than intended.
   for (let i = 0; i < 5; i++) {
     cam.position.copy(dir).multiplyScalar(dist)
     cam.lookAt(0, 0, 0)
@@ -755,8 +757,9 @@ function fitCameraToBoard(cam: THREE.PerspectiveCamera) {
       v.copy(corner).project(cam)
       worst = Math.max(worst, Math.abs(v.x), Math.abs(v.y))
     }
-    dist *= worst * FIT_MARGIN
+    dist *= worst
   }
+  dist *= FIT_MARGIN
 
   cam.position.copy(dir).multiplyScalar(dist)
   cam.lookAt(0, 0, 0)
