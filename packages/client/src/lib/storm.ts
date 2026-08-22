@@ -19,9 +19,13 @@ const DIM = new THREE.Color(0x070a10)           // the rest of the sky sinks sli
 const DIR_AZIMUTH: Record<WindDir, number> = { N: 0, E: -Math.PI / 2, S: Math.PI, W: Math.PI / 2 }
 
 // The dial needle's spring feel (ForecastPanel), slowed for a sky-sized mass.
+// It is what carries a mass to a NEW bearing (a broken vane's roaming, a
+// forecast that changes mid-round); it is deliberately NOT used to interpolate
+// between two candidates any more — two candidates get two masses, each nailed
+// to its own bearing, because a single mass drifting between them spends almost
+// all of its time pointing at a bearing that is neither of them.
 const SPRING_K = 3.2
 const SPRING_D = 2.6
-const OSC_RATE = 0.65              // needle uses 1.3; the sky drifts at half tempo
 const BROKEN_JUMP_MIN = 0.5
 const BROKEN_JUMP_MAX = 1.2
 
@@ -34,11 +38,18 @@ const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduce
 
 const FRONT_COUNT = 3000              // a wall of mist needs numbers; each mote is large and faint
 const FRONT_FAR = HALF * 3            // far horizon distance at intensity 0
-// The board is a SQUARE, not a circle: the distance from its centre to its
-// boundary along bearing θ is HALF / max(|sin θ|, |cos θ|) — HALF at 0°/90°,
-// 1.41*HALF at 45°. FRONT_NEAR_MARGIN is the clearance added on top of that
-// (recomputed every frame in update(), since the bearing drifts between
-// candidates) so the wall never sits on the tiles at any bearing.
+// The board is a SQUARE, not a circle, and the front is a straight WALL, not an
+// arc: what it has to clear is the square's whole shadow along the bearing —
+// its support function HALF*(|sin θ| + |cos θ|) — not the distance to the
+// boundary along the bearing ray (HALF / max(|sin θ|, |cos θ|)). The two agree
+// at 0°/90° (HALF) and at 45° (1.41*HALF) and nowhere in between: at 22.5° the
+// ray hits the edge at 1.08*HALF while the corner still reaches 1.31*HALF, so a
+// wall placed off the ray distance cuts the corner off by up to 0.22*HALF —
+// more than FRONT_NEAR_MARGIN, which is the clearance added on top
+// (recomputed every frame in update(), per slot, since each slot sits on its
+// own bearing and a mass can still spring to a new one). The four forecast
+// bearings are all cardinal, where both formulas give HALF; a broken vane's
+// roaming mass is what visits the angles in between.
 const FRONT_NEAR_MARGIN = HALF * 0.25
 const FRONT_HEIGHT = 9
 const FRONT_SIZE_MIN = 2.2            // point size, scaled by 200/depth like wind.ts's dust
@@ -53,7 +64,32 @@ const HOLD_RELEASE = 0.02             // intensity at which a swept front may le
 const REENTRY_TAU = 0.35              // seconds; how fast a dropped front walks back to where the mass wants it
 const REENTRY_EPS = HALF * 0.05       // close enough to stop easing and track the mass exactly
 
+/**
+ * A mass appears/dissolves over this long: the false candidate's wall and sky
+ * sector at the cataclysm, and a mass arriving on a bearing that just became
+ * real. Slow enough to read as weather dissolving rather than a light switch,
+ * short enough that the true wall is still crossing the board when it is gone.
+ */
+const FADE_RATE = 1 / 0.4
+/**
+ * Cross-fade for MOVING a slot's particles between bearings (see mergeSlot):
+ * they never teleport from one wall to the other, they fade out of the old one
+ * and back into the new one. Deliberately the SAME rate as FADE_RATE and
+ * combined with it by min(), not by multiplication: at the cataclysm both ramps
+ * run at once on the false candidate's motes, and a product would take them out
+ * visibly faster than the sky sector above them, which fades on FADE_RATE alone.
+ */
+const BLEND_RATE = FADE_RATE
+/**
+ * With two masses each sector is scaled to this, so a two-candidate sky does not
+ * read as twice the weather a single-candidate one does. Applied continuously
+ * (each sector is scaled by the OTHER's presence), so the survivor of a
+ * cataclysm swells back to full weight on the same curve the loser dissolves on.
+ */
+const DUO_SCALE = 0.8
+
 interface FrontParticle {
+  slot: 0 | 1           // which mass this mote belongs to; fixed at creation, never reshuffled
   lateral: number       // offset perpendicular to the wind axis; spans the wall's width
   depthOffset: number   // offset along the wind axis, placing the particle within the wall's depth
   depthT: number        // 0 = leading edge (nearest the board), 1 = trailing haze; drives the brightness/size gradient continuously
@@ -73,6 +109,10 @@ function makeFrontParticles(): FrontParticle[] {
     // without any discrete rows for gaps to open up between.
     const depthT = Math.pow(Math.random(), 2)
     arr.push({
+      // Alternating, so the budget splits exactly in half and both slots get a
+      // statistically identical mix of depths and heights. Everything else here
+      // is an independent random draw, so there is no pattern to alternate with.
+      slot: (i % 2) as 0 | 1,
       lateral: (Math.random() * 2 - 1) * FRONT_LATERAL,
       depthOffset: depthT * FRONT_DEPTH + (Math.random() - 0.5) * FRONT_JITTER,
       depthT,
@@ -94,7 +134,13 @@ export function createStormSystem(scene: THREE.Scene) {
     side: THREE.BackSide,
     depthWrite: false,
     uniforms: {
-      uAzimuth:   { value: 0 },
+      // Up to TWO sectors, one per forecast candidate, each nailed to its own
+      // source bearing. uMassA/uMassB are their weights: 0 = that candidate has
+      // no mass (single-candidate round, or the false one after the cataclysm).
+      uAzimuthA:  { value: 0 },
+      uAzimuthB:  { value: 0 },
+      uMassA:     { value: 0 },
+      uMassB:     { value: 0 },
       uIntensity: { value: 0 },
       uSpread:    { value: SPREAD_MIN },
       uZenith:    { value: 0 },      // 1 = calm+stormy: menace overhead, horizon clean
@@ -111,19 +157,30 @@ export function createStormSystem(scene: THREE.Scene) {
       }
     `,
     fragmentShader: /* glsl */ `
-      uniform float uAzimuth, uIntensity, uSpread, uZenith, uCalmClean;
+      uniform float uAzimuthA, uAzimuthB, uMassA, uMassB;
+      uniform float uIntensity, uSpread, uZenith, uCalmClean;
       uniform vec3 uBase, uStorm, uDim;
       varying vec3 vDir;
+      // One horizon sector: strongest at the horizon on bearing az, fading by
+      // 45 degrees up, and fading out again just BELOW the horizon so no mass
+      // glows under the slab when the camera looks down at it from a high angle.
+      float sector(float ang, float az, float y) {
+        float d = abs(mod(ang - az + 3.14159265, 6.2831853) - 3.14159265);
+        return smoothstep(uSpread, 0.0, d) * smoothstep(0.7, 0.05, y) * smoothstep(-0.25, 0.02, y);
+      }
       void main() {
         float ang = atan(vDir.x, vDir.z);
-        float d = abs(mod(ang - uAzimuth + 3.14159265, 6.2831853) - 3.14159265);
-        // horizon sector: strongest at the horizon, fading by 45 degrees up,
-        // and fading out again just BELOW the horizon so no mass glows under
-        // the slab when the camera looks down at it from a high angle.
         // Killed outright in zenith mode (the darkness moved overhead) and in
         // calm-clean mode (no wind coming and no bolt to hide either — a
         // horizon sector here would paint a bearing the vane never gave).
-        float horizon = smoothstep(uSpread, 0.0, d) * smoothstep(0.7, 0.05, vDir.y) * smoothstep(-0.25, 0.02, vDir.y) * (1.0 - uZenith) * (1.0 - uCalmClean);
+        float gate = (1.0 - uZenith) * (1.0 - uCalmClean);
+        // max(), NOT a sum: two candidate masses must not stack into double the
+        // darkness where their sectors meet (adjacent bearings like N and E
+        // overlap heavily), and the sky must not read heavier just because the
+        // forecast was less certain. Each weight is already scaled down while
+        // the other is present — see DUO_SCALE.
+        float horizon = max(sector(ang, uAzimuthA, vDir.y) * uMassA,
+                            sector(ang, uAzimuthB, vDir.y) * uMassB) * gate;
         // zenith mode: darkness pools overhead instead
         float zenith = smoothstep(0.25, 0.9, vDir.y) * uZenith;
         float mass = clamp(horizon + zenith, 0.0, 1.0) * uIntensity;
@@ -148,6 +205,7 @@ export function createStormSystem(scene: THREE.Scene) {
   const frontPositions = new Float32Array(FRONT_COUNT * 3)
   const frontSizes = new Float32Array(FRONT_COUNT)
   const frontAlphas = new Float32Array(FRONT_COUNT)
+  const frontSlots = new Float32Array(FRONT_COUNT)
   for (let i = 0; i < FRONT_COUNT; i++) {
     const p = frontParticles[i]
     // Vertical taper: dense/large/bright near the ground, sparse/small/faint
@@ -159,11 +217,13 @@ export function createStormSystem(scene: THREE.Scene) {
     const alphaMul = (1.0 - 0.82 * heightT) * (1 - 0.45 * p.depthT)
     frontSizes[i] = (FRONT_SIZE_MIN + Math.random() * (FRONT_SIZE_MAX - FRONT_SIZE_MIN)) * sizeMul
     frontAlphas[i] = (0.2 + Math.random() * 0.6) * alphaMul
+    frontSlots[i] = p.slot
   }
   const frontGeo = new THREE.BufferGeometry()
   frontGeo.setAttribute('position', new THREE.BufferAttribute(frontPositions, 3))
   frontGeo.setAttribute('aSize', new THREE.BufferAttribute(frontSizes, 1))
   frontGeo.setAttribute('aAlpha', new THREE.BufferAttribute(frontAlphas, 1))
+  frontGeo.setAttribute('aSlot', new THREE.BufferAttribute(frontSlots, 1))
   const frontPosAttr = frontGeo.getAttribute('position') as THREE.BufferAttribute
   // Rewritten every active frame (see update()); StaticDrawUsage's default
   // hint would ask the driver to optimize for a buffer that almost never
@@ -174,6 +234,10 @@ export function createStormSystem(scene: THREE.Scene) {
    * draws hard axis-aligned squares, which read as glitch artefacts rather than
    * as weather — the radial falloff on gl_PointCoord is what makes the front a
    * mist instead of a scatter of cubes.
+   *
+   * Each slot's fade rides in as a uniform (uMul0/uMul1) picked by the static
+   * per-particle aSlot, rather than as a per-frame rewrite of aAlpha: the fade
+   * is per SLOT, not per particle, so there is nothing per-particle to upload.
    */
   const frontMat = new THREE.ShaderMaterial({
     transparent: true,
@@ -182,13 +246,17 @@ export function createStormSystem(scene: THREE.Scene) {
     uniforms: {
       uColor: { value: new THREE.Color(0x9d8fd0) },
       uOpacity: { value: 0 },
+      uMul0: { value: 0 },
+      uMul1: { value: 0 },
     },
     vertexShader: /* glsl */ `
       attribute float aSize;
       attribute float aAlpha;
+      attribute float aSlot;
+      uniform float uMul0, uMul1;
       varying float vAlpha;
       void main() {
-        vAlpha = aAlpha;
+        vAlpha = aAlpha * mix(uMul0, uMul1, aSlot);
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         gl_PointSize = aSize * (200.0 / -mv.z);
         gl_Position = projectionMatrix * mv;
@@ -222,9 +290,6 @@ export function createStormSystem(scene: THREE.Scene) {
   let barometerBroken = false
   let brokenStormyVal = false       // barometer-broken stand-in for stormyRaw, re-rolled below
   let brokenStormyT = 0
-  let azimuth = 0
-  let azVel = 0
-  let oscT = 0
   let brokenT = 0
   let brokenTarget = 0
   let progress = 0                  // set by ticks
@@ -232,16 +297,53 @@ export function createStormSystem(scene: THREE.Scene) {
   let discharging: keyof typeof DISCHARGE_RATES | null = null
   let sleeping = true               // true while intensity === 0 and target === 0
 
-  let frontDist = FRONT_FAR          // curtain center distance, frozen while halted
+  /**
+   * TWO MASSES, one per forecast candidate. Slot 0 is the primary: a
+   * single-candidate round (and a broken vane's single roaming mass) lives
+   * there, and slot 1's motes are lent to it so the wall is exactly as dense as
+   * it was when there was only ever one. With two candidates each slot sits on
+   * its OWN candidate's source bearing and stays there — no drifting between
+   * them, so the sky never points at a bearing the forecast did not name.
+   *
+   * Everything below is a fixed-length pair, allocated once: update() must not
+   * allocate.
+   */
+  const slotAz = [0, 0]             // each slot's own bearing (spring position)
+  const slotVel = [0, 0]
+  const slotFade = [0, 0]           // 0..1 presence of each mass
+  const slotDist = [FRONT_FAR, FRONT_FAR]   // each wall's centre distance, frozen while halted
+  const slotReentry = [false, false]
+  // Per-slot wall basis, recomputed at the top of every active frame (see
+  // update()) and then read 3000 times in the placement loop.
+  const slotAxisX = [0, 0]
+  const slotAxisZ = [0, 0]
+  const slotPerpX = [0, 0]
+  const slotPerpZ = [0, 0]
+  /** How many masses the forecast asks for: 0 (calm), 1, or 2. */
+  let activeCount = 0
+  /** With one mass, the slot carrying it. */
+  let liveSlot: 0 | 1 = 0
+  /**
+   * Slot whose motes are borrowed by the other one (so a single mass gets the
+   * whole particle budget), or -1 while both slots stand on their own bearing.
+   * Switching it is always cross-faded through `blend` — a mote must never
+   * teleport from one wall to the other.
+   */
+  let mergeSlot: -1 | 0 | 1 = -1
+  let mergeTarget: -1 | 0 | 1 = -1
+  let blend = 1
+
   let frontTime = 0                  // clock for jitter/bob animation
   let sweepOverride: number | null = null   // takes precedence over the intensity-derived distance
+  /** The slot doing the crossing: the one standing on the wind's true bearing. */
+  let sweepSlot: 0 | 1 = 0
   /**
    * The true source bearing for the in-flight (or held) sweep, set the instant
-   * `sweep(dir)` fires and used ONLY for the front curtain's placement — never
-   * for the dome's `azimuth` spring, which must never visibly jump. Without
-   * this the curtain marches wherever the still-oscillating spring's `azimuth`
-   * happens to be (up to ~3s to settle, longer than the whole crossing), which
-   * can leave it visibly on the wrong horizon for a two-candidate round.
+   * `sweep(dir)` fires and used ONLY for the sweeping slot's front placement —
+   * never for its `slotAz` spring, which must never visibly jump. Without this
+   * the curtain marches wherever the still-settling spring happens to be (up to
+   * ~3s, longer than the whole crossing), which can leave it visibly off the
+   * true horizon for the whole cataclysm.
    */
   let sweepAngle: number | null = null
   /**
@@ -264,16 +366,9 @@ export function createStormSystem(scene: THREE.Scene) {
    * not pop back to the horizon while it is still bright enough to be seen.
    */
   let sweepHold = false
-  /**
-   * Set whenever the override is dropped: the curtain walks back to wherever the
-   * mass wants it instead of teleporting there. On the ordinary path it is dropped
-   * at an invisible intensity and this costs nothing; on an interrupted one (a
-   * round:start landing mid-drain) it is what keeps 400 points from jumping the
-   * width of the world in a single frame.
-   */
-  let reentry = false
 
   /* ── Tremor (tick 5: the last, worst tick before the strike) ── */
+  let oscT = 0                       // shared clock for the tremor
   let tremorActive = false
   let tremorAmp = 0                  // eased 0..1 envelope, never a snap on/off
   const tremorOffset = new THREE.Vector3()
@@ -284,12 +379,17 @@ export function createStormSystem(scene: THREE.Scene) {
    * only call site that can race a newer, superseding sweep): `sweepAngle` is
    * only cleared if no newer sweep has claimed it since. Call sites outside a
    * step loop (releaseSweepHold, halt) have no such race — they always clear.
+   *
+   * Re-entry is armed on BOTH slots: a stale step loop may no longer own the
+   * slot it started on, and a slot already sitting where the mass wants it
+   * clears the flag on its first frame without moving.
    */
   function dropOverride(ownerToken?: number) {
     sweepHold = false
     sweepOverride = null
     if (ownerToken === undefined || sweepAngleGen === ownerToken) sweepAngle = null
-    reentry = true
+    slotReentry[0] = true
+    slotReentry[1] = true
   }
 
   /** Retire a parked, swept-through front. Nothing parked, nothing to do. */
@@ -304,14 +404,46 @@ export function createStormSystem(scene: THREE.Scene) {
     return d
   }
 
-  function azimuthTarget(): number {
-    if (vaneBroken) return brokenTarget
-    if (candidates.length === 0) return azimuth
-    if (candidates.length === 1) return DIR_AZIMUTH[candidates[0]]
-    const a = DIR_AZIMUTH[candidates[0]]
-    const b = DIR_AZIMUTH[candidates[1]]
-    const t = (Math.sin(oscT * OSC_RATE) + 1) / 2
-    return a + shortestArc(a, b) * t
+  /** Where slot k's spring wants to be. An unused slot holds its bearing: it is
+   * fading out on it, and must not drift toward the survivor while still seen. */
+  function slotTarget(k: 0 | 1): number {
+    if (activeCount === 0) return slotAz[k]
+    if (vaneBroken) return k === liveSlot ? brokenTarget : slotAz[k]
+    if (activeCount === 1) return k === liveSlot && candidates.length > 0 ? DIR_AZIMUTH[candidates[0]] : slotAz[k]
+    return DIR_AZIMUTH[candidates[k]]
+  }
+
+  function fadeTarget(k: 0 | 1): number {
+    if (activeCount === 2) return 1
+    return activeCount === 1 && k === liveSlot ? 1 : 0
+  }
+
+  /** The active slot already closest to a bearing — the one that should sweep. */
+  function pickSlot(az: number): 0 | 1 {
+    if (activeCount < 2) return liveSlot
+    return Math.abs(shortestArc(slotAz[0], az)) <= Math.abs(shortestArc(slotAz[1], az)) ? 0 : 1
+  }
+
+  /** Recompute how many masses there are and which slot carries a lone one. */
+  function relayout(prevCount: number) {
+    activeCount = vaneBroken ? 1 : Math.min(2, candidates.length)
+    if (activeCount === 1 && prevCount === 2 && !vaneBroken && candidates.length > 0) {
+      // Two masses collapsing to one: the survivor is whichever slot already
+      // stands on the surviving bearing, so it does not have to move at all.
+      liveSlot = pickSlot(DIR_AZIMUTH[candidates[0]])
+    }
+    mergeTarget = activeCount === 2 ? -1 : (1 - liveSlot) as 0 | 1
+  }
+
+  /** Apply the layout instantly. Only legal while nothing is visible. */
+  function snapLayout() {
+    for (let k = 0 as 0 | 1; k < 2; k = (k + 1) as 0 | 1) {
+      slotAz[k] = slotTarget(k)
+      slotVel[k] = 0
+      slotFade[k] = fadeTarget(k)
+    }
+    mergeSlot = mergeTarget
+    blend = 1
   }
 
   function dischargeImpl(mode: 'cataclysm' | 'exhale' | 'fast') {
@@ -322,6 +454,7 @@ export function createStormSystem(scene: THREE.Scene) {
 
   return {
     setForecast(c: WindDir[], broken: boolean, stormy: boolean, baroBroken: boolean) {
+      const prevCount = activeCount
       candidates = [...c]
       vaneBroken = broken
       stormyRaw = stormy
@@ -342,8 +475,15 @@ export function createStormSystem(scene: THREE.Scene) {
       // handed back to the intensity here rather than left parked past the board
       // for a whole round. Eased, so an interruption mid-drain does not pop.
       releaseSweepHold()
-      // A dead sky may snap its azimuth to the newborn storm — invisible at intensity 0.
-      if (sleeping && c.length > 0) { azimuth = DIR_AZIMUTH[c[0]]; azVel = 0 }
+      // A dead sky may take its whole new shape at once — bearings, mass count,
+      // which slot lends its motes to which — because none of it is on screen.
+      // A forecast landing while the last storm is still visible instead eases
+      // into place: springs carry the bearings, fades carry the masses, and
+      // slot 1's motes cross-fade rather than teleport between walls.
+      const invisible = sleeping || intensity < 0.02
+      if (invisible) liveSlot = 0
+      relayout(prevCount)
+      if (invisible) snapLayout()
     },
     setProgress(t: number) {
       progress = Math.max(0, Math.min(1, t))
@@ -362,22 +502,31 @@ export function createStormSystem(scene: THREE.Scene) {
         return Promise.resolve()
       }
       const token = ++sweepToken
-      const from = frontDist
-      const to = SWEEP_TARGET
-      const started = performance.now()
-      azVel = 0
-      sweepHold = false
+      const trueAz = DIR_AZIMUTH[dir]
+      // The cataclysm names the real bearing: the mass already standing on it
+      // does the crossing, and the other one — if the forecast offered two —
+      // dissolves where it stands (relayout below drives its fade to 0, and its
+      // motes are lent to the survivor once they are invisible).
+      const prevCount = activeCount
+      sweepSlot = pickSlot(trueAz)
+      liveSlot = sweepSlot
       candidates = [dir]              // the storm commits to its real direction
-      // The crossing itself must always follow the TRUE source bearing, not
-      // wherever the pre-round oscillator spring happens to be — that spring
-      // can take ~3s to settle, longer than the whole SWEEP_MS crossing. See
-      // sweepAngle's declaration and its use in update()'s particle placement.
-      sweepAngleGen = token
-      sweepAngle = DIR_AZIMUTH[dir]
       // By now the direction is public — weather:result has already announced it —
       // so a broken vane stops mattering: the front must march the same way the
       // gale and the bodies do, not off at the needle's last random bearing.
       vaneBroken = false
+      relayout(prevCount)
+      const from = slotDist[sweepSlot]
+      const to = SWEEP_TARGET
+      const started = performance.now()
+      slotVel[sweepSlot] = 0
+      sweepHold = false
+      // The crossing itself must always follow the TRUE source bearing, not
+      // wherever the spring happens to be — with two candidates the surviving
+      // slot is already there, but a broken vane's roaming mass is not. See
+      // sweepAngle's declaration and its use in update()'s particle placement.
+      sweepAngleGen = token
+      sweepAngle = trueAz
       return new Promise((resolve) => {
         const step = () => {
           if (token !== sweepToken) { dropOverride(token); resolve(); return }
@@ -425,22 +574,54 @@ export function createStormSystem(scene: THREE.Scene) {
           brokenStormyT = 0
         }
       }
-      // azimuth spring (drifting mass, never a visible jump). While a sweep is
-      // actually in flight (not yet parked in its hold), the dome commits to
-      // the true bearing on a fast ~0.25s time constant instead of chasing the
-      // (soon-stale, possibly two-candidate) oscillator target — still eased,
-      // never a teleport, so it stops visibly contradicting the curtain for
-      // the last stretch of the crossing without violating "azimuth never
-      // jumps while visible." Outside a sweep the ordinary spring feel is
-      // untouched, including the broken-vane roaming target.
-      if (sweepAngle !== null && !sweepHold) {
-        const diff = shortestArc(azimuth, sweepAngle)
-        azimuth += diff * Math.min(1, dt / SWEEP_AZ_TAU)
-        azVel = 0
-      } else {
-        const force = shortestArc(azimuth, azimuthTarget()) * SPRING_K - azVel * SPRING_D
-        azVel += force * dt
-        azimuth += azVel * dt
+
+      // Per-slot azimuth spring (a mass moves to a new bearing, never jumps).
+      // While a sweep is actually in flight (not yet parked in its hold), the
+      // sweeping slot commits to the true bearing on a fast ~0.25s time
+      // constant instead of chasing its (possibly still-settling) spring target
+      // — still eased, never a teleport, so the sky stops contradicting the
+      // crossing curtain. Outside a sweep the ordinary spring feel is untouched,
+      // including the broken-vane roaming target.
+      for (let k = 0 as 0 | 1; k < 2; k = (k + 1) as 0 | 1) {
+        if (k === sweepSlot && sweepAngle !== null && !sweepHold) {
+          slotAz[k] += shortestArc(slotAz[k], sweepAngle) * Math.min(1, dt / SWEEP_AZ_TAU)
+          slotVel[k] = 0
+        } else {
+          const force = shortestArc(slotAz[k], slotTarget(k)) * SPRING_K - slotVel[k] * SPRING_D
+          slotVel[k] += force * dt
+          slotAz[k] += slotVel[k] * dt
+        }
+      }
+
+      // Mass presence: each slot fades in when the forecast names its bearing
+      // and out when it stops — which is how the false candidate dissolves at
+      // the cataclysm, sky sector and wall together, on one curve.
+      const fadeStep = FADE_RATE * dt
+      for (let k = 0 as 0 | 1; k < 2; k = (k + 1) as 0 | 1) {
+        const target = fadeTarget(k)
+        if (slotFade[k] < target) slotFade[k] = Math.min(target, slotFade[k] + fadeStep)
+        else if (slotFade[k] > target) slotFade[k] = Math.max(target, slotFade[k] - fadeStep)
+      }
+
+      // Lending slot 1's motes to slot 0 (or back) is a cross-fade, never a
+      // reassignment mid-flight: they fade off the wall they are on, change
+      // wall while invisible, then fade back in on the new one. A single mass
+      // therefore ends up with the entire particle budget — as dense as it was
+      // before there was ever a second slot.
+      if (mergeSlot !== mergeTarget) {
+        blend -= BLEND_RATE * dt
+        if (blend <= 0) {
+          mergeSlot = mergeTarget
+          // Landing on "no merge" means both slots now stand on their own
+          // bearing and nothing reads `blend` any more (the newly independent
+          // slot fades in on its own `slotFade`, which starts at 0). Retiring it
+          // to 1 here rather than leaving it to ramp up unwatched is what keeps
+          // a merge that starts again moments later from opening on a value
+          // below 1 — which would drop that wall's motes in a single frame.
+          blend = mergeSlot < 0 ? 1 : 0
+        }
+      } else if (blend < 1) {
+        blend = Math.min(1, blend + BLEND_RATE * dt)
       }
 
       // intensity: eased toward progress, or drained by a discharge
@@ -458,16 +639,29 @@ export function createStormSystem(scene: THREE.Scene) {
 
       // A calm forecast is one where the vane has nothing to point at: intact
       // and given zero candidates. A broken vane must keep the horizon mass
-      // roaming at random bearings (that ambiguity is deliberate), so it never
-      // counts as calm. Calm+stormy pools the darkness overhead (zenith mode,
-      // unchanged); calm+dry shows neither — just the global dim.
+      // roaming at random bearings (that ambiguity is deliberate, and one lone
+      // roaming mass is all it may ever show — two would leak how many
+      // candidates the forecast really held), so it never counts as calm.
+      // Calm+stormy pools the darkness overhead (zenith mode, unchanged);
+      // calm+dry shows neither — just the global dim.
       const calm = !vaneBroken && candidates.length === 0
       const effectiveStormy = barometerBroken ? brokenStormyVal : stormyRaw
       const zenithTarget = calm && effectiveStormy ? 1 : 0
       const calmCleanTarget = calm && !effectiveStormy ? 1 : 0
 
       const u = mat.uniforms
-      u.uAzimuth.value = azimuth
+      // Which bearing each sector paints: the sweeping slot follows the true
+      // bearing anchor, exactly like its wall, so sky and curtain agree from
+      // the crossing's first frame.
+      const angle0 = sweepSlot === 0 && sweepAngle !== null ? sweepAngle : slotAz[0]
+      const angle1 = sweepSlot === 1 && sweepAngle !== null ? sweepAngle : slotAz[1]
+      u.uAzimuthA.value = angle0
+      u.uAzimuthB.value = angle1
+      // Each sector is scaled down by the other's presence, so two masses do not
+      // read as more weather than one, and the survivor of a cataclysm swells
+      // back to full weight as the loser dissolves.
+      u.uMassA.value = slotFade[0] * (1 - (1 - DUO_SCALE) * slotFade[1])
+      u.uMassB.value = slotFade[1] * (1 - (1 - DUO_SCALE) * slotFade[0])
       u.uIntensity.value = intensity
       u.uSpread.value = spread
       u.uZenith.value += (zenithTarget - u.uZenith.value) * Math.min(1, dt * 2)
@@ -484,45 +678,63 @@ export function createStormSystem(scene: THREE.Scene) {
       // stale buffer never gets a frame to render.
       front.visible = !sleeping
       if (!sleeping) {
-        // Front placement follows the sweep's true source bearing while one
-        // is in flight or parked in its hold; otherwise it tracks the dome's
-        // own (never-jumping) spring azimuth exactly as before. This is the
-        // SAME bearing convention the dome uses: axis = (sin, cos) points at
-        // the source; perp (axis rotated 90°) is the wall's own width, so the
+        // Each slot's wall is placed on ITS OWN bearing. This is the SAME
+        // bearing convention the dome uses: axis = (sin, cos) points at the
+        // source; perp (axis rotated 90°) is the wall's own width, so the
         // curtain is a straight line perpendicular to the bearing rather than
         // an arc — a line clears the board's square corners at every angle,
         // where a circle of fixed radius cuts across them.
-        const angle = sweepAngle ?? azimuth
-        const axisX = Math.sin(angle), axisZ = Math.cos(angle)
-        const perpX = -axisZ, perpZ = axisX
-        // curtain center distance: intensity-derived, unless a sweep is overriding it,
-        // unless the front is halted (frozen — no more advancing either way). A front
-        // that has just been handed back eases home over a few tenths of a second
-        // instead of jumping there, then tracks the mass exactly again.
-        //
-        // The board is a square, so "just beyond the edge" is bearing-dependent:
-        // HALF at 0°/90°, HALF*1.41 at 45°. Recomputed every frame — the bearing
-        // drifts between candidates — so the wall never overlaps the tiles.
-        const edgeClear = HALF / Math.max(Math.abs(axisX), Math.abs(axisZ)) + FRONT_NEAR_MARGIN
-        const distTarget = FRONT_FAR - (FRONT_FAR - edgeClear) * intensity
-        if (sweepOverride !== null) frontDist = sweepOverride
-        else if (!halted) {
-          if (reentry) {
-            frontDist += (distTarget - frontDist) * Math.min(1, dt / REENTRY_TAU)
-            if (Math.abs(distTarget - frontDist) < REENTRY_EPS) reentry = false
-          } else frontDist = distTarget
+        for (let k = 0 as 0 | 1; k < 2; k = (k + 1) as 0 | 1) {
+          const angle = k === 0 ? angle0 : angle1
+          const axisX = Math.sin(angle), axisZ = Math.cos(angle)
+          slotAxisX[k] = axisX
+          slotAxisZ[k] = axisZ
+          slotPerpX[k] = -axisZ
+          slotPerpZ[k] = axisX
+          // curtain center distance: intensity-derived, unless this slot's sweep is
+          // overriding it, unless the front is halted (frozen — no more advancing
+          // either way). A front that has just been handed back eases home over a
+          // few tenths of a second instead of jumping there, then tracks the mass
+          // exactly again.
+          //
+          // The board is a square, so "just beyond the edge" is bearing-dependent:
+          // HALF at 0°/90°, HALF*1.41 at 45°. This is the square's SUPPORT
+          // function along the bearing — the far side of its whole shadow, which
+          // is what a straight wall has to clear (see FRONT_NEAR_MARGIN).
+          // Recomputed every frame, per slot, from that slot's own bearing — so
+          // neither wall overlaps the tiles, whether the pair is opposite (E and
+          // W) or adjacent (N and E), nor at a broken vane's random bearing.
+          const edgeClear = HALF * (Math.abs(axisX) + Math.abs(axisZ)) + FRONT_NEAR_MARGIN
+          const distTarget = FRONT_FAR - (FRONT_FAR - edgeClear) * intensity
+          if (k === sweepSlot && sweepOverride !== null) slotDist[k] = sweepOverride
+          else if (!halted) {
+            if (slotReentry[k]) {
+              slotDist[k] += (distTarget - slotDist[k]) * Math.min(1, dt / REENTRY_TAU)
+              if (Math.abs(distTarget - slotDist[k]) < REENTRY_EPS) slotReentry[k] = false
+            } else slotDist[k] = distTarget
+          }
         }
+
+        // Where each slot's motes actually live this frame, and how bright they
+        // are: a lent slot renders on its host's wall, and the slot in the
+        // middle of a lending change carries the cross-fade.
+        const render0 = mergeSlot === 0 ? 1 : 0
+        const render1 = mergeSlot === 1 ? 0 : 1
+        const blendSlot = mergeSlot >= 0 ? mergeSlot : mergeTarget
+        frontMat.uniforms.uMul0.value = blendSlot === 0 ? Math.min(slotFade[render0], blend) : slotFade[render0]
+        frontMat.uniforms.uMul1.value = blendSlot === 1 ? Math.min(slotFade[render1], blend) : slotFade[render1]
 
         frontTime += dt
         for (let i = 0; i < FRONT_COUNT; i++) {
           const p = frontParticles[i]
+          const r = p.slot === 0 ? render0 : render1
           const jitter = Math.sin(frontTime * 0.5 + p.jitterPhase) * p.jitterAmp
-          const dist = frontDist + p.depthOffset + jitter
+          const dist = slotDist[r] + p.depthOffset + jitter
           const bob = Math.sin(frontTime * p.bobSpeed + p.bobPhase) * 0.6
           const idx = i * 3
-          frontPositions[idx] = axisX * dist + perpX * p.lateral
+          frontPositions[idx] = slotAxisX[r] * dist + slotPerpX[r] * p.lateral
           frontPositions[idx + 1] = p.height + bob
-          frontPositions[idx + 2] = axisZ * dist + perpZ * p.lateral
+          frontPositions[idx + 2] = slotAxisZ[r] * dist + slotPerpZ[r] * p.lateral
         }
         frontPosAttr.needsUpdate = true
         // hidden entirely in zenith mode (calm+stormy: nothing comes along the
