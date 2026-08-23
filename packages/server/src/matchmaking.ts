@@ -43,6 +43,8 @@ const INVITE_TTL_MS = 10 * 60_000
 /** No 0/O/1/I — the code may end up read aloud or retyped from a screenshot. */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const CODE_LENGTH = 6
+/** Client-supplied codes (discord instances) — anything else gets a server code. */
+const CLIENT_CODE_RE = /^DC-[A-Z0-9-]{6,64}$/
 
 function generateCode(): string {
   const bytes = new Uint8Array(CODE_LENGTH)
@@ -111,7 +113,25 @@ export class Matchmaking {
 
   /* ── Friend invites ── */
 
-  createInvite(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0, caps: string[] = []): string {
+  createInvite(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0, caps: string[] = [], requestedCode?: string): string {
+    const custom = requestedCode?.toUpperCase()
+    if (custom && CLIENT_CODE_RE.test(custom)) {
+      this.sweepInvites()
+      const entry = this.invites.get(custom)
+      if (entry && entry.ws.readyState === 1 && entry.ws !== ws) {
+        // Create-or-join: the code is already parked, so this caller is the second
+        // player — behave exactly like friend:join.
+        this.joinInvite(ws, custom, character, streak, caps)
+        return custom
+      }
+      this.cancelInvite(ws)
+      this.dequeue(ws)
+      this.invites.set(custom, { ws, character, streak, caps, createdAt: Date.now() })
+      this.inviteBySocket.set(ws, custom)
+      send(ws, { type: 'friend:waiting', code: custom })
+      return custom
+    }
+
     // One live invite per socket; re-creating replaces the old code.
     this.cancelInvite(ws)
     this.dequeue(ws)

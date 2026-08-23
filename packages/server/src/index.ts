@@ -397,7 +397,8 @@ const server = Bun.serve<WsData>({
             send(ws, { type: 'error', message: 'Already in a game' })
             return
           }
-          matchmaking.createInvite(ws, msg.character, msg.streak, msg.caps)
+          matchmaking.createInvite(ws, msg.character, msg.streak, msg.caps, msg.code)
+          if (ws.data.roomId) broadcastLobbyStatus()
           break
         }
 

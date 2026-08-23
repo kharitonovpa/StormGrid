@@ -24,8 +24,9 @@ export type ActionSubmitMsg = { type: 'action:submit'; action: Action }
  * A private match by link. `friend:create` parks the sender under a short code
  * (no bot fallback — the wait is for one specific person); `friend:join` is what
  * the invited side sends after opening the link with that code.
+ * Discord instances pass a deterministic `dc-<instanceId>` code — the server treats a taken code as a join (create-or-join), so both sides can send the same message.
  */
-export type FriendCreateMsg = { type: 'friend:create'; character: CharacterType; streak?: number; caps?: string[] }
+export type FriendCreateMsg = { type: 'friend:create'; character: CharacterType; streak?: number; caps?: string[]; code?: string }
 export type FriendCancelMsg = { type: 'friend:cancel' }
 export type FriendJoinMsg = { type: 'friend:join'; code: string; character: CharacterType; streak?: number; caps?: string[] }
 

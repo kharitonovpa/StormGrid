@@ -117,3 +117,73 @@ describe('Matchmaking — friend invites', () => {
     expect(mm.joinInvite(friend as any, code, 'corn')).toBe(false)
   })
 })
+
+describe('Matchmaking — discord create-or-join codes', () => {
+  it('parks the first caller under a valid client code', () => {
+    const mm = new Matchmaking(new RoomManager())
+    const a = makeFakeWs()
+
+    const code = mm.createInvite(a as any, 'wheat', 0, [], 'dc-abc123-def')
+
+    expect(code).toBe('DC-ABC123-DEF')
+    const waiting = lastOfType(a, 'friend:waiting')
+    expect((waiting as { code: string }).code).toBe('DC-ABC123-DEF')
+  })
+
+  it('second create with the same code joins instead of parking', () => {
+    const mm = new Matchmaking(new RoomManager())
+    const a = makeFakeWs()
+    const b = makeFakeWs()
+
+    mm.createInvite(a as any, 'wheat', 0, [], 'dc-abc123-def')
+    mm.createInvite(b as any, 'corn', 0, [], 'DC-abc123-def')
+
+    // Both sockets are in a room now — the match started.
+    expect(a.data.roomId).not.toBeNull()
+    expect(b.data.roomId).not.toBeNull()
+    expect(a.data.roomId).toBe(b.data.roomId)
+  })
+
+  it('third create after the match parks a fresh invite (pairwise matching)', () => {
+    const mm = new Matchmaking(new RoomManager())
+    const a = makeFakeWs()
+    const b = makeFakeWs()
+    const c = makeFakeWs()
+
+    mm.createInvite(a as any, 'wheat', 0, [], 'dc-abc123-def')
+    mm.createInvite(b as any, 'corn', 0, [], 'dc-abc123-def')
+    mm.createInvite(c as any, 'wheat', 0, [], 'dc-abc123-def')
+
+    expect(c.data.roomId).toBeNull()
+    const waiting = lastOfType(c, 'friend:waiting')
+    expect((waiting as { code: string }).code).toBe('DC-ABC123-DEF')
+  })
+
+  it('re-create by the same socket replaces its invite instead of self-joining', () => {
+    const mm = new Matchmaking(new RoomManager())
+    const a = makeFakeWs()
+
+    mm.createInvite(a as any, 'wheat', 0, [], 'dc-abc123-def')
+    mm.createInvite(a as any, 'corn', 0, [], 'dc-abc123-def')
+
+    expect(a.data.roomId).toBeNull()
+    expect(a.messages.filter(m => m.type === 'friend:waiting').length).toBe(2)
+  })
+
+  it('rejects codes without the dc- prefix and falls back to a server code', () => {
+    const mm = new Matchmaking(new RoomManager())
+    const a = makeFakeWs()
+
+    const code = mm.createInvite(a as any, 'wheat', 0, [], 'HACK42')
+
+    expect(code).toMatch(/^[A-Z2-9]{6}$/)
+  })
+
+  it('rejects malformed dc- codes (too short, bad chars)', () => {
+    const mm = new Matchmaking(new RoomManager())
+    const a = makeFakeWs()
+
+    expect(mm.createInvite(a as any, 'wheat', 0, [], 'dc-ab')).toMatch(/^[A-Z2-9]{6}$/)
+    expect(mm.createInvite(a as any, 'wheat', 0, [], 'dc-абв_гд')).toMatch(/^[A-Z2-9]{6}$/)
+  })
+})
