@@ -1,6 +1,6 @@
 import type { UserInfo } from '@wheee/shared'
 
-export type PlatformType = 'web' | 'telegram' | 'yandex' | 'gamepush'
+export type PlatformType = 'web' | 'telegram' | 'yandex' | 'gamepush' | 'discord'
 
 /** Which audio track a mute applies to. */
 export type MuteKind = 'all' | 'music' | 'sfx'

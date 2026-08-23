@@ -17,9 +17,11 @@ export async function initPlatform(): Promise<PlatformAdapter> {
       ? await import('./yandex')
       : type === 'gamepush'
         ? await import('./gamepush')
-        : type === 'telegram'
-          ? await import('./telegram')
-          : await import('./web')
+        : type === 'discord'
+          ? await import('./discord')
+          : type === 'telegram'
+            ? await import('./telegram')
+            : await import('./web')
 
     if (!mod.default || typeof mod.default !== 'function') {
       throw new Error(`Platform module "${type}" has no default export`)

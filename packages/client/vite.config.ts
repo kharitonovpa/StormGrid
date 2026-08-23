@@ -28,7 +28,7 @@ function platformHtmlPlugin(): Plugin {
   return {
     name: 'platform-html',
     transformIndexHtml(html) {
-      if (platform === 'yandex' || platform === 'gamepush') {
+      if (platform === 'yandex' || platform === 'gamepush' || platform === 'discord') {
         html = stripExternalMeta(html)
         html = stripTelegramSdk(html)
       }
