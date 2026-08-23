@@ -59,38 +59,58 @@ export default class DiscordAdapter implements PlatformAdapter {
       return
     }
 
-    const sdk = new DiscordSDK(clientId)
+    // The constructor and the ready() handshake are the one step that must
+    // succeed for anything Discord-specific to work. If either throws (bad
+    // client id, the activity isn't actually embedded, a stale/broken host
+    // frame, ...) degrade exactly like the missing-client-id path above
+    // instead of letting the rejection bubble out of init() and fail the
+    // whole app's load.
+    let sdk: DiscordSDK
+    try {
+      sdk = new DiscordSDK(clientId)
+      await sdk.ready()
+    } catch (err) {
+      console.warn('[discord] SDK handshake failed — running as anonymous web-like client', err)
+      return
+    }
     this.sdk = sdk
-    await sdk.ready()
 
-    // Desktop-only dialog; switching relaunches the Discord client, so ask
-    // before anything heavy starts. Failures are non-fatal everywhere.
-    await sdk.commands.encourageHardwareAcceleration().catch(() => {})
-
+    // Everything below is nice-to-have (locale, safe area, presence/layout
+    // signals) — most already degrade individually, but this outer guard is
+    // a backstop so an unexpected throw here can't abort init() before we
+    // reach login and registerDiscordHandles below.
     try {
-      const { locale } = await sdk.commands.userSettingsGetLocale()
-      this.locale = locale.split('-')[0] || 'en'
-    } catch { /* locale stays 'en' */ }
+      // Desktop-only dialog; switching relaunches the Discord client, so ask
+      // before anything heavy starts. Failures are non-fatal everywhere.
+      await sdk.commands.encourageHardwareAcceleration().catch(() => {})
 
-    applyDiscordSafeArea()
+      try {
+        const { locale } = await sdk.commands.userSettingsGetLocale()
+        this.locale = locale.split('-')[0] || 'en'
+      } catch { /* locale stays 'en' */ }
 
-    // PIP/grid ≈ backgrounded: pause the heavy render like a hidden tab.
-    // No dedicated "compat" subscribe helper exists in the SDK — subscribe to
-    // the raw event directly (event name/payload verified against the
-    // installed package's schema/events.mjs).
-    sdk.subscribe('ACTIVITY_LAYOUT_MODE_UPDATE', ({ layout_mode }) => {
-      const cbs = layout_mode === LAYOUT_FOCUSED ? this.resumeCbs : this.pauseCbs
-      for (const cb of cbs) cb()
-    }).catch(() => {})
+      applyDiscordSafeArea()
 
-    sdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', ({ participants }) => {
-      this.participantCount = participants.length
-      for (const cb of this.participantCbs) cb(this.participantCount)
-    }).catch(() => {})
-    try {
-      const { participants } = await sdk.commands.getInstanceConnectedParticipants()
-      this.participantCount = participants.length
-    } catch { /* count stays 0 — automatch simply won't trigger */ }
+      // PIP/grid ≈ backgrounded: pause the heavy render like a hidden tab.
+      // No dedicated "compat" subscribe helper exists in the SDK — subscribe to
+      // the raw event directly (event name/payload verified against the
+      // installed package's schema/events.mjs).
+      sdk.subscribe('ACTIVITY_LAYOUT_MODE_UPDATE', ({ layout_mode }) => {
+        const cbs = layout_mode === LAYOUT_FOCUSED ? this.resumeCbs : this.pauseCbs
+        for (const cb of cbs) cb()
+      }).catch(() => {})
+
+      sdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', ({ participants }) => {
+        this.participantCount = participants.length
+        for (const cb of this.participantCbs) cb(this.participantCount)
+      }).catch(() => {})
+      try {
+        const { participants } = await sdk.commands.getInstanceConnectedParticipants()
+        this.participantCount = participants.length
+      } catch { /* count stays 0 — automatch simply won't trigger */ }
+    } catch (err) {
+      console.warn('[discord] Non-essential setup failed — continuing in degraded mode', err)
+    }
 
     await this.loginWithRetry()
 
@@ -159,14 +179,26 @@ export default class DiscordAdapter implements PlatformAdapter {
     if (!sdk) return false
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)))
+
+      // authorize() throwing means the OAuth consent modal was declined (or
+      // failed to open) — retrying would just reopen the same modal on the
+      // player up to maxAttempts times, so abort straight to anonymous mode
+      // instead of treating it like a transient network failure.
+      let code: string
       try {
-        const { code } = await sdk.commands.authorize({
+        ({ code } = await sdk.commands.authorize({
           client_id: import.meta.env.VITE_DISCORD_CLIENT_ID,
           response_type: 'code',
           state: '',
           prompt: 'none',
           scope: ['identify', 'applications.commands'],
-        })
+        }))
+      } catch (err) {
+        console.warn('[discord] authorize() failed — running as anonymous', err)
+        return false
+      }
+
+      try {
         const res = await fetch(`${API_BASE}/api/auth/discord`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -178,7 +210,7 @@ export default class DiscordAdapter implements PlatformAdapter {
         this.user = data.user
         await sdk.commands.authenticate({ access_token: data.access_token })
         return true
-      } catch { /* retry */ }
+      } catch { /* retry — network hiccup or a bad server response */ }
     }
     console.warn('[discord] Auth failed after', maxAttempts, 'attempts — running as anonymous')
     return false
