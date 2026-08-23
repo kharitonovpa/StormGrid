@@ -147,6 +147,36 @@ const isInstanceWait = computed(() => !!game.inviteCode.value?.toUpperCase().sta
 /** Share still has somewhere to go on discord even with no URL to show. */
 const canShareInvite = computed(() => !!inviteUrl.value || platform.type === 'discord')
 
+/**
+ * Declared here, ahead of the discord automatch block below, rather than
+ * further down where the rest of the connection/queue state lives: the
+ * bridge's `onDiscordParticipantCount` fires its callback synchronously,
+ * with the *current* count, the moment it's registered — so if two people
+ * are already in the voice channel when this script runs, automatch calls
+ * `ensureConnected` before `main.ts` finishes mounting the app. Reading (or
+ * writing) `pendingAction` from a `let` declared later in this same script
+ * would hit its temporal dead zone and throw. Nothing about `ensureConnected`
+ * itself changes — only where it and its backing variable are declared.
+ */
+let pendingAction: (() => void) | null = null
+
+function ensureConnected(then: () => void) {
+  if (socket.connected.value) {
+    then()
+  } else {
+    pendingAction = then
+    socket.connect()
+  }
+}
+
+watch(() => socket.connected.value, (connected) => {
+  if (connected && pendingAction) {
+    const fn = pendingAction
+    pendingAction = null
+    fn()
+  }
+})
+
 /* ── Discord instance automatch: two people in the voice channel = a match.
    Both sides send the same dc- code; the server's create-or-join pairs them. ── */
 if (platform.type === 'discord') {
@@ -161,6 +191,14 @@ if (platform.type === 'discord') {
     if (game.phase.value !== 'lobby') return
     if (incomingInvite.value) return
     if (game.queueJoinPending.value) return
+    // A user gesture always wins: if something is already queued for the
+    // moment the socket connects — someone's own Play/Invite tap, or an
+    // earlier automatch attempt still waiting on that same connect — this
+    // is not it. Automatch defers rather than clobbering it; the reverse
+    // (a user action overwriting an automatch pendingAction) stays allowed,
+    // since ensureConnected's normal callers never check this and a
+    // deliberate tap should win over an automatic one.
+    if (pendingAction) return
     ensureConnected(() => {
       if (socket.createFriendInvite(game.selectedCharacter.value, streak.value, code)) {
         game.queueJoinPending.value = true
@@ -300,7 +338,6 @@ const showOpponentDisconnected = computed(() =>
 const onlineCount = ref(0)
 const inQueue = ref(0)
 const liveMatches = ref(0)
-let pendingAction: (() => void) | null = null
 let weatherAnimDone = false
 /**
  * The pause between the sky going quiet and the bolt landing. Long enough to be
@@ -313,23 +350,6 @@ const HUSH_MS = 800
  * lines are blowing well before anybody is carried off the board.
  */
 const WIND_ONSET_MS = 400
-
-function ensureConnected(then: () => void) {
-  if (socket.connected.value) {
-    then()
-  } else {
-    pendingAction = then
-    socket.connect()
-  }
-}
-
-watch(() => socket.connected.value, (connected) => {
-  if (connected && pendingAction) {
-    const fn = pendingAction
-    pendingAction = null
-    fn()
-  }
-})
 
 function onPlay(character: CharacterType) {
   game.selectedCharacter.value = character
