@@ -10,6 +10,14 @@ import { getDiscordCustomId } from './platform/discordBridge'
 
 const CODE_RE = /^[a-zA-Z0-9]{4,12}$/
 
+/**
+ * Discord attaches its own service custom_id to launches from the game cards
+ * it auto-posts in chat, so the discord source only counts when the value has
+ * the exact shape of a server-generated invite code (6 chars, A-Z minus I/O,
+ * digits 2-9 — see CODE_ALPHABET in server matchmaking).
+ */
+const SERVER_CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/i
+
 /** Direct Mini App link; overridable per build via VITE_TG_APP_URL. */
 const TG_APP_URL: string = import.meta.env.VITE_TG_APP_URL || 'https://t.me/wheee_game_bot/play'
 
@@ -17,7 +25,8 @@ export function getIncomingInviteCode(): string | null {
   const fromQuery = new URLSearchParams(location.search).get('join')
     ?? new URLSearchParams(location.search).get('tgWebAppStartParam')
   const fromTelegram = window.Telegram?.WebApp?.initDataUnsafe?.start_param
-  const fromDiscord = getDiscordCustomId()
+  const rawDiscord = getDiscordCustomId()
+  const fromDiscord = rawDiscord && SERVER_CODE_RE.test(rawDiscord) ? rawDiscord : null
   const raw = fromDiscord || fromTelegram || fromQuery
   if (!raw || !CODE_RE.test(raw)) return null
   return raw.toUpperCase()
