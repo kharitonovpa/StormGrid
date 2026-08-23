@@ -18,10 +18,14 @@ RUN bun run --cwd packages/server build
 ARG VITE_API_URL
 RUN cd packages/client && bunx vite build
 
+ARG VITE_DISCORD_CLIENT_ID
+RUN cd packages/client && VITE_PLATFORM=discord VITE_DISCORD_CLIENT_ID=$VITE_DISCORD_CLIENT_ID bunx vite build --outDir dist-discord --emptyOutDir
+
 # ── Stage 2: nginx with client static files ──────────────────
 FROM nginx:alpine AS nginx
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/packages/client/dist /var/www/wheee
+COPY --from=build /app/packages/client/dist-discord /var/www/wheee-discord
 
 # ── Stage 3: server runtime ──────────────────────────────────
 FROM oven/bun:1-slim AS server

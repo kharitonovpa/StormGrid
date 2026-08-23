@@ -18,6 +18,7 @@ services:
       target: nginx
       args:
         VITE_API_URL: ${VITE_API_URL:-https://api.wheee.io}
+        VITE_DISCORD_CLIENT_ID: ${VITE_DISCORD_CLIENT_ID:-}
     restart: unless-stopped
     ports:
       - "80:80"
