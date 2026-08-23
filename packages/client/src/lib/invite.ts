@@ -1,9 +1,11 @@
 import type { PlatformType } from './platform/types'
+import { getDiscordCustomId } from './platform/discordBridge'
 
 /**
  * Challenge links. The code travels either as `?join=CODE` on the web build or
  * as Telegram's `startapp` parameter, which the client receives back as
- * `start_param` / `tgWebAppStartParam`.
+ * `start_param` / `tgWebAppStartParam` — or, inside Discord, as shareLink's
+ * `custom_id`, which round-trips as `discordSdk.customId`.
  */
 
 const CODE_RE = /^[a-zA-Z0-9]{4,12}$/
@@ -15,7 +17,8 @@ export function getIncomingInviteCode(): string | null {
   const fromQuery = new URLSearchParams(location.search).get('join')
     ?? new URLSearchParams(location.search).get('tgWebAppStartParam')
   const fromTelegram = window.Telegram?.WebApp?.initDataUnsafe?.start_param
-  const raw = fromTelegram || fromQuery
+  const fromDiscord = getDiscordCustomId()
+  const raw = fromDiscord || fromTelegram || fromQuery
   if (!raw || !CODE_RE.test(raw)) return null
   return raw.toUpperCase()
 }

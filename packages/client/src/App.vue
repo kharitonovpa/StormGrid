@@ -34,6 +34,7 @@ import { usePlatform } from './lib/platform'
 import { storageGet, storageSet } from './lib/storage'
 import { track } from './lib/analytics'
 import { getIncomingInviteCode, clearInviteFromUrl, buildInviteUrl, shareInvite, copyInvite } from './lib/invite'
+import { getDiscordInstanceCode, onDiscordParticipantCount, shareDiscordLink } from './lib/platform/discordBridge'
 import LobbyOverlay from './components/LobbyOverlay.vue'
 import GameHud from './components/GameHud.vue'
 import GameOverOverlay from './components/GameOverOverlay.vue'
@@ -134,9 +135,41 @@ function triggerCelebration(prediction: import('@wheee/shared').WatcherPredictio
 const incomingInvite = ref(getIncomingInviteCode())
 clearInviteFromUrl()
 
+/** On discord the code is a channel-instance pairing, not a link — never build one. */
 const inviteUrl = computed(() =>
-  game.inviteCode.value ? buildInviteUrl(game.inviteCode.value, platform.type) : null,
+  game.inviteCode.value && platform.type !== 'discord'
+    ? buildInviteUrl(game.inviteCode.value, platform.type)
+    : null,
 )
+
+/** The friend_wait screen swaps in instance-specific copy for a dc- code. */
+const isInstanceWait = computed(() => !!game.inviteCode.value?.toUpperCase().startsWith('DC-'))
+/** Share still has somewhere to go on discord even with no URL to show. */
+const canShareInvite = computed(() => !!inviteUrl.value || platform.type === 'discord')
+
+/* ── Discord instance automatch: two people in the voice channel = a match.
+   Both sides send the same dc- code; the server's create-or-join pairs them. ── */
+if (platform.type === 'discord') {
+  const tryInstanceMatch = () => {
+    const code = getDiscordInstanceCode()
+    if (!code) return
+    // Only from an idle lobby: never steal a manual invite/queue/match in
+    // progress, and never re-fire while an earlier automatch send is still
+    // in flight. A finished match returns here through game.reset(), so a
+    // fresh participant-count event (not just landing back in the lobby)
+    // is what re-triggers this — acceptable for v1.
+    if (game.phase.value !== 'lobby') return
+    if (incomingInvite.value) return
+    if (game.queueJoinPending.value) return
+    ensureConnected(() => {
+      if (socket.createFriendInvite(game.selectedCharacter.value, streak.value, code)) {
+        game.queueJoinPending.value = true
+        track('instance_automatch')
+      }
+    })
+  }
+  onDiscordParticipantCount(count => { if (count >= 2) tryInstanceMatch() })
+}
 
 function onInvite(character: CharacterType) {
   game.selectedCharacter.value = character
@@ -152,9 +185,15 @@ function onInvite(character: CharacterType) {
 }
 
 function onShareInvite() {
+  track('invite_share')
+  // No URL exists on discord — the SDK's own share sheet posts the invite
+  // straight into the channel instead.
+  if (platform.type === 'discord') {
+    if (game.inviteCode.value) void shareDiscordLink(game.inviteCode.value, t('invite.shareText'))
+    return
+  }
   const url = inviteUrl.value
   if (!url) return
-  track('invite_share')
   // No native share sheet around (desktop web) — the copy button's job, done here.
   if (!shareInvite(url, t('invite.shareText'))) copyInvite(url)
 }
@@ -2181,6 +2220,8 @@ onUnmounted(() => {
     :live-matches="liveMatches"
     :queue-countdown="game.queueCountdown.value"
     :invite-url="inviteUrl"
+    :can-share="canShareInvite"
+    :is-instance-wait="isInstanceWait"
     :has-incoming-invite="!!incomingInvite"
     :invite-failed="game.inviteFailed.value"
     @play="onPlay"

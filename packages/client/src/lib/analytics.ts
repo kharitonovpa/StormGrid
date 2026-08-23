@@ -1,6 +1,7 @@
 import { API_BASE } from './config'
 import { storageGet, storageSet } from './storage'
 import type { PlatformAdapter } from './platform/types'
+import { getDiscordReferrerId } from './platform/discordBridge'
 
 /**
  * First-party analytics: named events, batched and delivered to the game's own
@@ -49,7 +50,9 @@ export function initAnalytics(platform: PlatformAdapter): void {
     ? Math.floor((now - Number(firstOpen)) / 86_400_000)
     : 0
 
-  track('app_open', { returning: !!firstOpen, daysSinceFirst })
+  // Set only inside discord, where a share-link click hands back who sent it.
+  const referrer = getDiscordReferrerId()
+  track('app_open', { returning: !!firstOpen, daysSinceFirst, ...(referrer ? { referrer } : {}) })
 
   flushTimer = setInterval(flush, FLUSH_INTERVAL_MS)
   // The last batch of a session leaves via sendBeacon — a plain fetch would be

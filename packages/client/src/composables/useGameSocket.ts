@@ -144,9 +144,12 @@ export function useGameSocket() {
     send({ type: 'queue:leave' })
   }
 
-  /** Park under a short code and wait for the invited friend. */
-  function createFriendInvite(character: CharacterType = 'wheat', streak = 0) {
-    return send({ type: 'friend:create', character, streak, caps: CLIENT_CAPS })
+  /** Park under a short code and wait for the invited friend. A discord
+   * instance passes its deterministic dc- code (create-or-join on the server). */
+  function createFriendInvite(character: CharacterType = 'wheat', streak = 0, code?: string) {
+    return send(code
+      ? { type: 'friend:create', character, streak, caps: CLIENT_CAPS, code }
+      : { type: 'friend:create', character, streak, caps: CLIENT_CAPS })
   }
 
   function cancelFriendInvite() {

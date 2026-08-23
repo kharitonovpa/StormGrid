@@ -22,8 +22,15 @@ const props = defineProps<{
   /** Matches running right now — with none, there is nothing to watch. */
   liveMatches: number
   queueCountdown: number
-  /** Challenge link to show while waiting for the invited friend. */
+  /** Challenge link to show while waiting for the invited friend. Null on
+   * discord, where the pairing has no URL to show. */
   inviteUrl: string | null
+  /** Whether the share button has anywhere to send the invite — true whenever
+   * there's a URL, or on discord where shareLink works without one. */
+  canShare?: boolean
+  /** The wait was opened by discord's own instance automatch, not a manual
+   * invite — the heading reads differently. */
+  isInstanceWait?: boolean
   /** The player arrived through a challenge link — Play accepts it. */
   hasIncomingInvite: boolean
   /** The followed link was dead; say so once, above the Play button. */
@@ -122,6 +129,9 @@ const charLabel = computed<Record<string, string>>(() => ({
   rice: t('char.rice'),
   corn: t('char.corn'),
 }))
+/** Falls back to the pre-discord behavior (share only where a URL exists)
+ * when the caller doesn't pass an explicit value. */
+const canShareResolved = computed(() => props.canShare ?? !!props.inviteUrl)
 const tagline = computed(() => {
   const tags = TAGLINES.value
   return tags[Math.floor(Math.random() * tags.length)]
@@ -204,15 +214,15 @@ onUnmounted(() => {
           <template v-else-if="phase === 'friend_wait'">
             <div class="queue-status">
               <div class="queue-spinner" />
-              <span>{{ t('lobby.inviteWaiting') }}<span class="dots" /></span>
+              <span>{{ isInstanceWait ? t('lobby.instanceWait') : t('lobby.inviteWaiting') }}<span class="dots" /></span>
             </div>
-            <div class="invite-hint">{{ t('lobby.inviteHint') }}</div>
+            <div class="invite-hint" v-if="inviteUrl">{{ t('lobby.inviteHint') }}</div>
             <div class="invite-link" v-if="inviteUrl">{{ inviteUrl }}</div>
             <div class="invite-actions">
-              <button class="btn-invite-action" @click="onCopyInvite">
+              <button class="btn-invite-action" v-if="inviteUrl" @click="onCopyInvite">
                 {{ copied ? t('lobby.inviteCopied') : t('lobby.inviteCopy') }}
               </button>
-              <button class="btn-invite-action primary" @click="audio?.play('ui-click'); emit('shareInvite')">
+              <button class="btn-invite-action primary" v-if="canShareResolved" @click="audio?.play('ui-click'); emit('shareInvite')">
                 {{ t('lobby.inviteShare') }}
               </button>
               <button class="btn-cancel" @click="emit('cancelSearch')">{{ t('lobby.cancel') }}</button>
