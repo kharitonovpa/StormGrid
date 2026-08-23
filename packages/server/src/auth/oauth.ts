@@ -336,6 +336,62 @@ authRoutes.post('/gamepush', async (c) => {
   return c.json({ token: jwt, user: { id: userId, name: finalName, avatar: finalAvatar } })
 })
 
+/* ── Discord Activities ──────────────────────────── */
+
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || ''
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || ''
+const DISCORD_API_BASE = process.env.DISCORD_API_BASE || 'https://discord.com/api'
+
+const DISCORD_ORIGIN_RE = /^https:\/\/[a-z0-9-]+\.discordsays\.com$/
+
+authRoutes.post('/discord', async (c) => {
+  if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) return c.json({ error: 'Discord auth not configured' }, 500)
+
+  const origin = c.req.header('origin')
+  if (!isPlatformOriginAllowed(origin, DISCORD_ORIGIN_RE)) {
+    return c.json({ error: 'Forbidden origin' }, 403)
+  }
+
+  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (!platformAuthRateLimit(`discord:${ip}`)) {
+    return c.json({ error: 'Too many requests' }, 429)
+  }
+
+  const body = await c.req.json<{ code?: string }>().catch(() => null)
+  if (!body?.code) return c.json({ error: 'Missing code' }, 400)
+
+  // The successful exchange IS the proof of authenticity — only Discord can
+  // issue a code our client_secret redeems.
+  const tokenRes = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: DISCORD_CLIENT_ID,
+      client_secret: DISCORD_CLIENT_SECRET,
+      grant_type: 'authorization_code',
+      code: body.code,
+    }),
+  }).catch(() => null)
+  if (!tokenRes?.ok) return c.json({ error: 'Invalid code' }, 401)
+  const tokenData = await tokenRes.json().catch(() => null) as { access_token?: string } | null
+  if (!tokenData?.access_token) return c.json({ error: 'Invalid code' }, 401)
+
+  const meRes = await fetch(`${DISCORD_API_BASE}/users/@me`, {
+    headers: { Authorization: `Bearer ${tokenData.access_token}` },
+  }).catch(() => null)
+  if (!meRes?.ok) return c.json({ error: 'Discord user lookup failed' }, 401)
+  const me = await meRes.json().catch(() => null) as { id?: string; username?: string; global_name?: string | null; avatar?: string | null } | null
+  if (!me?.id || !me.username) return c.json({ error: 'Discord user lookup failed' }, 401)
+
+  const name = me.global_name || me.username
+  const avatar = me.avatar ? `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.png?size=256` : null
+
+  const { userId, finalName, finalAvatar } = upsertUser('discord', me.id, name, avatar)
+  const jwt = await signJwt(userId, finalName, finalAvatar)
+
+  return c.json({ token: jwt, user: { id: userId, name: finalName, avatar: finalAvatar }, access_token: tokenData.access_token })
+})
+
 /* ── /me and /logout ──────────────────────────────── */
 
 authRoutes.get('/me', async (c) => {
