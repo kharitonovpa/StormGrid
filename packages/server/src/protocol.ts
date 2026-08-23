@@ -63,6 +63,13 @@ const VALID_BONUS_TYPES = new Set(['time_extend', 'intel', 'clear_sky'])
 const VALID_CHARACTERS = new Set(CHARACTERS)
 /** Server codes are 6 chars, but stay tolerant of case and future lengths. */
 const FRIEND_CODE_RE = /^[a-zA-Z0-9]{4,12}$/
+/**
+ * friend:create's optional `code` covers a second shape FRIEND_CODE_RE doesn't:
+ * a discord instance-automatch pairing (`DC-` + the SDK's instanceId, see
+ * discord.ts and matchmaking.ts's own CLIENT_CODE_RE). Reusing FRIEND_CODE_RE
+ * as-is would parse-reject every automatch attempt.
+ */
+const FRIEND_CREATE_CODE_RE = /^(?:[a-zA-Z0-9]{4,12}|[dD][cC]-[a-zA-Z0-9-]{6,64})$/
 /** `caps` is client-supplied and only ever a short client-feature list — cap
  * its shape hard so a hostile client can't use it to smuggle in a large payload. */
 const MAX_CAPS = 8
@@ -102,6 +109,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       case 'instant:start':
       case 'friend:create':
         if (!VALID_CHARACTERS.has(msg.character)) return null
+        // friend:create's `code` is optional (server generates one when absent),
+        // but when present it must pass shape validation just like friend:join's
+        // required code does above — otherwise an instance-automatch code (or a
+        // hostile client) reaches matchmaking.ts's `.toUpperCase()` call
+        // unvalidated. Scoped to friend:create: the other message types sharing
+        // this block have no `code` field of their own.
+        if (msg.type === 'friend:create' && msg.code !== undefined
+          && (typeof msg.code !== 'string' || !FRIEND_CREATE_CODE_RE.test(msg.code))) return null
         // Cosmetic and self-reported, but still has to be a sane number.
         if (msg.streak !== undefined
           && (!Number.isInteger(msg.streak) || msg.streak < 0 || msg.streak > 9999)) return null

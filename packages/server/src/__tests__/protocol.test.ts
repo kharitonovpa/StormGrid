@@ -89,3 +89,43 @@ describe('parseClientMessage — caps validation', () => {
     expect(msg).not.toBeNull()
   })
 })
+
+/*
+ * friend:create's `code` is optional (the server mints one when absent) but,
+ * when present, must be validated same as friend:join's required code —
+ * matchmaking.ts calls `.toUpperCase()` on it unconditionally, which throws
+ * a TypeError on anything that isn't a string (e.g. a bare number survives
+ * `requestedCode?.toUpperCase()`'s null-check but has no such method).
+ * A discord instance-automatch code ("DC-" + the SDK's instanceId) must
+ * still be accepted, so the shape check is not identical to friend:join's.
+ */
+describe('parseClientMessage — friend:create code validation', () => {
+  it('accepts friend:create with no code (server will mint one)', () => {
+    const msg = parseClientMessage(JSON.stringify({ type: 'friend:create', character: 'wheat' }))
+    expect(msg).not.toBeNull()
+  })
+
+  it('accepts friend:create with a well-formed manual code', () => {
+    const msg = parseClientMessage(JSON.stringify({ type: 'friend:create', character: 'wheat', code: 'ABC234' }))
+    expect(msg).not.toBeNull()
+  })
+
+  it('accepts friend:create with a discord instance-automatch code', () => {
+    const msg = parseClientMessage(JSON.stringify({
+      type: 'friend:create', character: 'wheat', code: 'DC-1234567890123456789',
+    }))
+    expect(msg).not.toBeNull()
+  })
+
+  it('rejects friend:create with a non-string code', () => {
+    const msg = parseClientMessage(JSON.stringify({ type: 'friend:create', character: 'wheat', code: 123 }))
+    expect(msg).toBeNull()
+  })
+
+  it('rejects friend:create with an oversized code', () => {
+    const msg = parseClientMessage(JSON.stringify({
+      type: 'friend:create', character: 'wheat', code: 'a'.repeat(200),
+    }))
+    expect(msg).toBeNull()
+  })
+})

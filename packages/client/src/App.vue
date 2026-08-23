@@ -144,8 +144,14 @@ const inviteUrl = computed(() =>
 
 /** The friend_wait screen swaps in instance-specific copy for a dc- code. */
 const isInstanceWait = computed(() => !!game.inviteCode.value?.toUpperCase().startsWith('DC-'))
-/** Share still has somewhere to go on discord even with no URL to show. */
-const canShareInvite = computed(() => !!inviteUrl.value || platform.type === 'discord')
+/**
+ * Share still has somewhere to go on discord even with no URL to show — but
+ * not during an instance-wait: that dc- code isn't a joinable invite (the
+ * client's own CODE_RE and the server's friend:join both reject it), so
+ * sharing it would hand a recipient outside this voice channel a dead code.
+ * The spec's instance-wait screen only prescribes leave-to-queue.
+ */
+const canShareInvite = computed(() => !isInstanceWait.value && (!!inviteUrl.value || platform.type === 'discord'))
 
 /**
  * Declared here, ahead of the discord automatch block below, rather than
