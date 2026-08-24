@@ -13,6 +13,15 @@ import { registerDiscordHandles } from './discordBridge'
  */
 const LAYOUT_FOCUSED = 0
 
+/**
+ * Discord passes absent launch params as the LITERAL strings "undefined" /
+ * "null" in the iframe query (?custom_id=undefined) — normalize them away.
+ */
+function cleanLaunchParam(value: string | null | undefined): string | null {
+  if (!value || value === 'undefined' || value === 'null') return null
+  return value
+}
+
 function readSafeAreaVar(name: string): number {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name)
   const px = parseFloat(raw)
@@ -84,11 +93,6 @@ export default class DiscordAdapter implements PlatformAdapter {
       // before anything heavy starts. Failures are non-fatal everywhere.
       await sdk.commands.encourageHardwareAcceleration().catch(() => {})
 
-      try {
-        const { locale } = await sdk.commands.userSettingsGetLocale()
-        this.locale = locale.split('-')[0] || 'en'
-      } catch { /* locale stays 'en' */ }
-
       applyDiscordSafeArea()
 
       // PIP/grid ≈ backgrounded: pause the heavy render like a hidden tab.
@@ -99,25 +103,39 @@ export default class DiscordAdapter implements PlatformAdapter {
         const cbs = layout_mode === LAYOUT_FOCUSED ? this.resumeCbs : this.pauseCbs
         for (const cb of cbs) cb()
       }).catch(() => {})
-
-      sdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', ({ participants }) => {
-        this.participantCount = participants.length
-        for (const cb of this.participantCbs) cb(this.participantCount)
-      }).catch(() => {})
-      try {
-        const { participants } = await sdk.commands.getInstanceConnectedParticipants()
-        this.participantCount = participants.length
-      } catch { /* count stays 0 — automatch simply won't trigger */ }
     } catch (err) {
       console.warn('[discord] Non-essential setup failed — continuing in degraded mode', err)
     }
 
-    await this.loginWithRetry()
+    const authed = await this.loginWithRetry()
+
+    // Participant presence (and locale) are RPC commands that only work on an
+    // AUTHENTICATED session — called before authenticate() they return ERROR
+    // and the count would stay 0 forever, silently disabling automatch. So
+    // they run here, strictly after login. No auth → no automatch, by design.
+    if (authed) {
+      try {
+        const { locale } = await sdk.commands.userSettingsGetLocale()
+        this.locale = locale.split('-')[0] || 'en'
+      } catch { /* locale stays 'en' */ }
+
+      sdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', ({ participants }) => {
+        this.participantCount = participants.length
+        for (const cb of this.participantCbs) cb(this.participantCount)
+      }).catch((err) => console.warn('[discord] participants subscribe failed', err))
+      try {
+        const { participants } = await sdk.commands.getInstanceConnectedParticipants()
+        this.participantCount = participants.length
+        for (const cb of this.participantCbs) cb(this.participantCount)
+      } catch (err) {
+        console.warn('[discord] participants fetch failed — automatch disabled', err)
+      }
+    }
 
     registerDiscordHandles({
       instanceCode: `dc-${sdk.instanceId}`.toUpperCase(),
-      customId: sdk.customId ?? null,
-      referrerId: sdk.referrerId ?? null,
+      customId: cleanLaunchParam(sdk.customId),
+      referrerId: cleanLaunchParam(sdk.referrerId),
       shareLink: async (code, message) => {
         try {
           const { success } = await sdk.commands.shareLink({ message, custom_id: code })
