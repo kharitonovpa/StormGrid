@@ -29,8 +29,17 @@ fi
 # ── Download current .env from PL VPS ────────────────────────
 echo "==> Downloading .env from $PL_REMOTE:$PL_ENV_PATH ..."
 if ! scp -q "$PL_REMOTE:$PL_ENV_PATH" "$REMOTE_ENV" 2>/dev/null; then
-  echo "    Remote .env not found — will create from scratch"
-  touch "$REMOTE_ENV"
+  # A failed scp is ambiguous: missing file OR unreachable host. Only proceed
+  # with a from-scratch .env when the server itself says the file is absent —
+  # otherwise a transient network error would upload an all-empty .env over
+  # the real secrets.
+  if ssh -o ConnectTimeout=15 "$PL_REMOTE" "test ! -e $PL_ENV_PATH"; then
+    echo "    Remote .env confirmed absent — will create from scratch"
+    touch "$REMOTE_ENV"
+  else
+    echo "ERROR: could not download remote .env (network/ssh failure?) — refusing to overwrite it" >&2
+    exit 1
+  fi
 fi
 
 # ── Find missing keys ────────────────────────────────────────
