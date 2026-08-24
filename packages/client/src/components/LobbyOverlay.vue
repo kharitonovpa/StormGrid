@@ -66,8 +66,12 @@ const platform = usePlatform()
 const canAuth = platform.canAuth()
 const canShowLeaderboard = platform.canShowLeaderboard()
 
-/** Challenge links only where the game owns its URL — see `canLinkOut`. */
-const canInvite = platform.canLinkOut()
+/**
+ * Challenge links only where the game owns its URL (`canLinkOut`) — except
+ * Discord, where the invite never leaves the platform (shareLink posts an
+ * in-Discord card), so the portal-style link ban does not apply.
+ */
+const canInvite = platform.canLinkOut() || platform.type === 'discord'
 
 const canWatch = computed(() => canAuth && !!user.value && props.liveMatches > 0)
 
