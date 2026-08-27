@@ -27,6 +27,14 @@ STORE_ASSETS=(
   'privacy.html'
 )
 
+# Whole directories that exist only for outside catalogs. press/ holds the
+# App Directory carousel shots: Discord's Media Carousel takes URLs, not
+# uploads, so the files have to be reachable at https://wheee.io/press/… —
+# but no player ever fetches them out of a portal archive.
+STORE_DIRS=(
+  'press'
+)
+
 freed=0
 for name in "${STORE_ASSETS[@]}"; do
   file="$DIST/$name"
@@ -34,6 +42,14 @@ for name in "${STORE_ASSETS[@]}"; do
   freed=$(( freed + $(wc -c < "$file") ))
   rm -f "$file"
   echo "    - $name"
+done
+
+for name in "${STORE_DIRS[@]}"; do
+  dir="$DIST/$name"
+  [[ -d "$dir" ]] || continue
+  freed=$(( freed + $(find "$dir" -type f -exec wc -c {} + | tail -n1 | awk '{print $1}') ))
+  rm -rf "$dir"
+  echo "    - $name/"
 done
 
 if (( freed > 0 )); then
