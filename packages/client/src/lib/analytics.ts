@@ -1,7 +1,7 @@
 import { API_BASE } from './config'
 import { storageGet, storageSet } from './storage'
 import type { PlatformAdapter } from './platform/types'
-import { getDiscordReferrerId } from './platform/discordBridge'
+import { getDiscordGuildId, getDiscordReferrerId, getDiscordSurface } from './platform/discordBridge'
 
 /**
  * First-party analytics: named events, batched and delivered to the game's own
@@ -50,9 +50,20 @@ export function initAnalytics(platform: PlatformAdapter): void {
     ? Math.floor((now - Number(firstOpen)) / 86_400_000)
     : 0
 
-  // Set only inside discord, where a share-link click hands back who sent it.
+  // All three are set only inside discord: a share-link click hands back who
+  // sent it, and the launch surface says whether the player came in from a
+  // server voice channel (and which server) or from a DM / the App Launcher.
+  // The install counters in the developer portal cannot tell those apart.
   const referrer = getDiscordReferrerId()
-  track('app_open', { returning: !!firstOpen, daysSinceFirst, ...(referrer ? { referrer } : {}) })
+  const surface = getDiscordSurface()
+  const guild = getDiscordGuildId()
+  track('app_open', {
+    returning: !!firstOpen,
+    daysSinceFirst,
+    ...(referrer ? { referrer } : {}),
+    ...(surface ? { surface } : {}),
+    ...(guild ? { guild } : {}),
+  })
 
   flushTimer = setInterval(flush, FLUSH_INTERVAL_MS)
   // The last batch of a session leaves via sendBeacon — a plain fetch would be

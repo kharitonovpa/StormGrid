@@ -9,6 +9,7 @@ export type DiscordHandles = {
   instanceCode: string | null
   customId: string | null
   referrerId: string | null
+  guildId: string | null
   shareLink: (code: string, message: string) => Promise<boolean>
   onParticipantCount: (cb: (count: number) => void) => () => void
 }
@@ -29,6 +30,20 @@ export function getDiscordCustomId(): string | null {
 
 export function getDiscordReferrerId(): string | null {
   return handles?.referrerId ?? null
+}
+
+/**
+ * Where the activity was launched from. Discord hands back a guildId only for
+ * launches inside a server voice channel; DMs, group DMs and the App Launcher
+ * all arrive with it null — so this is the guild/everything-else split, not a
+ * full breakdown of the three surfaces.
+ */
+export function getDiscordSurface(): string | null {
+  return handles ? (handles.guildId ? 'guild' : 'dm') : null
+}
+
+export function getDiscordGuildId(): string | null {
+  return handles?.guildId ?? null
 }
 
 export function shareDiscordLink(code: string, message: string): Promise<boolean> {

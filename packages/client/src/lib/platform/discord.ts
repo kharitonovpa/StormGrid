@@ -136,6 +136,7 @@ export default class DiscordAdapter implements PlatformAdapter {
       instanceCode: `dc-${sdk.instanceId}`.toUpperCase(),
       customId: cleanLaunchParam(sdk.customId),
       referrerId: cleanLaunchParam(sdk.referrerId),
+      guildId: sdk.guildId,
       shareLink: async (code, message) => {
         try {
           const { success } = await sdk.commands.shareLink({ message, custom_id: code })

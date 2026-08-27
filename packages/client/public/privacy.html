@@ -15,24 +15,29 @@
 </head>
 <body>
   <h1>wheee — Privacy Policy</h1>
-  <p class="muted">Last updated: August 7, 2026</p>
+  <p class="muted">Last updated: August 27, 2026</p>
 
   <p>wheee is a free online game available at <a href="https://wheee.io">wheee.io</a>,
-  as a Telegram Mini App, and on game portals. This policy describes what data the
+  as a Telegram Mini App, as a Discord Activity, and on game portals. This policy describes what data the
   game handles and why. Short version: we keep as little as possible and sell nothing.</p>
 
   <h2>What we store</h2>
   <ul>
-    <li><b>Account data (optional).</b> If you sign in with Google, GitHub, or play
-    inside Telegram, we store your display name, avatar URL, and the numeric ID the
-    provider gives us — enough to show your name on the leaderboard. You can play
-    without an account.</li>
+    <li><b>Account data (optional).</b> If you sign in with Google or GitHub, or play
+    inside Telegram or Discord, we store your display name, avatar URL, and the numeric
+    ID the provider gives us — enough to show your name on the leaderboard. Inside
+    Discord this is the <code>identify</code> scope, and it is the only scope we read
+    your profile with. You can play without an account.</li>
     <li><b>Match data.</b> Results, replays, and win/loss statistics of the matches
     you play.</li>
     <li><b>Gameplay analytics.</b> Anonymous usage events (game opened, match played)
     keyed to a random device identifier. No names, no precise location — only a
     country-level code derived from your connection. We use this to understand
-    whether players return, nothing else.</li>
+    whether players return, nothing else. Inside Discord the &ldquo;game opened&rdquo;
+    event also records whether the activity was launched from a server or a direct
+    message, the ID of that server, and — if you arrived through an invite — the ID of
+    the player who shared it. These are Discord's own numeric IDs; we read them to see
+    which communities the game reaches.</li>
     <li><b>Local preferences.</b> Sound settings and tutorial progress stay in your
     browser's storage (or the hosting platform's equivalent).</li>
   </ul>
@@ -46,8 +51,8 @@
 
   <h2>Ads</h2>
   <p>On some game portals (e.g. Yandex Games, GamePush-hosted sites) the platform
-  shows ads and applies its own privacy policy. The Telegram and wheee.io versions
-  currently show no ads.</p>
+  shows ads and applies its own privacy policy. The Telegram, Discord and wheee.io
+  versions currently show no ads.</p>
 
   <h2>Data removal</h2>
   <p>To delete your account and its match history, contact us and name the account:
