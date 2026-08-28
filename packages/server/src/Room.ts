@@ -189,9 +189,15 @@ export class Room {
    * When the badge crate turns up, chosen once per match so its arrival cannot
    * be timed by habit. Round 1–4 of the match, after tick 1–4 of that round —
    * never at a round boundary, where it would just be part of the furniture.
+   *
+   * Except when somebody in the room has no badge yet: then it is round 1, set
+   * by scheduleStreakCrate at kickoff. The randomness guards against a player
+   * who already carries a badge lying in wait for the crate; for a player who
+   * has none it only decides whether they survive long enough to reach the one
+   * entrance the streak has, and deaths in round 1 are common.
    */
-  private readonly crateRound = 1 + Math.floor(Math.random() * 4)
-  private readonly crateTick = 1 + Math.floor(Math.random() * 4)
+  private crateRound = 1 + Math.floor(Math.random() * 4)
+  private crateTick = 1 + Math.floor(Math.random() * 4)
   private crateDropped = false
 
   private tickTimerStartedAt = 0
@@ -239,6 +245,16 @@ export class Room {
 
   get isFull(): boolean {
     return this.playerCount === 2
+  }
+
+  /** Which round the badge crate is due in — see the crateRound field. */
+  get crateDropRound(): number {
+    return this.crateRound
+  }
+
+  /** Which tick of that round it lands after. Always unpredictable. */
+  get crateDropTick(): number {
+    return this.crateTick
   }
 
   /**
@@ -695,7 +711,22 @@ export class Room {
       }
     }
 
+    this.scheduleStreakCrate()
     this.beginRound()
+  }
+
+  /**
+   * Decided at kickoff rather than at construction, because it depends on who
+   * actually sat down: a room holding anybody without a badge owes them an
+   * early crate. placeStreakCrate already refuses to drop anything when there
+   * is no one to seed, so this only moves the moment, never adds a crate.
+   */
+  private scheduleStreakCrate(): void {
+    const needsSeeding = (['A', 'B'] as PlayerId[]).some((pid) => {
+      const slot = this.players[pid]
+      return !!slot && !slot.isBot && this.playerInfoCache[pid].streak === 0
+    })
+    if (needsSeeding) this.crateRound = 1
   }
 
   private beginRound(): void {
