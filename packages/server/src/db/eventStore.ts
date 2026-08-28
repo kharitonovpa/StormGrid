@@ -30,6 +30,12 @@ export type DailySummary = {
   serverMatches: number
   /** Of serverMatches, how many were the queue's bot fallback. */
   botMatches: number
+  /**
+   * serverMatches minus botMatches — human against human. Carried explicitly
+   * because it is the number the game is actually judged on, and leaving it as
+   * a subtraction invited reading `serverMatches` as if it meant PvP.
+   */
+  pvpMatches: number
   /** Of botMatches, how many the human won (the bot always sits in slot B). */
   botHumanWins: number
   /** Of devices first seen the previous day, how many came back on this one. */
@@ -38,6 +44,28 @@ export type DailySummary = {
 
 /** SQL fragment: the event is a practice (tutorial/bot) one per its props. */
 const IS_PRACTICE = sql.raw(`COALESCE(json_extract(props, '$.practice'), 0) = 1`)
+
+let excludedDevices: string[] = []
+
+/**
+ * Device ids to leave out of every aggregate — our own browsers, mostly. A
+ * developer reloading the game all day lands in the report as the most engaged
+ * player on the most engaged platform, which is precisely the row being read
+ * for signal. Set from STATS_EXCLUDE_DEVICES at boot.
+ *
+ * The one place this cannot reach: `serverMatches` / `botMatches` come from the
+ * `matches` table, which has no device column, so matches played by an excluded
+ * device still count there.
+ */
+export function setExcludedDevices(ids: string[]): void {
+  excludedDevices = ids.map((s) => s.trim()).filter((s) => s.length > 0)
+}
+
+/** An `AND`-able fragment — a true constant while nothing is excluded. */
+function deviceAllowed() {
+  if (excludedDevices.length === 0) return sql`1 = 1`
+  return sql`device_id NOT IN (${sql.join(excludedDevices.map((id) => sql`${id}`), sql.raw(', '))})`
+}
 
 /**
  * One row per day, newest first. Everything is derived from raw events on read —
@@ -63,7 +91,7 @@ export function getDailySummary(days = 14): DailySummary[] {
              SUM(CASE WHEN name = 'app_open' THEN 1 ELSE 0 END) AS opens,
              SUM(CASE WHEN name = 'match_end' AND NOT ${IS_PRACTICE} THEN 1 ELSE 0 END) AS matches
       FROM events
-      WHERE created_at >= unixepoch('now', ${window})
+      WHERE created_at >= unixepoch('now', ${window}) AND ${deviceAllowed()}
       GROUP BY day, device_id
     )
     SELECT d.day AS day,
@@ -100,6 +128,7 @@ export function getDailySummary(days = 14): DailySummary[] {
       matches: r.matches,
       serverMatches: s?.n ?? 0,
       botMatches: s?.bots ?? 0,
+      pvpMatches: (s?.n ?? 0) - (s?.bots ?? 0),
       botHumanWins: s?.bot_human_wins ?? 0,
       d1Retained: r.d1_retained,
     }
@@ -113,9 +142,52 @@ export function getEventCounts(days = 14): { name: string; count: number; device
            SUM(CASE WHEN ${IS_PRACTICE} THEN 1 ELSE 0 END) AS practice
     FROM events
     WHERE created_at >= unixepoch('now', ${'-' + Math.max(1, Math.min(days, 90)) + ' days'})
+      AND ${deviceAllowed()}
     GROUP BY name
     ORDER BY count DESC
   `)
+}
+
+export type PropsAudit = {
+  name: string
+  total: number
+  /** Events of this name that arrived with no props at all. */
+  noProps: number
+  /** Events IS_PRACTICE counts as practice. */
+  practiceTrue: number
+  /** One real props payload, to eyeball what the client is actually sending. */
+  sampleProps: string | null
+}
+
+/**
+ * Which events carry which props, per name. This exists to settle a specific
+ * question the aggregates above cannot answer about themselves: every
+ * "practice excluded" metric leans on IS_PRACTICE, so if the flag lands on the
+ * wrong events, both the daily and the platform summary are wrong in the same
+ * direction and stay consistent with each other while doing it. An event whose
+ * client-side `track()` call passes no props must show `noProps === total` and
+ * `practiceTrue === 0` here; anything else means the deployed client is not the
+ * one in this repository.
+ */
+export function getPropsAudit(days = 14): PropsAudit[] {
+  return db.all<{ name: string; total: number; no_props: number; practice_true: number; sample_props: string | null }>(sql`
+    SELECT name,
+           COUNT(*)                  AS total,
+           SUM(props IS NULL)        AS no_props,
+           SUM(CASE WHEN ${IS_PRACTICE} THEN 1 ELSE 0 END) AS practice_true,
+           MIN(props)                AS sample_props
+    FROM events
+    WHERE created_at >= unixepoch('now', ${'-' + Math.max(1, Math.min(days, 90)) + ' days'})
+      AND ${deviceAllowed()}
+    GROUP BY name
+    ORDER BY total DESC
+  `).map((r) => ({
+    name: r.name,
+    total: r.total,
+    noProps: r.no_props,
+    practiceTrue: r.practice_true,
+    sampleProps: r.sample_props,
+  }))
 }
 
 export type PlatformSummary = {
@@ -160,7 +232,7 @@ export function getPlatformSummary(days = 14): PlatformSummary[] {
              SUM(CASE WHEN name = 'match_start' AND NOT ${IS_PRACTICE} THEN 1 ELSE 0 END) AS match_starts,
              SUM(CASE WHEN name = 'match_end' AND NOT ${IS_PRACTICE} THEN 1 ELSE 0 END) AS match_ends
       FROM events
-      WHERE created_at >= unixepoch('now', ${window})
+      WHERE created_at >= unixepoch('now', ${window}) AND ${deviceAllowed()}
       GROUP BY device_id
     ),
     retained AS (

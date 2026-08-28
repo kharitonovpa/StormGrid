@@ -272,9 +272,15 @@ unsubMessage1 = socket.onMessage((msg) => {
     platform.gameplayStop()
     refreshRewardedAvailability()
     {
+      // Watchers and the architect are sent game:end too, and they have no
+      // playerId — so without this guard every match watched from the outside
+      // filed a `match_end` of its own with result 'loss', inflating the match
+      // count and dragging the win rate down with a defeat nobody suffered.
       const myId = game.myPlayerId.value
-      const result = msg.winner === 'draw' ? 'draw' : (myId && msg.winner === myId ? 'win' : 'loss')
-      track('match_end', { result, practice: game.isPractice.value })
+      if (myId) {
+        const result = msg.winner === 'draw' ? 'draw' : (msg.winner === myId ? 'win' : 'loss')
+        track('match_end', { result, practice: game.isPractice.value })
+      }
     }
     if (game.isPractice.value) storageSet(TUTORIAL_STORAGE_KEY, '1')
     settleStreak(msg)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { parseClientMessage } from '../protocol.js'
+import { parseClientMessage, parseAnalyticsIdentity } from '../protocol.js'
 
 /*
  * `caps` is client-supplied data on the four matchmaking-entry messages
@@ -127,5 +127,50 @@ describe('parseClientMessage — friend:create code validation', () => {
       type: 'friend:create', character: 'wheat', code: 'a'.repeat(200),
     }))
     expect(msg).toBeNull()
+  })
+})
+
+/*
+ * The analytics identity rides in on the socket URL's query string, so it is
+ * as untrusted as any other client input. It must pass the same shape checks
+ * as POST /api/events applies — a row the server writes on a player's behalf
+ * has to be indistinguishable from one that player's own client sent.
+ */
+describe('parseAnalyticsIdentity', () => {
+  const params = (s: string) => new URLSearchParams(s)
+
+  it('returns null when the client sends no analytics params at all', () => {
+    expect(parseAnalyticsIdentity(params(''))).toBeNull()
+  })
+
+  it('returns null when the device id is too short to be a device id', () => {
+    expect(parseAnalyticsIdentity(params('device=abc&asid=1234567890&platform=web'))).toBeNull()
+  })
+
+  it('returns null when the device id carries characters the events table rejects', () => {
+    const bad = 'device=aaaaaaaa.bbbbbbbb&asid=1234567890&platform=web'
+    expect(parseAnalyticsIdentity(params(bad))).toBeNull()
+  })
+
+  it('accepts uuids and carries the portal host through', () => {
+    const id = parseAnalyticsIdentity(params(
+      `device=${crypto.randomUUID()}&asid=${crypto.randomUUID()}&platform=gamepush&host=WG_PLAYGROUND`,
+    ))
+    expect(id).not.toBeNull()
+    expect(id!.platform).toBe('gamepush')
+    expect(id!.host).toBe('WG_PLAYGROUND')
+  })
+
+  it('keeps the identity but drops a host too long to store', () => {
+    const id = parseAnalyticsIdentity(params(
+      `device=${crypto.randomUUID()}&asid=${crypto.randomUUID()}&platform=web&host=${'h'.repeat(41)}`,
+    ))
+    expect(id).not.toBeNull()
+    expect(id!.host).toBeNull()
+  })
+
+  it('returns null when the platform is missing, since every row needs one', () => {
+    const id = parseAnalyticsIdentity(params(`device=${crypto.randomUUID()}&asid=${crypto.randomUUID()}`))
+    expect(id).toBeNull()
   })
 })

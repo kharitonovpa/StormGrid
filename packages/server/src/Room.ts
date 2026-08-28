@@ -4,7 +4,7 @@ import { TICK_DURATION_MS, RECONNECT_GRACE_MS, WAR_AND_PEACE_SURNAMES, BOARD_SIZ
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
 import { chooseBotAction, BOT_PRACTICE, BOT_MATCH, type BotStrength } from './engine/bot.js'
-import type { ServerMessage, WsData } from './protocol.js'
+import type { AnalyticsIdentity, ServerMessage, WsData } from './protocol.js'
 import { send } from './protocol.js'
 import type { ReplayStore } from './ReplayStore.js'
 
@@ -36,6 +36,12 @@ type PlayerSlot = {
   action: Action | null
   disconnectedAt: number | null
   isBot: boolean
+  /**
+   * Copied off the socket at join time rather than read through `ws` later:
+   * by the time a match is written off as abandoned, `ws` is null — that is
+   * what abandoned means.
+   */
+  analytics: AnalyticsIdentity | null
 }
 
 type WatcherSlot = {
@@ -85,8 +91,27 @@ export type MatchEndData = {
   watcherScores: WatcherScoreEntry[]
 }
 
+/**
+ * A match one player walked out of. Recorded server-side because the leaver's
+ * client is gone: it cannot report its own exit, and the `game:end` that ends
+ * the match goes to the player who stayed. Without this, `match_start` minus
+ * `match_end` reads as a completion rate when it is really a blind spot.
+ */
+export type AbandonData = {
+  /** The player who left; null if they connected without analytics params. */
+  analytics: AnalyticsIdentity | null
+  practice: boolean
+  vsBot: boolean
+  /** Where in the match they gave up — the point of the whole record. */
+  round: number
+  tick: number
+  phase: string
+  reason: 'forfeit' | 'practice_quit'
+}
+
 export type RoomCallbacks = {
   onDispose: (id: string) => void
+  onAbandon?: (data: AbandonData) => void
   findNextRoom?: (excludeId: string) => string | null
   registerToken?: (token: string, pid: PlayerId) => void
   unregisterToken?: (token: string) => void
@@ -218,7 +243,10 @@ export class Room {
     else return null
 
     const reconnectToken = crypto.randomUUID()
-    this.players[pid] = { ws, reconnectToken, character, action: null, disconnectedAt: null, isBot: false }
+    this.players[pid] = {
+      ws, reconnectToken, character, action: null, disconnectedAt: null, isBot: false,
+      analytics: ws.data.analytics ?? null,
+    }
     this.playerUserIds[pid] = ws.data.userId ?? null
     this.playerInfoCache[pid] = {
       displayName: ws.data.userName ?? randomSurname(),
@@ -248,7 +276,7 @@ export class Room {
 
     this.players[pid] = {
       ws: null, reconnectToken: '', character, action: null,
-      disconnectedAt: null, isBot: true,
+      disconnectedAt: null, isBot: true, analytics: null,
     }
     this.botStrength = strength
     const other: PlayerId = pid === 'A' ? 'B' : 'A'
@@ -319,12 +347,30 @@ export class Room {
     }
   }
 
+  /** A bot leaving is not a player giving up, so bot slots are skipped. */
+  private recordAbandon(slot: PlayerSlot, reason: AbandonData['reason']): void {
+    if (slot.isBot) return
+    const state = this.engine.getState()
+    this.callbacks.onAbandon?.({
+      analytics: slot.analytics,
+      practice: this.practice,
+      vsBot: this.botStrength !== null,
+      round: state.round,
+      tick: state.tick,
+      phase: state.phase,
+      reason,
+    })
+  }
+
   handleDisconnect(pid: PlayerId): void {
     const slot = this.players[pid]
     if (!slot || this.ended) return
 
     if (this.practice) {
-      // Tutorial has no reconnect: the player left, tear the room down.
+      // Tutorial has no reconnect: the player left, tear the room down. Record
+      // it first — the room is about to stop existing, and a quit tutorial is
+      // otherwise the one funnel step that leaves no trace at all.
+      this.recordAbandon(slot, 'practice_quit')
       this.dispose()
       return
     }
@@ -399,6 +445,7 @@ export class Room {
 
   private forfeitPlayer(pid: PlayerId): void {
     const slot = this.players[pid]
+    if (slot) this.recordAbandon(slot, 'forfeit')
     if (slot?.reconnectToken) {
       this.callbacks.unregisterToken?.(slot.reconnectToken)
     }

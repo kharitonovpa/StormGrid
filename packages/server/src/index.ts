@@ -4,14 +4,14 @@ import { CHARACTERS } from '@wheee/shared'
 import { RoomManager } from './RoomManager.js'
 import { Matchmaking, capsHaveLightning } from './matchmaking.js'
 import { ReplayStore } from './ReplayStore.js'
-import { parseClientMessage, send } from './protocol.js'
+import { parseAnalyticsIdentity, parseClientMessage, send } from './protocol.js'
 import type { WsData } from './protocol.js'
 import { ConnectionLimiter } from './ratelimit.js'
 import { runMigrations } from './db/migrate.js'
 import { authRoutes } from './auth/oauth.js'
 import { verifyJwt, parseCookieToken, extractToken } from './auth/jwt.js'
 import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard } from './db/matchStore.js'
-import { insertEvents, getDailySummary, getEventCounts, getPlatformSummary } from './db/eventStore.js'
+import { insertEvents, getDailySummary, getEventCounts, getPlatformSummary, getPropsAudit, setExcludedDevices } from './db/eventStore.js'
 import { replyForUpdate, type TgUpdate } from './tgBot.js'
 import { createQueueAlert } from './queueAlert.js'
 import type { EventRow } from './db/eventStore.js'
@@ -53,10 +53,37 @@ const app = new Hono()
 const _rawGrace = process.env.RECONNECT_GRACE_MS ? Number(process.env.RECONNECT_GRACE_MS) : undefined
 const gracePeriodMs = _rawGrace !== undefined && Number.isFinite(_rawGrace) && _rawGrace > 0 ? _rawGrace : undefined
 const replayStore = new ReplayStore()
+// Our own browsers, kept out of every aggregate — see setExcludedDevices.
+setExcludedDevices((process.env.STATS_EXCLUDE_DEVICES ?? '').split(','))
+
 const roomManager = new RoomManager({
   gracePeriodMs,
   replayStore,
   onRoomsChanged() { broadcastLobbyStatus() },
+  /**
+   * The leaver's own client cannot report this — it is gone, and the `game:end`
+   * that ends the match goes to whoever stayed. Written here so `match_start`
+   * finally has a closing event on both sides of a quit.
+   */
+  onAbandon(data) {
+    if (!data.analytics) return
+    const { deviceId, sessionId, platform, host } = data.analytics
+    try {
+      insertEvents([{
+        deviceId, sessionId, userId: null, platform, host,
+        name: 'match_abandon',
+        props: JSON.stringify({
+          practice: data.practice,
+          vsBot: data.vsBot,
+          round: data.round,
+          tick: data.tick,
+          phase: data.phase,
+          reason: data.reason,
+        }),
+        country: null, lang: null,
+      }])
+    } catch (e) { console.error('[db] match_abandon insert failed:', e) }
+  },
   onMatchEnd(data, replay) {
     try {
       saveMatch({
@@ -248,7 +275,15 @@ app.get('/api/events/summary', (c) => {
   const expected = process.env.STATS_TOKEN
   if (!expected || c.req.query('token') !== expected) return c.json({ error: 'Forbidden' }, 403)
   const days = Math.min(Math.max(parseInt(c.req.query('days') ?? '14') || 14, 1), 90)
-  return c.json({ daily: getDailySummary(days), counts: getEventCounts(days), platforms: getPlatformSummary(days) })
+  return c.json({
+    daily: getDailySummary(days),
+    counts: getEventCounts(days),
+    platforms: getPlatformSummary(days),
+    // Every "practice excluded" number above leans on one SQL expression, so a
+    // misplaced flag makes them all wrong together and consistent with each
+    // other while doing it. This is the row that shows it — see getPropsAudit.
+    propsAudit: getPropsAudit(days),
+  })
 })
 
 /* ── Telegram bot webhook ── */
@@ -317,8 +352,11 @@ const server = Bun.serve<WsData>({
         }
       }
       const countryCode = detectCountry(req.headers)
+      // Who this socket is to analytics, so the server can file an event for a
+      // player who has already gone. Null for an old client that omits it.
+      const analytics = parseAnalyticsIdentity(url.searchParams)
       const ok = server.upgrade(req, {
-        data: { sessionId, userId, userName, countryCode, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter() },
+        data: { sessionId, userId, userName, countryCode, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter(), analytics },
       })
       if (ok) return undefined
       return new Response('WebSocket upgrade failed', { status: 400 })

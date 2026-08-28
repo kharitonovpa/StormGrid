@@ -1,6 +1,7 @@
 import { ref, shallowRef } from 'vue'
 import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, ClientMessage, ServerMessage } from '@wheee/shared'
 import { WS_URL } from '../lib/config'
+import { getAnalyticsIdentity } from '../lib/analytics'
 import { getAuthToken } from './useAuth'
 
 export type MessageHandler = (msg: ServerMessage) => void
@@ -47,9 +48,25 @@ export function useGameSocket() {
     createSocket()
   }
 
+  /**
+   * The analytics identity travels with the socket, not in a message: the
+   * server needs it before the one event only it can write — a match abandoned
+   * by closing the tab, where the client is gone and cannot report its own
+   * exit. Absent params just leave the server's copy null.
+   */
   function buildWsUrl(): string {
+    const params = new URLSearchParams()
     const token = getAuthToken()
-    return token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL
+    if (token) params.set('token', token)
+    const id = getAnalyticsIdentity()
+    if (id) {
+      params.set('device', id.deviceId)
+      params.set('asid', id.sessionId)
+      params.set('platform', id.platform)
+      if (id.host) params.set('host', id.host)
+    }
+    const qs = params.toString()
+    return qs ? `${WS_URL}?${qs}` : WS_URL
   }
 
   function createSocket() {

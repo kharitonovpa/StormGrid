@@ -57,12 +57,16 @@ function insertServerMatch(at: Date, vsBot = false, winner: string = 'A') {
 let getDailySummary: typeof import('../db/eventStore')['getDailySummary']
 let getEventCounts: typeof import('../db/eventStore')['getEventCounts']
 let getPlatformSummary: typeof import('../db/eventStore')['getPlatformSummary']
+let getPropsAudit: typeof import('../db/eventStore')['getPropsAudit']
+let setExcludedDevices: typeof import('../db/eventStore')['setExcludedDevices']
 
 beforeAll(async () => {
   const mod = await import('../db/eventStore')
   getDailySummary = mod.getDailySummary
   getEventCounts = mod.getEventCounts
   getPlatformSummary = mod.getPlatformSummary
+  getPropsAudit = mod.getPropsAudit
+  setExcludedDevices = mod.setExcludedDevices
 })
 
 /*
@@ -110,6 +114,48 @@ describe('getEventCounts', () => {
   })
 })
 
+describe('setExcludedDevices', () => {
+  test('an excluded device is absent from event counts, platforms and daily rows', () => {
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+    const before = getPlatformSummary(14).find((r) => r.platform === 'gamepush')!
+    expect(before.devices).toBe(2)
+
+    setExcludedDevices(['gp-2'])
+    try {
+      expect(getEventCounts(14).find((c) => c.name === 'app_open')!.count).toBe(3)
+
+      const gp = getPlatformSummary(14).find((r) => r.platform === 'gamepush')!
+      expect(gp.devices).toBe(1)
+      expect(gp.newDevices).toBe(1)
+
+      const y = getDailySummary(14).find((r) => r.day === dayKey(yesterday))!
+      expect(y.devices).toBe(1)
+    } finally {
+      setExcludedDevices([])
+    }
+
+    expect(getPlatformSummary(14).find((r) => r.platform === 'gamepush')!.devices).toBe(2)
+  })
+})
+
+describe('getPropsAudit', () => {
+  test('reports an event whose props are always absent', () => {
+    const appOpen = getPropsAudit(14).find((a) => a.name === 'app_open')!
+    expect(appOpen.total).toBe(4)
+    expect(appOpen.noProps).toBe(4)
+    expect(appOpen.practiceTrue).toBe(0)
+    expect(appOpen.sampleProps).toBeNull()
+  })
+
+  test('counts practice-flagged events separately from props-carrying ones', () => {
+    const matchStart = getPropsAudit(14).find((a) => a.name === 'match_start')!
+    expect(matchStart.total).toBe(3)
+    expect(matchStart.noProps).toBe(0)
+    expect(matchStart.practiceTrue).toBe(1)
+    expect(matchStart.sampleProps).toContain('practice')
+  })
+})
+
 describe('getDailySummary', () => {
   test('matches excludes practice and serverMatches comes from the matches table', () => {
     const daily = getDailySummary(14)
@@ -122,6 +168,19 @@ describe('getDailySummary', () => {
     const t = daily.find((r) => r.day === dayKey(today))!
     expect(t.matches).toBe(0) // web-1 never finished
     expect(t.serverMatches).toBe(3)
+  })
+
+  test('reports pvp matches separately so bots never pad the match count', () => {
+    const daily = getDailySummary(14)
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+
+    const t = daily.find((r) => r.day === dayKey(today))!
+    expect(t.serverMatches).toBe(3)
+    expect(t.botMatches).toBe(2)
+    expect(t.pvpMatches).toBe(1)
+
+    const y = daily.find((r) => r.day === dayKey(yesterday))!
+    expect(y.pvpMatches).toBe(1)
   })
 
   test('splits bot matches and human wins against the bot', () => {

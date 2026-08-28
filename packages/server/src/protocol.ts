@@ -169,6 +169,46 @@ export function send(ws: ServerWebSocket<WsData>, msg: ServerMessage): void {
 
 import type { ConnectionLimiter } from './ratelimit.js'
 
+/**
+ * Who the client is to first-party analytics, handed over as query params on
+ * the socket URL. It is the client's own `wheee:device_id` — the server needs
+ * it to write events on behalf of a player who is no longer there to send any,
+ * which is the only way an abandoned match ever reaches the funnel.
+ */
+export type AnalyticsIdentity = {
+  deviceId: string
+  sessionId: string
+  platform: string
+  host: string | null
+}
+
+/**
+ * Same shape rules POST /api/events applies to a client-sent batch. They have
+ * to agree: a row the server writes on an absent player's behalf must be
+ * indistinguishable from one that player's own client would have sent, or the
+ * two halves of a funnel stop joining on device_id.
+ */
+const ANALYTICS_ID_RE = /^[a-zA-Z0-9_-]{8,64}$/
+const MAX_PLATFORM_LEN = 20
+const MAX_HOST_LEN = 40
+
+/** Null whenever anything is missing or malformed — analytics never gates play. */
+export function parseAnalyticsIdentity(params: URLSearchParams): AnalyticsIdentity | null {
+  const deviceId = params.get('device') ?? ''
+  const sessionId = params.get('asid') ?? ''
+  if (!ANALYTICS_ID_RE.test(deviceId) || !ANALYTICS_ID_RE.test(sessionId)) return null
+
+  const platform = params.get('platform') ?? ''
+  if (platform.length === 0 || platform.length > MAX_PLATFORM_LEN) return null
+
+  // An unusable host is dropped rather than fatal: the platform alone is still
+  // worth having, and only gamepush ever sends a host in the first place.
+  const rawHost = params.get('host')
+  const host = rawHost && rawHost.length > 0 && rawHost.length <= MAX_HOST_LEN ? rawHost : null
+
+  return { deviceId, sessionId, platform, host }
+}
+
 export type WsData = {
   sessionId: string
   userId: string | null
@@ -178,4 +218,6 @@ export type WsData = {
   playerId: PlayerId | null
   role: Exclude<Role, 'guest'> | null
   limiter: ConnectionLimiter
+  /** Null when an old client connects without the params, or they fail validation. */
+  analytics: AnalyticsIdentity | null
 }

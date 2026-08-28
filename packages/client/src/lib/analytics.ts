@@ -74,6 +74,17 @@ export function initAnalytics(platform: PlatformAdapter): void {
   window.addEventListener('pagehide', () => flush(true))
 }
 
+/**
+ * Handed to the game socket so the server can file events on this client's
+ * behalf. It needs to for exactly one case that the client can never report
+ * itself: a match abandoned by closing the tab, where there is no longer a
+ * page to send anything. Null until initAnalytics has run.
+ */
+export function getAnalyticsIdentity(): { deviceId: string; sessionId: string; platform: string; host: string | null } | null {
+  if (!started || !deviceId) return null
+  return { deviceId, sessionId, platform: platformType, host: hostId }
+}
+
 export function track(name: string, props?: Record<string, string | number | boolean>): void {
   if (!started) return
   queue.push(props ? { name, props } : { name })

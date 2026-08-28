@@ -1,6 +1,6 @@
 import type { PlayerId } from '@wheee/shared'
 import { Room } from './Room.js'
-import type { MatchEndData, RoomOpts } from './Room.js'
+import type { AbandonData, MatchEndData, RoomOpts } from './Room.js'
 import type { ReplayStore } from './ReplayStore.js'
 import type { ReplayData } from '@wheee/shared'
 
@@ -10,6 +10,8 @@ export type RoomManagerOpts = {
   gracePeriodMs?: number
   replayStore?: ReplayStore
   onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
+  /** A player walked out of a live match — see AbandonData. */
+  onAbandon?: (data: AbandonData) => void
   /** Rooms opened or closed — the lobby shows whether anything is watchable. */
   onRoomsChanged?: () => void
 }
@@ -21,12 +23,14 @@ export class RoomManager {
   private gracePeriodMs?: number
   replayStore?: ReplayStore
   private onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
+  private onAbandon?: (data: AbandonData) => void
   private onRoomsChanged?: () => void
 
   constructor(opts?: RoomManagerOpts) {
     this.gracePeriodMs = opts?.gracePeriodMs
     this.replayStore = opts?.replayStore
     this.onMatchEnd = opts?.onMatchEnd
+    this.onAbandon = opts?.onAbandon
     this.onRoomsChanged = opts?.onRoomsChanged
   }
 
@@ -40,6 +44,7 @@ export class RoomManager {
       gracePeriodMs: this.gracePeriodMs,
       replayStore: this.replayStore,
       onMatchEnd: this.onMatchEnd,
+      onAbandon: this.onAbandon,
     }, opts)
     this.rooms.set(id, room)
     this.onRoomsChanged?.()
