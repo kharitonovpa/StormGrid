@@ -61,6 +61,19 @@ export const events = sqliteTable('events', {
   index('events_device_created_idx').on(t.deviceId, t.createdAt),
 ])
 
+/**
+ * One row per Telegram player we have nudged, so a return reminder can never
+ * turn into a stream of them. `unreachable` records a 403 from Telegram — the
+ * player never pressed Start in the bot, or blocked it, and no retry will ever
+ * change that.
+ */
+export const tgNudges = sqliteTable('tg_nudges', {
+  userId: text('user_id').primaryKey(),
+  lastSentAt: integer('last_sent_at', { mode: 'timestamp' }).notNull(),
+  sentCount: integer('sent_count').notNull().default(0),
+  unreachable: integer('unreachable', { mode: 'boolean' }).notNull().default(false),
+})
+
 export const replays = sqliteTable('replays', {
   id: text('id').primaryKey(),
   matchId: text('match_id').notNull().references(() => matches.id),

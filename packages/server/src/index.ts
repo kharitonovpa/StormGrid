@@ -14,6 +14,7 @@ import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, u
 import { insertEvents, getDailySummary, getEventCounts, getPlatformSummary, getPropsAudit, setExcludedDevices } from './db/eventStore.js'
 import { replyForUpdate, type TgUpdate } from './tgBot.js'
 import { createQueueAlert } from './queueAlert.js'
+import { runNudgePass } from './nudge.js'
 import type { EventRow } from './db/eventStore.js'
 
 runMigrations()
@@ -340,6 +341,76 @@ function tgSendMessage(chatId: number | string, text: string, replyMarkup?: unkn
     body: JSON.stringify({ chat_id: chatId, text, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }),
   }).catch((e) => console.error('[tg] sendMessage failed:', e))
 }
+
+/**
+ * The awaiting variant, for the return reminder: it has to know whether the
+ * message actually landed. A 403 means no private chat exists — the player
+ * opened the Mini App from a link and never pressed Start in the bot, or has
+ * blocked it. No retry will ever change that, so it is recorded and dropped.
+ */
+async function tgSendMessageResult(
+  chatId: string,
+  text: string,
+  replyMarkup: unknown,
+): Promise<{ ok: boolean; forbidden: boolean }> {
+  if (!TG_BOT_TOKEN) return { ok: false, forbidden: false }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }),
+    })
+    if (res.ok) return { ok: true, forbidden: false }
+    return { ok: false, forbidden: res.status === 403 }
+  } catch (e) {
+    console.error('[tg] nudge send failed:', e)
+    return { ok: false, forbidden: false }
+  }
+}
+
+const NUDGE_ENABLED = process.env.TG_NUDGE_ENABLED === '1'
+const _rawNudgeCooldown = Number(process.env.TG_NUDGE_COOLDOWN_DAYS)
+const NUDGE_COOLDOWN_DAYS = Number.isFinite(_rawNudgeCooldown) && _rawNudgeCooldown > 0 ? _rawNudgeCooldown : 7
+const _rawNudgeHour = Number(process.env.TG_NUDGE_HOUR_UTC)
+const NUDGE_HOUR_UTC = Number.isInteger(_rawNudgeHour) && _rawNudgeHour >= 0 && _rawNudgeHour <= 23
+  ? _rawNudgeHour
+  : 15
+
+/**
+ * Inspect exactly who would be written to and what they would read, against
+ * live data and without sending anything. This is the gate: the scheduled pass
+ * below stays inert until TG_NUDGE_ENABLED=1, so no message can reach a real
+ * player until someone has looked at this and decided to turn it on.
+ */
+app.get('/api/nudge/preview', async (c) => {
+  const expected = process.env.STATS_TOKEN
+  if (!expected || c.req.query('token') !== expected) return c.json({ error: 'Forbidden' }, 403)
+  const result = await runNudgePass({
+    send: tgSendMessageResult,
+    cooldownDays: NUDGE_COOLDOWN_DAYS,
+    dryRun: true,
+  })
+  return c.json({ enabled: NUDGE_ENABLED, cooldownDays: NUDGE_COOLDOWN_DAYS, hourUtc: NUDGE_HOUR_UTC, ...result })
+})
+
+/**
+ * Once a day, at one hour, and only when explicitly enabled. `lastNudgeDay` is
+ * in memory only: a restart may repeat the check, which costs nothing because
+ * the cooldown in tg_nudges is what actually prevents a second message.
+ */
+let lastNudgeDay = ''
+setInterval(() => {
+  if (!NUDGE_ENABLED || !TG_BOT_TOKEN) return
+  const now = new Date()
+  if (now.getUTCHours() !== NUDGE_HOUR_UTC) return
+  const day = now.toISOString().slice(0, 10)
+  if (day === lastNudgeDay) return
+  lastNudgeDay = day
+
+  runNudgePass({ send: tgSendMessageResult, cooldownDays: NUDGE_COOLDOWN_DAYS, dryRun: false })
+    .then((r) => console.log(`[nudge] ${day}: considered ${r.considered}, sent ${r.sent}, unreachable ${r.unreachable}, failed ${r.failed}`))
+    .catch((e) => console.error('[nudge] pass failed:', e))
+}, 10 * 60_000).unref()
 
 app.post('/api/tg/webhook', async (c) => {
   if (!TG_BOT_TOKEN || !TG_WEBHOOK_SECRET) return c.json({ error: 'Not found' }, 404)
