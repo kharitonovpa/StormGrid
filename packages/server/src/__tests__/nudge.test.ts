@@ -82,6 +82,8 @@ function addPlayer(opts: {
  */
 beforeAll(() => {
   addPlayer({ id: 'gone', providerId: '111111', lastSeen: yesterday, wins: 3, games: 5 })
+  // The badge this player would be sorry to lose — the strongest hook we have.
+  db.insert(schema.deviceStreaks).values({ deviceId: 'dev-gone', streak: 7, updatedAt: yesterday }).run()
   addPlayer({ id: 'here', providerId: '222222', lastSeen: today })
   addPlayer({ id: 'stale', providerId: '333333', lastSeen: fiveDaysAgo })
   addPlayer({ id: 'web-gone', provider: 'google', providerId: '444444', lastSeen: yesterday })
@@ -100,6 +102,7 @@ describe('selectNudgeCandidates', () => {
     expect(c.wins).toBe(3)
     expect(c.gamesPlayed).toBe(5)
     expect(c.lang).toBe('ru')
+    expect(c.streak).toBe(7)
   })
 
   test('drops a player already nudged inside the cooldown', () => {
@@ -118,6 +121,18 @@ describe('selectNudgeCandidates', () => {
 })
 
 describe('composeNudge', () => {
+  test('names the badge when the player has one standing', () => {
+    const text = composeNudge({ name: 'Ann', wins: 3, gamesPlayed: 5, lang: 'ru', streak: 7 })
+    expect(text).toContain('🌧')
+    expect(text).toContain('7')
+  })
+
+  test('falls back to the record when there is no badge to name', () => {
+    const text = composeNudge({ name: 'Ann', wins: 3, gamesPlayed: 5, lang: 'ru', streak: 0 })
+    expect(text).not.toContain('🌧')
+    expect(text).toContain('3')
+  })
+
   test('states the real record rather than inventing urgency', () => {
     const text = composeNudge({ name: 'Ann', wins: 3, gamesPlayed: 5, lang: 'ru' })
     expect(text).toContain('3')

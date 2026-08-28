@@ -125,6 +125,16 @@ export type RoomCallbacks = {
    * A natural PvP ending with both humans still connected — the only case where
    * playing again with the same person is possible. See Room.humanPair.
    */
+  /**
+   * The badge streak, mirrored server-side. `adopt` carries what the client
+   * self-reported when it sat down; `seed` fires when that player took the
+   * crate. Win and loss are settled from onMatchEnd, which already knows the
+   * winner and the death causes.
+   */
+  onStreakChange?: (
+    analytics: AnalyticsIdentity,
+    change: { kind: 'adopt'; reported: number } | { kind: 'seed' },
+  ) => void
   onRematchReady?: (
     roomId: string,
     a: ServerWebSocket<WsData>,
@@ -304,6 +314,9 @@ export class Room {
     }
     this.playerUserIds[pid] = ws.data.userId ?? null
     this.playerAnalytics[pid] = ws.data.analytics ?? null
+    if (ws.data.analytics) {
+      this.callbacks.onStreakChange?.(ws.data.analytics, { kind: 'adopt', reported: streak })
+    }
     this.playerInfoCache[pid] = {
       displayName: ws.data.userName ?? randomSurname(),
       flag: ws.data.countryCode ? countryToFlag(ws.data.countryCode) : randomFlag(),
@@ -867,6 +880,11 @@ export class Room {
       }
 
       this.replayFrames.push({ state: cloneState(result.state) })
+      // The server seeds its own copy from the same fact the client will use.
+      if (result.activatedBonus) {
+        const taker = this.playerAnalytics[result.activatedBonus.player]
+        if (taker) this.callbacks.onStreakChange?.(taker, { kind: 'seed' })
+      }
       // The pickup rides along so the client can seed the badge streak.
       const picked = result.activatedBonus
         ? { bonus: { player: result.activatedBonus.player, type: result.activatedBonus.bonus } }

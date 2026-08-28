@@ -1,3 +1,4 @@
+import { badgeFor } from '@wheee/shared'
 import { selectNudgeCandidates, markNudged, markUnreachable, type NudgeCandidate } from './db/nudgeStore.js'
 
 /**
@@ -21,6 +22,8 @@ export type NudgeStats = {
   wins: number
   gamesPlayed: number
   lang: string
+  /** Their badge, if the server knows of one. The strongest hook available. */
+  streak?: number
 }
 
 /** Russian needs three forms; getting it wrong is the tell of a machine. */
@@ -35,6 +38,16 @@ function ruPlural(n: number, one: string, few: string, many: string): string {
 
 export function composeNudge(s: NudgeStats): string {
   const ru = s.lang.toLowerCase().startsWith('ru')
+
+  // A badge beats a scoreline: it is the one thing here that can be lost, and
+  // it is already standing rather than something we are asking them to start.
+  const streak = s.streak ?? 0
+  const badge = streak > 0 ? badgeFor(streak) : null
+  if (badge) {
+    return ru
+      ? `Твой бейдж ${badge} ${streak} всё ещё держится. Одно поражение — и он обнулится. Защитишь?`
+      : `Your ${badge} ${streak} badge is still standing. One loss wipes it. Defend it?`
+  }
 
   if (s.wins === 0) {
     // Never "0 wins" — a scoreline of zero reads as a scolding.

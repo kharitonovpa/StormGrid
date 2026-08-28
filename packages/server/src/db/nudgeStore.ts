@@ -16,6 +16,12 @@ export type NudgeCandidate = {
   gamesPlayed: number
   /** Their client's language, taken from their most recent event. */
   lang: string
+  /**
+   * The badge they would be sorry to lose — the best across every device they
+   * have been seen on. Zero when they carry none, in which case the message
+   * falls back to their win record.
+   */
+  streak: number
 }
 
 /**
@@ -44,6 +50,7 @@ export function selectNudgeCandidates(opts: { cooldownDays: number; limit?: numb
     wins: number
     games_played: number
     lang: string
+    streak: number
   }>(sql`
     WITH seen AS (
       SELECT user_id, MAX(created_at) AS last_seen, MAX(id) AS last_id
@@ -52,17 +59,28 @@ export function selectNudgeCandidates(opts: { cooldownDays: number; limit?: numb
     tongue AS (
       SELECT s.user_id, e.lang
       FROM seen s JOIN events e ON e.id = s.last_id
+    ),
+    -- One person may open the game on a phone and a laptop; the badge worth
+    -- naming is the best of them.
+    badges AS (
+      SELECT e.user_id, MAX(COALESCE(ds.streak, 0)) AS best
+      FROM events e
+      LEFT JOIN device_streaks ds ON ds.device_id = e.device_id
+      WHERE e.user_id IS NOT NULL
+      GROUP BY e.user_id
     )
     SELECT u.id AS user_id,
            u.provider_id AS chat_id,
            u.name AS name,
            st.wins AS wins,
            st.games_played AS games_played,
-           COALESCE(t.lang, 'en') AS lang
+           COALESCE(t.lang, 'en') AS lang,
+           COALESCE(b.best, 0) AS streak
     FROM users u
     JOIN user_stats st ON st.user_id = u.id
     JOIN seen s ON s.user_id = u.id
     LEFT JOIN tongue t ON t.user_id = u.id
+    LEFT JOIN badges b ON b.user_id = u.id
     LEFT JOIN tg_nudges n ON n.user_id = u.id
     WHERE u.provider = 'telegram'
       AND st.games_played > 0
@@ -78,6 +96,7 @@ export function selectNudgeCandidates(opts: { cooldownDays: number; limit?: numb
     wins: r.wins,
     gamesPlayed: r.games_played,
     lang: r.lang,
+    streak: r.streak,
   }))
 }
 

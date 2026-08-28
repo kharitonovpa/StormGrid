@@ -62,6 +62,24 @@ export const events = sqliteTable('events', {
 ])
 
 /**
+ * The badge streak, kept server-side per device.
+ *
+ * The client still owns the copy it draws — see lib/streak.ts — and still
+ * self-reports it at matchmaking, so nothing on the wire changes and a portal
+ * build several versions behind keeps working untouched. This row exists for
+ * the one thing the client cannot do: be read while the player is away, which
+ * is exactly when a return reminder needs to know what they stand to lose.
+ *
+ * Keyed by device rather than user because most players here are anonymous —
+ * the portals have no accounts at all.
+ */
+export const deviceStreaks = sqliteTable('device_streaks', {
+  deviceId: text('device_id').primaryKey(),
+  streak: integer('streak').notNull().default(0),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
+/**
  * One row per Telegram player we have nudged, so a return reminder can never
  * turn into a stream of them. `unreachable` records a 403 from Telegram — the
  * player never pressed Start in the bot, or blocked it, and no retry will ever

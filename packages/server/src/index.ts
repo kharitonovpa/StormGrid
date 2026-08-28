@@ -15,6 +15,7 @@ import { insertEvents, getDailySummary, getEventCounts, getPlatformSummary, getP
 import { replyForUpdate, type TgUpdate } from './tgBot.js'
 import { createQueueAlert } from './queueAlert.js'
 import { runNudgePass } from './nudge.js'
+import { adoptDeviceStreak, seedDeviceStreak, growDeviceStreak, wipeDeviceStreak } from './db/streakStore.js'
 import type { EventRow } from './db/eventStore.js'
 
 runMigrations()
@@ -64,6 +65,18 @@ const roomManager = new RoomManager({
   /** A finished PvP pair, offered another match while both are still here. */
   onRematchReady(roomId, a, b, lightningEnabled) {
     matchmaking.openRematch(roomId, a, b, lightningEnabled)
+  },
+  /**
+   * The server's own copy of the badge streak. The client keeps drawing its
+   * own and keeps self-reporting it, so nothing on the wire changed and a
+   * portal build several versions behind is untouched — this copy exists to be
+   * readable while the player is away, which is when a reminder needs it.
+   */
+  onStreakChange(analytics, change) {
+    try {
+      if (change.kind === 'adopt') adoptDeviceStreak(analytics.deviceId, change.reported)
+      else seedDeviceStreak(analytics.deviceId)
+    } catch (e) { console.error('[db] streak update failed:', e) }
   },
   /**
    * The leaver's own client cannot report this — it is gone, and the `game:end`
@@ -135,6 +148,21 @@ const roomManager = new RoomManager({
       }
       insertEvents(rows)
     } catch (e) { console.error('[db] match_result insert failed:', e) }
+
+    /**
+     * Settled from the same facts the client uses: a win grows the badge, any
+     * other loss wipes it, a draw is neutral, and losing to a dropped
+     * connection is the network's fault rather than the player's.
+     */
+    try {
+      for (const pid of ['A', 'B'] as const) {
+        const who = data.analytics[pid]
+        if (!who || data.winner === 'draw') continue
+        if (data.winner === pid) { growDeviceStreak(who.deviceId); continue }
+        if (data.deathCauses[pid]?.type === 'disconnect') continue
+        wipeDeviceStreak(who.deviceId)
+      }
+    } catch (e) { console.error('[db] streak settle failed:', e) }
 
     try {
       updatePlayerStats(data.playerAUserId, data.playerBUserId, data.winner)

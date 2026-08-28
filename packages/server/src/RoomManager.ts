@@ -24,6 +24,8 @@ export type RoomManagerOpts = {
   onAbandon?: (data: AbandonData) => void
   /** A finished PvP pairing that could play again — see Room.humanPair. */
   onRematchReady?: RoomCallbacks['onRematchReady']
+  /** Badge streak bookkeeping — see RoomCallbacks.onStreakChange. */
+  onStreakChange?: RoomCallbacks['onStreakChange']
   /** Rooms opened or closed — the lobby shows whether anything is watchable. */
   onRoomsChanged?: () => void
 }
@@ -37,6 +39,7 @@ export class RoomManager {
   private onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
   private onAbandon?: (data: AbandonData) => void
   private onRematchReady?: RoomCallbacks['onRematchReady']
+  private onStreakChange?: RoomCallbacks['onStreakChange']
   private onRoomsChanged?: () => void
 
   constructor(opts?: RoomManagerOpts) {
@@ -45,6 +48,7 @@ export class RoomManager {
     this.onMatchEnd = opts?.onMatchEnd
     this.onAbandon = opts?.onAbandon
     this.onRematchReady = opts?.onRematchReady
+    this.onStreakChange = opts?.onStreakChange
     this.onRoomsChanged = opts?.onRoomsChanged
   }
 
@@ -60,6 +64,7 @@ export class RoomManager {
       onMatchEnd: this.onMatchEnd,
       onAbandon: this.onAbandon,
       onRematchReady: this.onRematchReady,
+      onStreakChange: this.onStreakChange,
     }, opts)
     this.rooms.set(id, room)
     this.onRoomsChanged?.()

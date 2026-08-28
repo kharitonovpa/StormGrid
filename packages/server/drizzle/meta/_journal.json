@@ -57,6 +57,13 @@
       "when": 1787210913176,
       "tag": "0007_add_tg_nudges",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787210913177,
+      "tag": "0008_add_device_streaks",
+      "breakpoints": true
     }
   ]
 }
