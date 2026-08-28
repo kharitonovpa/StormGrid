@@ -254,12 +254,19 @@ unsubMessage1 = socket.onMessage((msg) => {
     liveMatches.value = Number.isFinite(msg.liveMatches) ? msg.liveMatches : 0
     return
   }
+  if (msg.type === 'rematch:available') rematchState.value = 'available'
+  if (msg.type === 'rematch:offered') rematchState.value = 'offered'
+  if (msg.type === 'rematch:waiting') rematchState.value = 'waiting'
+  if (msg.type === 'rematch:off') rematchState.value = 'none'
   if (msg.type === 'game:start') {
     lastRoomId = msg.roomId
     socket.setReconnectToken(msg.reconnectToken)
     platform.gameplayStart()
     audio.enterMatch()
     audio.play('match-found')
+    // The window belonged to the match that just finished, whether this new one
+    // came out of it or out of the queue.
+    rematchState.value = 'none'
     track('match_start', { practice: msg.practice === true, invited: !!incomingInvite.value })
     incomingInvite.value = null
   }
@@ -453,6 +460,23 @@ function onStartBonusPlace(bonusType: import('@wheee/shared').BonusType) {
  * it saw first — possibly before the SDK had an answer — and never look again.
  * Re-read it whenever the button is about to matter.
  */
+/**
+ * How far the rematch handshake has got. The server opens the window only for a
+ * PvP match both players finished, so 'none' covers bots, tutorials, forfeits
+ * and old clients alike — the button simply never appears.
+ */
+const rematchState = ref<'none' | 'available' | 'waiting' | 'offered'>('none')
+
+function onRematch() {
+  const character = game.selectedCharacter.value ?? 'wheat'
+  if (socket.wantRematch(character, streak.value)) rematchState.value = 'waiting'
+}
+
+function onRematchCancel() {
+  socket.cancelRematch()
+  rematchState.value = 'none'
+}
+
 const hasRewardedAds = ref(platform.isRewardedAvailable())
 
 function refreshRewardedAvailability() {
@@ -461,6 +485,9 @@ function refreshRewardedAvailability() {
 
 /** `instant` skips the queue for a bot match — the rewarded ad's payoff. */
 function doPlayAgain(instant = false) {
+  // Re-queueing abandons the pairing; say so rather than leaving the other
+  // player watching a "waiting" button that will never resolve.
+  if (rematchState.value !== 'none') { socket.cancelRematch(); rematchState.value = 'none' }
   track('play_again', { instant })
   pendingGameEnd = null
   socket.setReconnectToken(null)
@@ -498,6 +525,7 @@ async function onPlayAgain() {
 }
 
 async function onBackToLobby() {
+  if (rematchState.value !== 'none') { socket.cancelRematch(); rematchState.value = 'none' }
   await platform.showInterstitial().catch(() => {})
   pendingGameEnd = null
   socket.setReconnectToken(null)
@@ -2327,6 +2355,9 @@ onUnmounted(() => {
     :streak-badge="streakLabel"
     :rescue-busy="rescueBusy"
     :rewarded-busy="rewardedBusy"
+    :rematch-state="rematchState"
+    @rematch="onRematch"
+    @rematch-cancel="onRematchCancel"
     @play-again="onPlayAgain"
     @rewarded-play-again="onRewardedPlayAgain"
     @rescue-streak="onRescueStreak"

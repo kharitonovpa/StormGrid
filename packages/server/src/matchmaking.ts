@@ -17,11 +17,35 @@ const BOT_MATCH_DELAY_LONG_MS = _rawBotDelayLong !== undefined && Number.isFinit
   ? _rawBotDelayLong
   : 30_000
 
+/**
+ * A finished PvP pairing, kept alive briefly so the two players can go again.
+ * Human opponents are the scarce resource here — the queue hands out a bot
+ * after 8 seconds, so "Play again" after a PvP match usually lands the player
+ * back against a bot. Keyed by the finished room's id but joinable only by the
+ * two sockets named in the entry: room ids reach watchers and replay links, so
+ * anything joinable by id alone would be hijackable.
+ */
+type RematchEntry = {
+  a: ServerWebSocket<WsData>
+  b: ServerWebSocket<WsData>
+  /** Whoever has asked so far, and what they asked with. */
+  wants: Map<ServerWebSocket<WsData>, { character: CharacterType; streak: number }>
+  /** Inherited from the finished room, not re-read from caps — same two players. */
+  lightningEnabled: boolean
+  createdAt: number
+}
+
+/** Long enough to read the game-over screen, short enough that nobody is
+ *  yanked into a match they have forgotten asking for. */
+const REMATCH_TTL_MS = 30_000
+
 export type MatchmakingOpts = {
   /** Connected humans sitting in the lobby, excluding the given socket. */
   countIdleHumans?: (exclude: ServerWebSocket<WsData>) => number
   /** Fires when an enqueue leaves someone waiting alone — their bot countdown just started. */
   onLoneWaiter?: (info: { name: string; waitMs: number }) => void
+  /** Shorten the rematch window; tests use a few milliseconds. */
+  rematchTtlMs?: number
 }
 
 type QueueEntry = { ws: ServerWebSocket<WsData>; character: CharacterType; streak: number; caps: string[] }
@@ -59,6 +83,8 @@ export class Matchmaking {
   private queueSet = new Set<ServerWebSocket<WsData>>()
   private invites = new Map<string, InviteEntry>()
   private inviteBySocket = new Map<ServerWebSocket<WsData>, string>()
+  private rematches = new Map<string, RematchEntry>()
+  private rematchBySocket = new Map<ServerWebSocket<WsData>, string>()
   private roomManager: RoomManager
   private botTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -109,6 +135,111 @@ export class Matchmaking {
 
   get queueSize(): number {
     return this.queue.length
+  }
+
+  /* ── Rematch ── */
+
+  private get rematchTtlMs(): number {
+    return this.opts?.rematchTtlMs ?? REMATCH_TTL_MS
+  }
+
+  /** How many pairings are currently on the table — for tests and diagnostics. */
+  get rematchCount(): number {
+    return this.rematches.size
+  }
+
+  /**
+   * Open the window on a finished match. Called only for a natural PvP ending
+   * with both humans still connected: there is nobody to play again with after
+   * a forfeit, and a bot rematch is what the instant button already does.
+   */
+  openRematch(
+    roomId: string,
+    a: ServerWebSocket<WsData>,
+    b: ServerWebSocket<WsData>,
+    lightningEnabled: boolean,
+  ): void {
+    if (a === b || a.readyState !== 1 || b.readyState !== 1) return
+    this.sweepRematches()
+    // A newer match supersedes whatever either of them was still offered.
+    this.cancelRematch(a)
+    this.cancelRematch(b)
+
+    this.rematches.set(roomId, { a, b, wants: new Map(), lightningEnabled, createdAt: Date.now() })
+    this.rematchBySocket.set(a, roomId)
+    this.rematchBySocket.set(b, roomId)
+    send(a, { type: 'rematch:available' })
+    send(b, { type: 'rematch:available' })
+  }
+
+  /**
+   * Symmetric: the first caller is making an offer, the second is accepting it.
+   * A socket that did not play in the match has no entry and is ignored.
+   */
+  wantRematch(ws: ServerWebSocket<WsData>, character: CharacterType, streak = 0, caps: string[] = []): void {
+    this.sweepRematches()
+    const roomId = this.rematchBySocket.get(ws)
+    if (!roomId) return
+    const entry = this.rematches.get(roomId)
+    if (!entry) return
+    void caps // the pairing's lightning setting is already decided — see RematchEntry
+
+    entry.wants.set(ws, { character, streak })
+    const other = entry.a === ws ? entry.b : entry.a
+
+    if (!entry.wants.has(other)) {
+      send(ws, { type: 'rematch:waiting' })
+      if (other.readyState === 1) send(other, { type: 'rematch:offered' })
+      return
+    }
+
+    if (other.readyState !== 1) {
+      this.closeRematch(roomId)
+      send(ws, { type: 'rematch:off' })
+      return
+    }
+
+    // Both in. Nobody waits in two lines at once.
+    this.closeRematch(roomId)
+    for (const sock of [entry.a, entry.b]) {
+      this.dequeue(sock)
+      this.cancelInvite(sock)
+    }
+    const room = this.roomManager.createRoom({ lightningEnabled: entry.lightningEnabled })
+    const wantA = entry.wants.get(entry.a)!
+    const wantB = entry.wants.get(entry.b)!
+    room.join(entry.a, wantA.character, wantA.streak)
+    room.join(entry.b, wantB.character, wantB.streak)
+  }
+
+  /** Declining, leaving, or disconnecting — the other side is told it is off. */
+  cancelRematch(ws: ServerWebSocket<WsData>): void {
+    const roomId = this.rematchBySocket.get(ws)
+    if (!roomId) return
+    const entry = this.rematches.get(roomId)
+    this.closeRematch(roomId)
+    if (!entry) return
+    const other = entry.a === ws ? entry.b : entry.a
+    if (other.readyState === 1) send(other, { type: 'rematch:off' })
+  }
+
+  private closeRematch(roomId: string): void {
+    const entry = this.rematches.get(roomId)
+    if (!entry) return
+    this.rematches.delete(roomId)
+    this.rematchBySocket.delete(entry.a)
+    this.rematchBySocket.delete(entry.b)
+  }
+
+  private sweepRematches(): void {
+    const cutoff = Date.now() - this.rematchTtlMs
+    for (const [roomId, entry] of [...this.rematches]) {
+      if (entry.createdAt >= cutoff) continue
+      this.closeRematch(roomId)
+      for (const sock of [entry.a, entry.b]) {
+        if (sock.readyState === 1) send(sock, { type: 'rematch:off' })
+      }
+    }
   }
 
   /* ── Friend invites ── */

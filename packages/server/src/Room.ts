@@ -121,6 +121,16 @@ export type AbandonData = {
 export type RoomCallbacks = {
   onDispose: (id: string) => void
   onAbandon?: (data: AbandonData) => void
+  /**
+   * A natural PvP ending with both humans still connected — the only case where
+   * playing again with the same person is possible. See Room.humanPair.
+   */
+  onRematchReady?: (
+    roomId: string,
+    a: ServerWebSocket<WsData>,
+    b: ServerWebSocket<WsData>,
+    lightningEnabled: boolean,
+  ) => void
   findNextRoom?: (excludeId: string) => string | null
   registerToken?: (token: string, pid: PlayerId) => void
   unregisterToken?: (token: string) => void
@@ -229,6 +239,20 @@ export class Room {
 
   get isFull(): boolean {
     return this.playerCount === 2
+  }
+
+  /**
+   * The two connected human sockets, or null if a rematch makes no sense here:
+   * a tutorial, a match that had a bot in it (the instant-play button already
+   * covers that), or one where somebody has already dropped — after a forfeit
+   * there is nobody left to play again with.
+   */
+  get humanPair(): [ServerWebSocket<WsData>, ServerWebSocket<WsData>] | null {
+    if (this.practice || this.botStrength !== null) return null
+    const a = this.players.A
+    const b = this.players.B
+    if (!a?.ws || !b?.ws || a.isBot || b.isBot) return null
+    return [a.ws, b.ws]
   }
 
   get isActive(): boolean {
@@ -852,7 +876,10 @@ export class Room {
       const endMsg: ServerMessage = { type: 'game:end', winner: result.state.winner, deathCauses: result.deathCauses }
       this.broadcast(endMsg)
       this.broadcastSpectators(endMsg)
+      // Read before the slots are released, so the pair is still nameable.
+      const pair = this.humanPair
       this.releasePlayerSlots()
+      if (pair) this.callbacks.onRematchReady?.(this.id, pair[0], pair[1], this.lightningEnabled)
       this.scheduleCleanup()
     } else {
       this.setTickTimer(WEATHER_DISPLAY_MS, () => this.beginRound())

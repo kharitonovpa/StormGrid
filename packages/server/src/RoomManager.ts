@@ -1,6 +1,6 @@
 import type { PlayerId } from '@wheee/shared'
 import { Room } from './Room.js'
-import type { AbandonData, MatchEndData, RoomOpts } from './Room.js'
+import type { AbandonData, MatchEndData, RoomCallbacks, RoomOpts } from './Room.js'
 import type { ReplayStore } from './ReplayStore.js'
 import type { ReplayData } from '@wheee/shared'
 
@@ -22,6 +22,8 @@ export type RoomManagerOpts = {
   onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
   /** A player walked out of a live match — see AbandonData. */
   onAbandon?: (data: AbandonData) => void
+  /** A finished PvP pairing that could play again — see Room.humanPair. */
+  onRematchReady?: RoomCallbacks['onRematchReady']
   /** Rooms opened or closed — the lobby shows whether anything is watchable. */
   onRoomsChanged?: () => void
 }
@@ -34,6 +36,7 @@ export class RoomManager {
   replayStore?: ReplayStore
   private onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
   private onAbandon?: (data: AbandonData) => void
+  private onRematchReady?: RoomCallbacks['onRematchReady']
   private onRoomsChanged?: () => void
 
   constructor(opts?: RoomManagerOpts) {
@@ -41,6 +44,7 @@ export class RoomManager {
     this.replayStore = opts?.replayStore
     this.onMatchEnd = opts?.onMatchEnd
     this.onAbandon = opts?.onAbandon
+    this.onRematchReady = opts?.onRematchReady
     this.onRoomsChanged = opts?.onRoomsChanged
   }
 
@@ -55,6 +59,7 @@ export class RoomManager {
       replayStore: this.replayStore,
       onMatchEnd: this.onMatchEnd,
       onAbandon: this.onAbandon,
+      onRematchReady: this.onRematchReady,
     }, opts)
     this.rooms.set(id, room)
     this.onRoomsChanged?.()

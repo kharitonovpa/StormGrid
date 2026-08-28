@@ -108,6 +108,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       case 'practice:start':
       case 'instant:start':
       case 'friend:create':
+      case 'rematch:want':
         if (!VALID_CHARACTERS.has(msg.character)) return null
         // friend:create's `code` is optional (server generates one when absent),
         // but when present it must pass shape validation just like friend:join's
@@ -125,6 +126,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         return msg
       case 'queue:leave':
       case 'friend:cancel':
+      case 'rematch:cancel':
       case 'watch:join':
       case 'watch:leave':
       case 'architect:join':

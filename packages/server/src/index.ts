@@ -60,6 +60,10 @@ const roomManager = new RoomManager({
   gracePeriodMs,
   replayStore,
   onRoomsChanged() { broadcastLobbyStatus() },
+  /** A finished PvP pair, offered another match while both are still here. */
+  onRematchReady(roomId, a, b, lightningEnabled) {
+    matchmaking.openRematch(roomId, a, b, lightningEnabled)
+  },
   /**
    * The leaver's own client cannot report this — it is gone, and the `game:end`
    * that ends the match goes to whoever stayed. Written here so `match_start`
@@ -477,6 +481,25 @@ const server = Bun.serve<WsData>({
           break
         }
 
+        /**
+         * Symmetric by design: the first of the pair to send this is offering,
+         * the second is accepting. A socket with no open pairing is ignored
+         * rather than answered — see Matchmaking.wantRematch.
+         */
+        case 'rematch:want': {
+          if (ws.data.roomId) {
+            send(ws, { type: 'error', message: 'Already in a game' })
+            return
+          }
+          matchmaking.wantRematch(ws, msg.character, msg.streak ?? 0, msg.caps ?? [])
+          break
+        }
+
+        case 'rematch:cancel': {
+          matchmaking.cancelRematch(ws)
+          break
+        }
+
         case 'friend:join': {
           if (ws.data.roomId) {
             send(ws, { type: 'error', message: 'Already in a game' })
@@ -651,6 +674,8 @@ const server = Bun.serve<WsData>({
       allClients.delete(ws)
       matchmaking.dequeue(ws)
       matchmaking.cancelInvite(ws)
+      // Tells whoever was still weighing a rematch that the offer died with them.
+      matchmaking.cancelRematch(ws)
       broadcastLobbyStatus()
 
       const { roomId, role } = ws.data

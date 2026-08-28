@@ -157,6 +157,19 @@ export function useGameSocket() {
     return send({ type: 'instant:start', character, streak, caps: CLIENT_CAPS })
   }
 
+  /**
+   * Play the same person again. Symmetric on the wire: whichever of the two
+   * sends this first is offering, the second is accepting — the client never
+   * has to know which side it is on.
+   */
+  function wantRematch(character: CharacterType = 'wheat', streak = 0) {
+    return send({ type: 'rematch:want', character, streak, caps: CLIENT_CAPS })
+  }
+
+  function cancelRematch() {
+    send({ type: 'rematch:cancel' })
+  }
+
   function leaveQueue() {
     send({ type: 'queue:leave' })
   }
@@ -278,6 +291,8 @@ export function useGameSocket() {
     setReconnectToken,
     joinQueue,
     leaveQueue,
+    wantRematch,
+    cancelRematch,
     createFriendInvite,
     cancelFriendInvite,
     joinFriend,

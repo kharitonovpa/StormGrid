@@ -28,10 +28,18 @@ const props = defineProps<{
   /** Ads in flight. Owned by the parent, the only side that knows when they end. */
   rescueBusy?: boolean
   rewardedBusy?: boolean
+  /**
+   * Whether playing this same person again is on the table, and how far the
+   * handshake has got. Only ever leaves 'none' for a PvP match both players
+   * finished — see the server's Room.humanPair.
+   */
+  rematchState?: 'none' | 'available' | 'waiting' | 'offered'
 }>()
 
 const emit = defineEmits<{
   playAgain: []
+  rematch: []
+  rematchCancel: []
   rewardedPlayAgain: []
   rescueStreak: []
   watchReplay: [roomId: string]
@@ -43,6 +51,19 @@ const audio = inject<AudioSystem>('audio')
 const isWin = computed(() => props.myPlayerId && props.winner === props.myPlayerId)
 const isDraw = computed(() => props.winner === 'draw')
 const isSpectator = computed(() => !props.myPlayerId)
+
+const rematchLabel = computed(() => {
+  if (props.rematchState === 'waiting') return t('gameover.rematchWaiting')
+  if (props.rematchState === 'offered') return t('gameover.rematchOffered')
+  return t('gameover.rematch')
+})
+
+/** Asking twice would be a no-op on the server, so a second press withdraws. */
+function onRematchClick() {
+  audio?.play('ui-click')
+  if (props.rematchState === 'waiting') emit('rematchCancel')
+  else emit('rematch')
+}
 
 const title = computed(() => {
   if (isDraw.value) return t('gameover.stalemate')
@@ -181,6 +202,24 @@ onUnmounted(() => {
       <p class="result-sub">{{ subtitle }}</p>
 
       <div class="btn-row">
+        <!-- A human opponent is the scarce thing in this game: the queue hands
+             out a bot after 8 seconds, so playing the same person again beats
+             re-queueing, and it takes the primary slot whenever it is offered. -->
+        <button
+          v-if="rematchState && rematchState !== 'none'"
+          class="btn-again btn-rematch"
+          :class="[resultClass, { asked: rematchState === 'waiting', offered: rematchState === 'offered' }]"
+          @click="onRematchClick"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 1l4 4-4 4" />
+            <path d="M3 11V9a4 4 0 014-4h14" />
+            <path d="M7 23l-4-4 4-4" />
+            <path d="M21 13v2a4 4 0 01-4 4H3" />
+          </svg>
+          <span>{{ rematchLabel }}</span>
+        </button>
+
         <button class="btn-again" :class="resultClass" @click="audio?.play('ui-click'); emit('playAgain')">
           <span>{{ t('gameover.playAgain') }}</span>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -383,6 +422,30 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The offered state has to read as someone waiting on you, so it pulses; the
+   asked state reads as spent and goes quiet. Both stay legible on either of
+   the win/lose tints btn-again already carries. */
+.btn-rematch.offered {
+  border-color: rgba(120, 200, 255, 0.55);
+  background: rgba(120, 200, 255, 0.16);
+  color: rgba(235, 246, 255, 0.96);
+  animation: rematch-pulse 1.8s ease-in-out infinite;
+}
+
+.btn-rematch.asked {
+  opacity: 0.6;
+  animation: none;
+}
+
+@keyframes rematch-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(120, 200, 255, 0.34); }
+  50% { box-shadow: 0 0 0 7px rgba(120, 200, 255, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-rematch.offered { animation: none; }
 }
 
 .btn-again:hover {

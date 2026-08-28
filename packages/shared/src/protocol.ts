@@ -46,7 +46,19 @@ export type ReconnectMsg = { type: 'reconnect'; token: string }
 /** Keepalive. Sent every few seconds so an idle socket is never mistaken for a dead one. */
 export type PingMsg = { type: 'ping' }
 
+/**
+ * A rematch against the same opponent. Symmetric on purpose: the first
+ * `rematch:want` is an offer, the second is the acceptance, so neither client
+ * has to know which side it is. `character` lets each player re-pick their
+ * culture; the new room inherits the finished match's lightning setting rather
+ * than re-reading caps, since the pair is unchanged.
+ */
+export type RematchWantMsg = { type: 'rematch:want'; character: CharacterType; streak?: number; caps?: string[] }
+export type RematchCancelMsg = { type: 'rematch:cancel' }
+
 export type ClientMessage =
+  | RematchWantMsg
+  | RematchCancelMsg
   | QueueJoinMsg
   | QueueLeaveMsg
   | PracticeStartMsg
@@ -169,7 +181,20 @@ export type Paginated<T> = {
   total: number
 }
 
+/** The pairing is alive and both sides may ask for another match. */
+export type RematchAvailableMsg = { type: 'rematch:available' }
+/** You asked; the opponent has not answered yet. */
+export type RematchWaitingMsg = { type: 'rematch:waiting' }
+/** The opponent asked first — answering starts the match. */
+export type RematchOfferedMsg = { type: 'rematch:offered' }
+/** Off the table: declined, left, or the window closed. */
+export type RematchOffMsg = { type: 'rematch:off' }
+
 export type ServerMessage =
+  | RematchAvailableMsg
+  | RematchWaitingMsg
+  | RematchOfferedMsg
+  | RematchOffMsg
   | QueueWaitingMsg
   | FriendWaitingMsg
   | FriendJoinFailMsg
