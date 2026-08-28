@@ -6,6 +6,16 @@ import type { ReplayData } from '@wheee/shared'
 
 let nextId = 1
 
+/**
+ * A room id outlives the room: a replay is stored under it, so it is a durable
+ * database key. `room-1`, `room-2`, … restarted from 1 in every fresh process
+ * and collided with replays already on disk — and because saveMatch writes the
+ * match and the replay in one transaction, the collision used to roll the match
+ * back too, deleting the very rows `serverMatches` counts. This token makes
+ * each process's ids its own, while the counter keeps them readable in logs.
+ */
+const INSTANCE_TOKEN = Math.floor(Math.random() * 0x100000000).toString(36)
+
 export type RoomManagerOpts = {
   gracePeriodMs?: number
   replayStore?: ReplayStore
@@ -35,7 +45,7 @@ export class RoomManager {
   }
 
   createRoom(opts?: RoomOpts): Room {
-    const id = `room-${nextId++}`
+    const id = `room-${INSTANCE_TOKEN}-${nextId++}`
     const room = new Room(id, {
       onDispose: (rid) => this.removeRoom(rid),
       findNextRoom: (excludeId) => this.getActiveRoomId(excludeId),

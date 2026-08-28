@@ -33,8 +33,7 @@ export function saveMatch(record: MatchRecord, replay: ReplayData): void {
       createdAt: now,
     }).run()
 
-    tx.insert(schema.replays).values({
-      id: replay.id,
+    const replayRow = {
       matchId,
       charA: replay.charA,
       charB: replay.charB,
@@ -42,7 +41,18 @@ export function saveMatch(record: MatchRecord, replay: ReplayData): void {
       frameCount: replay.frames.length,
       frames: JSON.stringify(replay.frames),
       createdAt: now,
-    }).run()
+    }
+
+    // A replay is stored under its room's id, and room ids have repeated across
+    // restarts before now (see RoomManager). Both inserts share a transaction,
+    // so an id already taken used to roll the *match* back with the replay —
+    // silently deleting rows from the table `serverMatches` counts and the code
+    // calls authoritative. A duplicate id must never cost us the match, so the
+    // slot goes to the newer replay: its player is the one about to press
+    // Replay on the game-over screen.
+    tx.insert(schema.replays).values({ id: replay.id, ...replayRow })
+      .onConflictDoUpdate({ target: schema.replays.id, set: replayRow })
+      .run()
   })
 }
 
