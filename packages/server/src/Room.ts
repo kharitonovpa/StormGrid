@@ -89,6 +89,15 @@ export type MatchEndData = {
   /** True when one of the players was a bot (queue fallback; the bot is always slot B). */
   vsBot: boolean
   watcherScores: WatcherScoreEntry[]
+  /**
+   * What killed whoever died. Computed for every ending and sent to the clients
+   * already; carried here because it is the only thing that separates "the
+   * opponent beat me" from "the weather did" — and the queue's first-match bot
+   * never hunts, so that distinction decides where difficulty work should go.
+   */
+  deathCauses: Partial<Record<PlayerId, DeathCause>>
+  /** Each slot's analytics identity, or null for a bot. Survives slot removal. */
+  analytics: Record<PlayerId, AnalyticsIdentity | null>
 }
 
 /**
@@ -189,6 +198,12 @@ export class Room {
   private replayFrames: ReplayFrame[] = []
   private matchStartedAt = 0
   private playerUserIds: Record<PlayerId, string | null> = { A: null, B: null }
+  /**
+   * Kept beside playerUserIds rather than read off the slot: forfeitPlayer
+   * deletes the slot before the match is written, so by then the leaver's
+   * identity is only here.
+   */
+  private playerAnalytics: Record<PlayerId, AnalyticsIdentity | null> = { A: null, B: null }
   private playerInfoCache: Record<PlayerId, PlayerInfo> = {
     A: { displayName: '', flag: '', streak: 0 },
     B: { displayName: '', flag: '', streak: 0 },
@@ -248,6 +263,7 @@ export class Room {
       analytics: ws.data.analytics ?? null,
     }
     this.playerUserIds[pid] = ws.data.userId ?? null
+    this.playerAnalytics[pid] = ws.data.analytics ?? null
     this.playerInfoCache[pid] = {
       displayName: ws.data.userName ?? randomSurname(),
       flag: ws.data.countryCode ? countryToFlag(ws.data.countryCode) : randomFlag(),
@@ -458,8 +474,8 @@ export class Room {
     this.clearDisconnectTimers()
 
     const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
-    this.saveReplay(opponent)
     const dcCauses: Partial<Record<PlayerId, DeathCause>> = { [pid]: { type: 'disconnect' as const } }
+    this.saveReplay(opponent, dcCauses)
     const oppSlot = this.players[opponent]
     if (oppSlot?.ws) {
       send(oppSlot.ws, { type: 'game:end', winner: opponent, deathCauses: dcCauses })
@@ -832,7 +848,7 @@ export class Room {
     this.resolveWinnerPredictions()
 
     if (result.state.winner !== null) {
-      this.saveReplay(result.state.winner)
+      this.saveReplay(result.state.winner, result.deathCauses)
       const endMsg: ServerMessage = { type: 'game:end', winner: result.state.winner, deathCauses: result.deathCauses }
       this.broadcast(endMsg)
       this.broadcastSpectators(endMsg)
@@ -843,7 +859,7 @@ export class Room {
     }
   }
 
-  private saveReplay(winner: PlayerId | 'draw'): void {
+  private saveReplay(winner: PlayerId | 'draw', deathCauses: Partial<Record<PlayerId, DeathCause>>): void {
     if (this.practice) return // tutorial matches don't count: no replay, no stats
 
     const charA = this.players.A?.character ?? this.engine.getState().players.A.character
@@ -883,6 +899,8 @@ export class Room {
       durationMs: this.matchStartedAt > 0 ? Date.now() - this.matchStartedAt : 0,
       vsBot: this.botStrength !== null,
       watcherScores,
+      deathCauses,
+      analytics: { A: this.playerAnalytics.A, B: this.playerAnalytics.B },
     }, replay)
   }
 

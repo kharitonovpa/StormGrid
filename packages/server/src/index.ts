@@ -99,6 +99,38 @@ const roomManager = new RoomManager({
       }, replay)
     } catch (e) { console.error('[db] saveMatch failed:', e) }
 
+    /**
+     * The authoritative per-player outcome, with what killed them. Two things
+     * the client-side `match_end` cannot give us: it rides a pagehide beacon so
+     * it undercounts, and it never carried the cause at all. The cause is the
+     * whole point — the queue's first-match bot never hunts, so a newcomer who
+     * loses was almost certainly killed by the weather, and knowing that is
+     * what decides whether difficulty work belongs in the bot or in the sky.
+     */
+    try {
+      const rows: EventRow[] = []
+      for (const pid of ['A', 'B'] as const) {
+        const who = data.analytics[pid]
+        if (!who) continue // a bot slot
+        const cause = data.deathCauses[pid]
+        const dir = cause && cause.type === 'wind' ? cause.dir : undefined
+        rows.push({
+          deviceId: who.deviceId, sessionId: who.sessionId, userId: null,
+          platform: who.platform, host: who.host,
+          name: 'match_result',
+          props: JSON.stringify({
+            result: data.winner === 'draw' ? 'draw' : data.winner === pid ? 'win' : 'loss',
+            cause: cause ? cause.type : 'survived',
+            ...(dir ? { dir } : {}),
+            rounds: data.rounds,
+            vsBot: data.vsBot,
+          }),
+          country: null, lang: null,
+        })
+      }
+      insertEvents(rows)
+    } catch (e) { console.error('[db] match_result insert failed:', e) }
+
     try {
       updatePlayerStats(data.playerAUserId, data.playerBUserId, data.winner)
     } catch (e) { console.error('[db] updatePlayerStats failed:', e) }
