@@ -132,32 +132,37 @@ export default class DiscordAdapter implements PlatformAdapter {
       } catch (err) {
         console.warn('[discord] participants fetch failed — automatch disabled', err)
       }
-
-      registerDiscordHandles({
-        instanceCode: `dc-${sdk.instanceId}`.toUpperCase(),
-        customId: cleanLaunchParam(sdk.customId),
-        referrerId: cleanLaunchParam(sdk.referrerId),
-        guildId: sdk.guildId,
-        shareLink: async (code, message) => {
-          try {
-            const { success } = await sdk.commands.shareLink({ message, custom_id: code })
-            return success
-          } catch { return false }
-        },
-        onParticipantCount: (cb) => {
-          this.participantCbs.add(cb)
-          cb(this.participantCount)
-          return () => this.participantCbs.delete(cb)
-        },
-        setPresence: (bucket: PresenceBucket) => {
-          // Presence is a nice-to-have, not a critical path — swallow failures
-          // silently rather than surfacing them anywhere a player would see.
-          sdk.commands.setActivity({
-            activity: { type: 0, details: presenceText(this.locale, bucket) },
-          }).catch(() => {})
-        },
-      })
     }
+
+    registerDiscordHandles({
+      instanceCode: `dc-${sdk.instanceId}`.toUpperCase(),
+      customId: cleanLaunchParam(sdk.customId),
+      referrerId: cleanLaunchParam(sdk.referrerId),
+      guildId: sdk.guildId,
+      shareLink: async (code, message) => {
+        try {
+          const { success } = await sdk.commands.shareLink({ message, custom_id: code })
+          return success
+        } catch { return false }
+      },
+      onParticipantCount: (cb) => {
+        this.participantCbs.add(cb)
+        cb(this.participantCount)
+        return () => this.participantCbs.delete(cb)
+      },
+      setPresence: (bucket: PresenceBucket) => {
+        // Presence needs an authenticated session (setActivity is an
+        // RPC command, same as participants/locale above) — unlike
+        // instanceCode/customId/referrerId/guildId, which are read
+        // straight off the SDK's parsed launch params and need no auth.
+        if (!authed) return
+        // Presence is a nice-to-have, not a critical path — swallow failures
+        // silently rather than surfacing them anywhere a player would see.
+        sdk.commands.setActivity({
+          activity: { type: 0, details: presenceText(this.locale, bucket) },
+        }).catch(() => {})
+      },
+    })
   }
 
   ready(): void { /* sdk.ready() already awaited in init */ }
