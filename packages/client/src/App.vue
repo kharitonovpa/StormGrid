@@ -55,6 +55,14 @@ let sceneCamera: THREE.PerspectiveCamera
 
 const platform = usePlatform()
 const socket = useGameSocket()
+/**
+ * True from boot when a persisted reconnect token was found — i.e. this load
+ * is a reload (F5) of a page that was mid-match, not a cold start. Cleared as
+ * soon as the resume attempt resolves either way (Step 3 below); it must be
+ * declared here, before the presence watch a few lines down (Step 4), which
+ * reads it on its first, immediate run.
+ */
+const restoringSession = ref(!!socket.reconnectToken.value)
 const game = useGameState()
 const { onAuthChange, fetchMe: authFetchMe } = useAuth()
 
@@ -85,6 +93,10 @@ watch(() => game.actionSubmitted.value, (submitted) => {
 })
 
 watch(() => game.phase.value, (phase) => {
+  // Skip the immediate 'lobby' push while a reload might still resume into a
+  // live match — reconnect:ok/reconnect:fail will drive a correct push once
+  // the outcome is known (phase changes either way).
+  if (restoringSession.value && phase === 'lobby') return
   setDiscordPresence(presenceBucketForPhase(phase))
 }, { immediate: true })
 
@@ -264,6 +276,7 @@ unsubMessage1 = socket.onMessage((msg) => {
   if (msg.type === 'rematch:waiting') rematchState.value = 'waiting'
   if (msg.type === 'rematch:off') rematchState.value = 'none'
   if (msg.type === 'game:start') {
+    restoringSession.value = false
     lastRoomId = msg.roomId
     socket.setReconnectToken(msg.reconnectToken)
     platform.gameplayStart()
@@ -276,7 +289,11 @@ unsubMessage1 = socket.onMessage((msg) => {
     incomingInvite.value = null
   }
   if (msg.type === 'reconnect:fail') {
+    restoringSession.value = false
     socket.setReconnectToken(null)
+  }
+  if (msg.type === 'reconnect:ok') {
+    restoringSession.value = false
   }
   if (msg.type === 'tick:resolve' && msg.bonus) onCratePicked(msg.bonus.player)
   if (msg.type === 'game:end') {
@@ -358,6 +375,15 @@ const showReconnecting = computed(() =>
 const showOpponentDisconnected = computed(() =>
   game.opponentDisconnected.value && isInGame.value,
 )
+
+/**
+ * `!isInGame.value` alone would already flip this off on a *successful*
+ * resume (phase leaves 'lobby'), but `reconnect:fail` sends phase back to
+ * 'lobby' too — so `restoringSession` needs its own explicit clear (Step 3)
+ * or this would get stuck showing "Restoring match…" forever after a failed
+ * resume.
+ */
+const showRestoringSession = computed(() => restoringSession.value && !isInGame.value)
 
 const onlineCount = ref(0)
 const inQueue = ref(0)
@@ -2245,6 +2271,16 @@ onUnmounted(() => {
           <div class="reconnect-spinner" />
           <div class="reconnect-text">{{ t('app.reconnecting') }}</div>
         </template>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- Restoring a match after a page reload -->
+  <Transition name="rc">
+    <div v-if="showRestoringSession" class="reconnect-overlay">
+      <div class="reconnect-card">
+        <div class="reconnect-spinner" />
+        <div class="reconnect-text">{{ t('app.restoringSession') }}</div>
       </div>
     </div>
   </Transition>
