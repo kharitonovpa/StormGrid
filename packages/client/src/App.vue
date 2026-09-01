@@ -369,13 +369,6 @@ const isInGame = computed(() =>
   game.phase.value === 'ticking' ||
   game.phase.value === 'weather',
 )
-const showReconnecting = computed(() =>
-  !socket.connected.value && isInGame.value,
-)
-const showOpponentDisconnected = computed(() =>
-  game.opponentDisconnected.value && isInGame.value,
-)
-
 /**
  * `!isInGame.value` alone would already flip this off on a *successful*
  * resume (phase leaves 'lobby'), but `reconnect:fail` sends phase back to
@@ -384,6 +377,24 @@ const showOpponentDisconnected = computed(() =>
  * resume.
  */
 const showRestoringSession = computed(() => restoringSession.value && !isInGame.value)
+/**
+ * Folds the boot-time restore-after-reload wait into the same overlay as a
+ * mid-match reconnect, rather than a separate one: `showRestoringSession`
+ * alone would never go false if the resume attempt never resolves (socket
+ * can't connect at all, or drops again before the server answers) — phase
+ * never leaves 'lobby', so `isInGame` never flips, so nothing here ever
+ * clears it and the player is stuck behind a bare spinner. Sharing this
+ * overlay means the socket layer's own `gaveUp` — reached once its reconnect
+ * budget (up to ~10 minutes for an in-match token) is spent — surfaces the
+ * existing retry/back-to-lobby buttons for the restore case too, the same
+ * way it already does for an ordinary in-match disconnect.
+ */
+const showReconnecting = computed(() =>
+  showRestoringSession.value || (!socket.connected.value && isInGame.value),
+)
+const showOpponentDisconnected = computed(() =>
+  game.opponentDisconnected.value && isInGame.value,
+)
 
 const onlineCount = ref(0)
 const inQueue = ref(0)
@@ -560,6 +571,10 @@ async function onBackToLobby() {
   await platform.showInterstitial().catch(() => {})
   pendingGameEnd = null
   socket.setReconnectToken(null)
+  // A gave-up boot-time restore reaches here via onGiveUpToLobby — without
+  // this, restoringSession would stay true and the reconnecting overlay
+  // (still gated on it while phase is 'lobby') would pop right back up.
+  restoringSession.value = false
   game.reset()
   terrainState.resetFlat()
   resetVisuals()
@@ -2256,7 +2271,10 @@ onUnmounted(() => {
     </div>
   </Transition>
 
-  <!-- Reconnecting overlay -->
+  <!-- Reconnecting overlay — also covers the boot-time "restoring a reloaded
+       match" wait (see showReconnecting), so a resume that never resolves
+       still surfaces the give-up retry/lobby buttons instead of a bare
+       spinner with no way out. -->
   <Transition name="rc">
     <div v-if="showReconnecting" class="reconnect-overlay">
       <div class="reconnect-card">
@@ -2269,18 +2287,8 @@ onUnmounted(() => {
         </template>
         <template v-else>
           <div class="reconnect-spinner" />
-          <div class="reconnect-text">{{ t('app.reconnecting') }}</div>
+          <div class="reconnect-text">{{ showRestoringSession ? t('app.restoringSession') : t('app.reconnecting') }}</div>
         </template>
-      </div>
-    </div>
-  </Transition>
-
-  <!-- Restoring a match after a page reload -->
-  <Transition name="rc">
-    <div v-if="showRestoringSession" class="reconnect-overlay">
-      <div class="reconnect-card">
-        <div class="reconnect-spinner" />
-        <div class="reconnect-text">{{ t('app.restoringSession') }}</div>
       </div>
     </div>
   </Transition>
