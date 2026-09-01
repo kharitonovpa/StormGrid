@@ -215,7 +215,7 @@ export default class DiscordAdapter implements PlatformAdapter {
       let code: string
       try {
         ({ code } = await sdk.commands.authorize({
-          client_id: import.meta.env.VITE_DISCORD_CLIENT_ID,
+          client_id: import.meta.env.VITE_DISCORD_CLIENT_ID || '',
           response_type: 'code',
           state: '',
           prompt: 'none',

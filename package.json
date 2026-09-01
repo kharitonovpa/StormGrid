@@ -9,7 +9,7 @@
     "dev:client": "bun run --cwd packages/client dev",
     "dev:server": "bun run --cwd packages/server dev",
     "build": "bun run --filter '*' build",
-    "test": "bun test --cwd packages/server",
+    "test": "bun test --cwd packages/server && bun test --cwd packages/client",
     "test:watch": "bun test --cwd packages/server --watch",
     "deploy": "bash deploy/deploy-all.sh",
     "deploy:server": "bash deploy/deploy-all.sh --server",
