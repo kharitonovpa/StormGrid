@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from 'bun:test'
-import { registerDiscordHandles, setDiscordPresence } from '../discordBridge.js'
+import { registerDiscordHandles, setDiscordPresence, resetDiscordPresenceForTests } from '../discordBridge.js'
 import type { DiscordHandles } from '../discordBridge.js'
 
 function makeHandles(setPresence: DiscordHandles['setPresence']): DiscordHandles {
@@ -22,6 +22,7 @@ describe('setDiscordPresence', () => {
   })
 
   it('does nothing for a null bucket', () => {
+    resetDiscordPresenceForTests()
     const setPresence = mock(() => {})
     registerDiscordHandles(makeHandles(setPresence))
     setDiscordPresence(null)
@@ -29,6 +30,7 @@ describe('setDiscordPresence', () => {
   })
 
   it('forwards the first bucket after registration', () => {
+    resetDiscordPresenceForTests()
     const setPresence = mock(() => {})
     registerDiscordHandles(makeHandles(setPresence))
     setDiscordPresence('queue')
@@ -37,6 +39,7 @@ describe('setDiscordPresence', () => {
   })
 
   it('does not repeat the same bucket twice in a row', () => {
+    resetDiscordPresenceForTests()
     const setPresence = mock(() => {})
     registerDiscordHandles(makeHandles(setPresence))
     setDiscordPresence('in_match')
@@ -45,6 +48,7 @@ describe('setDiscordPresence', () => {
   })
 
   it('forwards a genuinely new bucket', () => {
+    resetDiscordPresenceForTests()
     const setPresence = mock(() => {})
     registerDiscordHandles(makeHandles(setPresence))
     setDiscordPresence('queue')

@@ -71,3 +71,8 @@ export function setDiscordPresence(bucket: PresenceBucket | null): void {
   lastSentBucket = bucket
   handles.setPresence(bucket)
 }
+
+/** Test-only: reset the presence dedup state between test cases. */
+export function resetDiscordPresenceForTests(): void {
+  lastSentBucket = null
+}
