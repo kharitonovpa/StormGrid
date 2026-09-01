@@ -3,10 +3,17 @@ import './style.css'
 import { initPlatform } from './lib/platform'
 import { initAnalytics } from './lib/analytics'
 import { setLanguage } from './lib/i18n'
+import { fetchCharacterSuggestion } from './lib/characterSuggestion'
 import App from './App.vue'
 
-initPlatform()
-  .then((platform) => {
+// useGameState() reads getSuggestedCharacter() synchronously during App's
+// setup(), so the suggestion fetch must resolve before mount — same
+// constraint initPlatform() already satisfies for storage.ts. It runs
+// alongside initPlatform() rather than after it, and never rejects (see
+// characterSuggestion.ts), so it can't be the reason this chain's .catch
+// fires.
+Promise.all([initPlatform(), fetchCharacterSuggestion()])
+  .then(([platform]) => {
     setLanguage(platform.getLanguage())
     initAnalytics(platform)
     createApp(App).mount('#app')
