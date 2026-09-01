@@ -3,7 +3,13 @@ import type { PlatformAdapter } from './types'
 import { createLocalStorage, createLocalSound, noSticky } from './defaults'
 import { API_BASE } from '../config'
 
-const AD_TIMEOUT_MS = 15_000
+/**
+ * Safety net for a hung SDK call only — not a cap on watching the ad. A
+ * rewarded video is commonly 15-30s on its own, before the viewer even reacts
+ * and taps close; 15s here was racing ahead of genuine, fully-watched ads
+ * (see `showRewarded` below) and silently discarding the reward.
+ */
+const AD_TIMEOUT_MS = 60_000
 
 let ysdk: YandexGamesSDK | null = null
 let user: UserInfo | null = null
@@ -126,7 +132,11 @@ export default class YandexAdapter implements PlatformAdapter {
       sdk.adv.showRewardedVideo({
         callbacks: {
           onOpen: () => { for (const cb of pauseCbs) cb() },
-          onRewarded: () => { rewarded = true },
+          // The reward is granted the moment this fires — disarm the safety
+          // timer here too, not only on close, so a viewer who takes their
+          // time tapping the close button afterward can't have an already-
+          // earned reward overwritten by the timeout firing in the meantime.
+          onRewarded: () => { rewarded = true; clearTimeout(timer) },
           onClose: () => { clearTimeout(timer); for (const cb of resumeCbs) cb(); done(rewarded) },
           onError: () => { clearTimeout(timer); done(false) },
         },

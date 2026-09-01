@@ -3,7 +3,15 @@ import type { MuteKind, MuteState, PlatformAdapter, PlatformSound, PlatformStora
 import { createLocalStorage } from './defaults'
 import { API_BASE } from '../config'
 
-const AD_TIMEOUT_MS = 15_000
+/**
+ * Safety net for a hung SDK call only — not a cap on watching the ad. A
+ * rewarded video is commonly 15-30s on its own, before the viewer even reacts
+ * and taps close; 15s here was racing ahead of genuine, fully-watched ads and
+ * silently discarding the reward (`showRewarded()` resolving `false` even
+ * though the player watched the whole thing — reported as "watch the ad, hit
+ * the X, land back on the same screen with nothing granted").
+ */
+const AD_TIMEOUT_MS = 60_000
 const PRELOADER_TIMEOUT_MS = 8_000
 const AUTH_TIMEOUT_MS = 30_000
 /** Batch writes: `sync()` is a network call, and settings arrive in bursts. */
