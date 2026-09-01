@@ -18,9 +18,9 @@
 - Region→crop mapping: Asia → `rice`, Americas → `corn`, everything else (including Europe, Africa, Oceania, and unknown/unresolvable) → `wheat`.
 - A returning player's saved crop preference always overrides the geo suggestion.
 
-## Note on test coverage for Task 8 (storm.ts)
+## Note on test coverage for Task 10 (App.vue / GameOverOverlay.vue)
 
-`createStormSystem()` (`packages/client/src/lib/storm.ts`) returns a closure-encapsulated object with no accessor for its internal `THREE.ShaderMaterial`/uniforms, and no test file exists for this module today (nor for `wind.ts`/`rain.ts`/`lightning.ts` — this codebase does not unit-test its Three.js visual modules). Adding an accessor purely so a test can read `uniforms.uBase.value` would be test-driven pollution of a module that has deliberately kept its internals private. Task 8 is implemented with a plain code change and verified manually (steps included) rather than with an automated test — flagging this explicitly per TDD's "ask your human partner" exception, since it departs from the otherwise-uniform TDD cycle used in every other task. If this trade-off doesn't sit right, the alternative is exposing `dome`/`material` on the returned object for testability — say so before/while executing Task 8.
+`App.vue` and `GameOverOverlay.vue` have no test files today, and this project has no `@vue/test-utils`/component-test setup at all. Task 10's wiring is verified manually (steps included) rather than with an automated test — flagging this explicitly per TDD's "ask your human partner" exception, since it departs from the otherwise-uniform TDD cycle used in every other task. (Task 8 has the same kind of concern — `createStormSystem()`'s encapsulated internals — but it's resolved there instead, by adding a small `getBaseColor()` accessor to its returned object specifically so the tint can be asserted on; see Task 8.)
 
 ---
 
@@ -801,13 +801,42 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `packages/client/src/lib/storm.ts`
+- Test: `packages/client/src/lib/__tests__/storm.test.ts`
 
 **Interfaces:**
-- Produces (changed): `createStormSystem(scene: THREE.Scene, baseTint?: THREE.Color)`. Consumed by Task 10.
+- Produces (changed): `createStormSystem(scene: THREE.Scene, baseTint?: THREE.Color)`, whose returned object gains `getBaseColor(): THREE.Color`. Consumed by Task 10 (the `baseTint` parameter; `getBaseColor()` exists only to make this task's tint testable and has no other caller).
 
-See "Note on test coverage for Task 8" above — this task has no automated test, by design, and is verified manually.
+`createStormSystem()`'s returned object is otherwise a closure with no accessor for its internal `THREE.ShaderMaterial`/uniforms. `getBaseColor()` is added specifically so a test can observe the tint without reaching into Three.js internals from outside.
 
-- [ ] **Step 1: Update the function signature and uniform**
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// packages/client/src/lib/__tests__/storm.test.ts
+import { describe, it, expect } from 'bun:test'
+import * as THREE from 'three'
+import { createStormSystem } from '../storm.js'
+
+describe('createStormSystem base tint', () => {
+  it('uses the default BASE color when no tint is given', () => {
+    const scene = new THREE.Scene()
+    const storm = createStormSystem(scene)
+    expect(storm.getBaseColor().getHex()).toBe(0x0a0e14)
+  })
+
+  it('uses a provided tint for the calm sky base', () => {
+    const scene = new THREE.Scene()
+    const storm = createStormSystem(scene, new THREE.Color(0x120e0a))
+    expect(storm.getBaseColor().getHex()).toBe(0x120e0a)
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run (from `packages/client/`): `bun test src/lib/__tests__/storm.test.ts`
+Expected: FAIL — `storm.getBaseColor is not a function`.
+
+- [ ] **Step 3: Update the implementation**
 
 In `packages/client/src/lib/storm.ts`, the current signature is:
 
@@ -840,19 +869,39 @@ and the uniform to:
 
 `BASE` stays defined and used as the parameter's own default, so every existing caller (none pass a second argument yet) keeps today's exact color.
 
-- [ ] **Step 2: Type-check**
+Then add the accessor to the returned object. The function currently returns (starting around where `setForecast` is defined):
 
-Run (from `packages/client/`): `bunx vue-tsc -b --noEmit`
-Expected: no new errors.
+```ts
+  return {
+    setForecast(c: WindDir[], broken: boolean, stormy: boolean, baroBroken: boolean) {
+```
 
-- [ ] **Step 3: Manual verification**
+Add a new method right before `setForecast`:
 
-This can't be meaningfully verified until Task 10 wires a real per-crop tint through from `App.vue` — defer the visual check to Task 10's manual verification step, which covers all three crops. For this task alone, confirm only that nothing regresses: run the app, start a match with no crop-specific change yet visible (expected, since nothing calls `createStormSystem` with a second argument until Task 10), and confirm the sky looks exactly as it does on `main` today.
+```ts
+  return {
+    getBaseColor(): THREE.Color {
+      return mat.uniforms.uBase.value as THREE.Color
+    },
+    setForecast(c: WindDir[], broken: boolean, stormy: boolean, baroBroken: boolean) {
+```
 
-- [ ] **Step 4: Commit**
+(`mat` is the `THREE.ShaderMaterial` local const already in scope from earlier in the function.)
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `bun test src/lib/__tests__/storm.test.ts`
+Expected: PASS, 2 tests.
+
+- [ ] **Step 5: Run the full client test suite and type-check**
+
+Run: `bun test` then `bunx vue-tsc -b --noEmit`
+Expected: all tests pass; no new type errors.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/client/src/lib/storm.ts
+git add packages/client/src/lib/storm.ts packages/client/src/lib/__tests__/storm.test.ts
 git commit -m "Add optional calm-sky base tint parameter to createStormSystem
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
@@ -1002,7 +1051,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `CROP_THEME` (Task 6), `paintColors(geo, isBottom?, accent?)` (Task 7), `createStormSystem(scene, baseTint?)` (Task 8), `resolveMusicId`/character-aware `enterLobby`/`enterMatch`/`enterFinished` (Task 9), `game.selectedCharacter` (existing, `useGameState.ts:33`).
 
-No new automated test: `App.vue` and `GameOverOverlay.vue` have no test files today, and this project has no `@vue/test-utils`/component-test setup at all — consistent with that, this task is verified manually. This is the same encapsulation trade-off called out for Task 8, extended to Vue component wiring that has never had test coverage in this codebase.
+No new automated test: `App.vue` and `GameOverOverlay.vue` have no test files today, and this project has no `@vue/test-utils`/component-test setup at all — consistent with that, this task is verified manually (see "Note on test coverage for Task 10" above).
 
 - [ ] **Step 1: Import `CROP_THEME` in `App.vue`**
 
