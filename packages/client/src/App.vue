@@ -1191,6 +1191,14 @@ function optionStyle(index: number) {
 
 function preventContextMenu(e: Event) { e.preventDefault() }
 
+/** Only during an actual live turn — never in lobby, queue, or after game-over. */
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+  if (isInGame.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
 let sceneReady = false
 
 function applyGameState(state: GameState) {
@@ -2020,6 +2028,7 @@ onMounted(() => {
   audio.enterLobby()
 
   document.addEventListener('contextmenu', preventContextMenu)
+  window.addEventListener('beforeunload', handleBeforeUnload)
 
   platform.ready()
 
@@ -2249,6 +2258,7 @@ onUnmounted(() => {
   unsubAuth()
   document.removeEventListener('contextmenu', preventContextMenu)
   document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   sceneCleanup?.()
   sceneCleanup = null
   controls?.dispose()
