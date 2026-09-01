@@ -1,3 +1,5 @@
+import type { PresenceBucket } from './discordPresence'
+
 /**
  * SDK-free window into the Discord adapter. The adapter (a lazily imported
  * chunk that owns @discord/embedded-app-sdk) registers its live handles here
@@ -12,9 +14,11 @@ export type DiscordHandles = {
   guildId: string | null
   shareLink: (code: string, message: string) => Promise<boolean>
   onParticipantCount: (cb: (count: number) => void) => () => void
+  setPresence: (bucket: PresenceBucket) => void
 }
 
 let handles: DiscordHandles | null = null
+let lastSentBucket: PresenceBucket | null = null
 
 export function registerDiscordHandles(h: DiscordHandles): void {
   handles = h
@@ -52,4 +56,18 @@ export function shareDiscordLink(code: string, message: string): Promise<boolean
 
 export function onDiscordParticipantCount(cb: (count: number) => void): () => void {
   return handles ? handles.onParticipantCount(cb) : () => {}
+}
+
+/**
+ * Update the Discord Rich Presence card. `null` (the `finished` phase has no
+ * bucket of its own — see discordPresence.ts) leaves the card as it was.
+ * Deduplicates against the last bucket actually sent so a run of ticks
+ * within the same match phase doesn't call `setActivity` repeatedly.
+ */
+export function setDiscordPresence(bucket: PresenceBucket | null): void {
+  if (bucket === null) return
+  if (bucket === lastSentBucket) return
+  if (!handles) return
+  lastSentBucket = bucket
+  handles.setPresence(bucket)
 }
