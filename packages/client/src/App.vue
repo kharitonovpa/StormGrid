@@ -63,6 +63,37 @@ const socket = useGameSocket()
  * reads it on its first, immediate run.
  */
 const restoringSession = ref(!!socket.reconnectToken.value)
+/**
+ * A boot-time restore gets a much shorter budget than a genuine mid-match
+ * drop. `useGameSocket`'s own `IN_MATCH_MAX_RECONNECT_ATTEMPTS` (~13 minutes
+ * at its backoff ceiling) is deliberately generous for a player already
+ * looking at a live board who briefly lost their connection — but this timer
+ * covers a *fresh page load* that merely found a persisted token: if the
+ * server is unreachable at reload time, staring at a bare spinner for up to
+ * 13 minutes with no escape is not acceptable. When this fires and the
+ * restore still hasn't resolved, it forces the same connection-lost /
+ * retry / back-to-lobby UI `socket.gaveUp` already renders, well ahead of
+ * the socket layer's own budget running out.
+ */
+const BOOT_RESTORE_TIMEOUT_MS = 12_000
+const bootRestoreGaveUp = ref(false)
+let bootRestoreTimer = 0
+
+function clearBootRestoreTimer() {
+  clearTimeout(bootRestoreTimer)
+  bootRestoreTimer = 0
+}
+
+function armBootRestoreTimer() {
+  clearBootRestoreTimer()
+  bootRestoreTimer = window.setTimeout(() => {
+    bootRestoreTimer = 0
+    if (restoringSession.value) bootRestoreGaveUp.value = true
+  }, BOOT_RESTORE_TIMEOUT_MS)
+}
+
+if (restoringSession.value) armBootRestoreTimer()
+
 const game = useGameState()
 const { onAuthChange, fetchMe: authFetchMe } = useAuth()
 
@@ -94,8 +125,12 @@ watch(() => game.actionSubmitted.value, (submitted) => {
 
 watch(() => game.phase.value, (phase) => {
   // Skip the immediate 'lobby' push while a reload might still resume into a
-  // live match — reconnect:ok/reconnect:fail will drive a correct push once
-  // the outcome is known (phase changes either way).
+  // live match. A successful resume takes phase out of 'lobby', which drives
+  // a correct push through this same watcher — but a *failed* resume lands
+  // phase back on 'lobby', the value it already had, so this watcher never
+  // fires again on that path. The reconnect:fail handler below calls
+  // setDiscordPresence('lobby') itself once restoringSession clears, so
+  // presence still ends up correct either way.
   if (restoringSession.value && phase === 'lobby') return
   setDiscordPresence(presenceBucketForPhase(phase))
 }, { immediate: true })
@@ -277,6 +312,8 @@ unsubMessage1 = socket.onMessage((msg) => {
   if (msg.type === 'rematch:off') rematchState.value = 'none'
   if (msg.type === 'game:start') {
     restoringSession.value = false
+    clearBootRestoreTimer()
+    bootRestoreGaveUp.value = false
     lastRoomId = msg.roomId
     socket.setReconnectToken(msg.reconnectToken)
     platform.gameplayStart()
@@ -290,10 +327,19 @@ unsubMessage1 = socket.onMessage((msg) => {
   }
   if (msg.type === 'reconnect:fail') {
     restoringSession.value = false
+    clearBootRestoreTimer()
+    bootRestoreGaveUp.value = false
     socket.setReconnectToken(null)
+    // The presence watch above deliberately skipped its immediate push while
+    // this was still pending — phase was already 'lobby' and reset() below
+    // (via game.handleMessage) puts it right back there, so that watcher
+    // never fires again on this path. Drive the push from here instead.
+    setDiscordPresence(presenceBucketForPhase('lobby'))
   }
   if (msg.type === 'reconnect:ok') {
     restoringSession.value = false
+    clearBootRestoreTimer()
+    bootRestoreGaveUp.value = false
   }
   if (msg.type === 'tick:resolve' && msg.bonus) onCratePicked(msg.bonus.player)
   if (msg.type === 'game:end') {
@@ -385,9 +431,14 @@ const showRestoringSession = computed(() => restoringSession.value && !isInGame.
  * never leaves 'lobby', so `isInGame` never flips, so nothing here ever
  * clears it and the player is stuck behind a bare spinner. Sharing this
  * overlay means the socket layer's own `gaveUp` — reached once its reconnect
- * budget (up to ~10 minutes for an in-match token) is spent — surfaces the
+ * budget (up to ~13 minutes for an in-match token) is spent — surfaces the
  * existing retry/back-to-lobby buttons for the restore case too, the same
- * way it already does for an ordinary in-match disconnect.
+ * way it already does for an ordinary in-match disconnect. That budget is
+ * far too generous for a boot restore specifically, though — nothing on
+ * screen yet tells the player a match even exists — so `bootRestoreGaveUp`
+ * forces the same buttons on its own short `BOOT_RESTORE_TIMEOUT_MS` timer
+ * well before the socket's own budget would ever be spent; see its
+ * declaration above.
  */
 const showReconnecting = computed(() =>
   showRestoringSession.value || (!socket.connected.value && isInGame.value),
@@ -568,13 +619,20 @@ async function onPlayAgain() {
 
 async function onBackToLobby() {
   if (rematchState.value !== 'none') { socket.cancelRematch(); rematchState.value = 'none' }
-  await platform.showInterstitial().catch(() => {})
-  pendingGameEnd = null
+  // Cleared before the awaited interstitial, not after: leaving these until
+  // afterwards holds the window open longer than it needs to be, during
+  // which the overlay could linger, or a concurrent retryConnection() (from
+  // the "Try again" button's sibling handler) could resend a now-stale token
+  // while the ad is still showing.
   socket.setReconnectToken(null)
   // A gave-up boot-time restore reaches here via onGiveUpToLobby — without
   // this, restoringSession would stay true and the reconnecting overlay
   // (still gated on it while phase is 'lobby') would pop right back up.
   restoringSession.value = false
+  clearBootRestoreTimer()
+  bootRestoreGaveUp.value = false
+  await platform.showInterstitial().catch(() => {})
+  pendingGameEnd = null
   game.reset()
   terrainState.resetFlat()
   resetVisuals()
@@ -711,6 +769,13 @@ async function onRescueStreak() {
 }
 
 function onRetryConnection() {
+  // "Try again" on a boot-restore that already timed out gets a fresh
+  // BOOT_RESTORE_TIMEOUT_MS window of its own, rather than falling through to
+  // the socket's much longer in-match budget.
+  if (bootRestoreGaveUp.value) {
+    bootRestoreGaveUp.value = false
+    if (restoringSession.value) armBootRestoreTimer()
+  }
   socket.retryConnection()
 }
 
@@ -2250,6 +2315,7 @@ onUnmounted(() => {
   clearTimeout(celebrateTimer)
   clearTimeout(contextLostTimer)
   clearTimeout(menuListenerId)
+  clearBootRestoreTimer()
   if (baroAmbienceTimer !== null) clearInterval(baroAmbienceTimer)
   disposeCelebrate()
   pendingGameEnd = null
@@ -2284,11 +2350,13 @@ onUnmounted(() => {
   <!-- Reconnecting overlay — also covers the boot-time "restoring a reloaded
        match" wait (see showReconnecting), so a resume that never resolves
        still surfaces the give-up retry/lobby buttons instead of a bare
-       spinner with no way out. -->
+       spinner with no way out. bootRestoreGaveUp forces those buttons on its
+       own short timer (BOOT_RESTORE_TIMEOUT_MS), well before socket.gaveUp
+       would ever flip on a boot restore's much longer in-match budget. -->
   <Transition name="rc">
     <div v-if="showReconnecting" class="reconnect-overlay">
       <div class="reconnect-card">
-        <template v-if="socket.gaveUp.value">
+        <template v-if="socket.gaveUp.value || bootRestoreGaveUp">
           <div class="reconnect-text">{{ t('app.connectionLost') }}</div>
           <div class="reconnect-actions">
             <button class="reconnect-btn primary" @click="onRetryConnection">{{ t('app.retry') }}</button>
