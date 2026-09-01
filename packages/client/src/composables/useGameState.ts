@@ -31,7 +31,7 @@ export function useGameState() {
   const weatherResult = ref<WeatherResult | null>(null)
   const winner = ref<PlayerId | 'draw' | null>(null)
   const deathCauses = ref<Partial<Record<PlayerId, DeathCause>> | null>(null)
-  const selectedCharacter = ref<CharacterType>(loadCharacterPreference())
+  const selectedCharacter = ref<CharacterType>(loadCharacterPreference() ?? 'wheat')
   watch(selectedCharacter, saveCharacterPreference)
   const tickDeadline = ref(0)
   const forecastDeadline = ref(0)
