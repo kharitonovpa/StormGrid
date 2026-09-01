@@ -259,7 +259,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ### Task 3: "Restoring match…" screen in `App.vue`
 
 **Files:**
-- Modify: `packages/client/src/App.vue:87-89` (presence watch), `:266-280` (message handler — `game:start`/`reconnect:fail`), `:355-360` (computed block), `:2233-2250` (template, new overlay block)
+- Modify: `packages/client/src/App.vue:57` (socket construction — new ref), `:87-89` (presence watch), `:266-280` (message handler — `game:start`/`reconnect:fail`), `:355-360` (computed block), `:2233-2250` (template, new overlay block)
 - Modify: `packages/client/src/lib/i18n.ts:154-159` (en), `:316-321` (ru)
 
 **Interfaces:**
@@ -280,9 +280,23 @@ Russian table, after the equivalent line (`'app.reconnecting': 'Переподк
     'app.restoringSession': 'Восстанавливаем матч…',
 ```
 
-- [ ] **Step 2: Add `restoringSession` state and `showRestoringSession` computed**
+- [ ] **Step 2: Declare `restoringSession`, right after the socket is constructed**
 
-In `packages/client/src/App.vue`, right after the existing block that defines `showOpponentDisconnected` (currently lines 358-360):
+In `packages/client/src/App.vue`, immediately after `const socket = useGameSocket()` (currently line 57):
+
+```typescript
+const socket = useGameSocket()
+/**
+ * True from boot when a persisted reconnect token was found — i.e. this load
+ * is a reload (F5) of a page that was mid-match, not a cold start. Cleared as
+ * soon as the resume attempt resolves either way (Step 3 below); it must be
+ * declared here, before the presence watch a few lines down (Step 4), which
+ * reads it on its first, immediate run.
+ */
+const restoringSession = ref(!!socket.reconnectToken.value)
+```
+
+Then, right after the existing block that defines `showOpponentDisconnected` (currently lines 358-360), add the computed that drives the overlay:
 
 ```typescript
 const showOpponentDisconnected = computed(() =>
@@ -290,14 +304,12 @@ const showOpponentDisconnected = computed(() =>
 )
 
 /**
- * True from boot when a persisted reconnect token was found — i.e. this load
- * is a reload (F5) of a page that was mid-match, not a cold start. Cleared as
- * soon as the resume attempt resolves either way; `!isInGame.value` alone
- * would already flip this off on a *successful* resume (phase leaves 'lobby'),
- * but reconnect:fail sends phase back to 'lobby' too, so it needs an explicit
- * clear or this would get stuck showing "Restoring match…" forever.
+ * `!isInGame.value` alone would already flip this off on a *successful*
+ * resume (phase leaves 'lobby'), but `reconnect:fail` sends phase back to
+ * 'lobby' too — so `restoringSession` needs its own explicit clear (Step 3)
+ * or this would get stuck showing "Restoring match…" forever after a failed
+ * resume.
  */
-const restoringSession = ref(!!socket.reconnectToken.value)
 const showRestoringSession = computed(() => restoringSession.value && !isInGame.value)
 ```
 
@@ -362,7 +374,7 @@ watch(() => game.phase.value, (phase) => {
 }, { immediate: true })
 ```
 
-This requires `restoringSession` to exist before this watch runs. Since Step 2 places its declaration after `showOpponentDisconnected` (line ~360), which is textually *after* this watch (line 87) — move the `restoringSession` declaration (just the `ref(...)` line, not `showRestoringSession`) up so it exists before line 87. Concretely: declare `const restoringSession = ref(!!socket.reconnectToken.value)` immediately after `const socket = useGameSocket()` (line 57), and leave only `const showRestoringSession = computed(...)` in the Step 2 location next to `showOpponentDisconnected`. Update Step 2's snippet accordingly: it now only adds the `showRestoringSession` computed there, not the `ref`.
+(`restoringSession` is already in scope here — it was declared in Step 2, right after `const socket = useGameSocket()`, which runs before this watch.)
 
 - [ ] **Step 5: Add the overlay markup**
 
