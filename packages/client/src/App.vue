@@ -34,7 +34,8 @@ import { usePlatform } from './lib/platform'
 import { storageGet, storageSet } from './lib/storage'
 import { track } from './lib/analytics'
 import { getIncomingInviteCode, clearInviteFromUrl, buildInviteUrl, shareInvite, copyInvite } from './lib/invite'
-import { getDiscordInstanceCode, onDiscordParticipantCount, shareDiscordLink } from './lib/platform/discordBridge'
+import { getDiscordInstanceCode, onDiscordParticipantCount, shareDiscordLink, setDiscordPresence } from './lib/platform/discordBridge'
+import { presenceBucketForPhase } from './lib/platform/discordPresence'
 import LobbyOverlay from './components/LobbyOverlay.vue'
 import GameHud from './components/GameHud.vue'
 import GameOverOverlay from './components/GameOverOverlay.vue'
@@ -82,6 +83,10 @@ const myActionLabel = ref('')
 watch(() => game.actionSubmitted.value, (submitted) => {
   if (!submitted) myActionLabel.value = ''
 })
+
+watch(() => game.phase.value, (phase) => {
+  setDiscordPresence(presenceBucketForPhase(phase))
+}, { immediate: true })
 
 const winnerPopup = ref<{ player: 'A' | 'B'; points: number } | null>(null)
 const contextLost = ref(false)
