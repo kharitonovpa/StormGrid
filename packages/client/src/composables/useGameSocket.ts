@@ -3,6 +3,7 @@ import type { Action, BonusType, CharacterType, PlayerId, WeatherType, WindDir, 
 import { WS_URL } from '../lib/config'
 import { getAnalyticsIdentity } from '../lib/analytics'
 import { getAuthToken } from './useAuth'
+import { loadReconnectToken, saveReconnectToken, clearReconnectToken } from './sessionToken'
 
 export type MessageHandler = (msg: ServerMessage) => void
 
@@ -30,7 +31,7 @@ export function useGameSocket() {
   const reconnecting = ref(false)
   /** Every reconnect attempt has been spent — the player needs a way out. */
   const gaveUp = ref(false)
-  const reconnectToken = ref<string | null>(null)
+  const reconnectToken = ref<string | null>(loadReconnectToken())
   const ws = shallowRef<WebSocket | null>(null)
   const handlers = new Set<MessageHandler>()
   let reconnectAttempts = 0
@@ -238,6 +239,8 @@ export function useGameSocket() {
 
   function setReconnectToken(token: string | null) {
     reconnectToken.value = token
+    if (token) saveReconnectToken(token)
+    else clearReconnectToken()
   }
 
   function refreshConnection() {
@@ -261,7 +264,7 @@ export function useGameSocket() {
 
   function disconnect() {
     intentionalClose = true
-    reconnectToken.value = null
+    setReconnectToken(null)
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
     stopHeartbeat()
     ws.value?.close()
