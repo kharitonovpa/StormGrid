@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { CHARACTERS } from '@wheee/shared'
+import { countryToCrop } from './regionCrop.js'
 import { RoomManager } from './RoomManager.js'
 import { Matchmaking, capsHaveLightning } from './matchmaking.js'
 import { ReplayStore } from './ReplayStore.js'
@@ -282,6 +283,11 @@ app.get('/api/leaderboard/watchers', (c) => {
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '20') || 20, 1), 50)
   const offset = Math.max(parseInt(c.req.query('offset') ?? '0') || 0, 0)
   return c.json(getWatcherLeaderboard(limit, offset))
+})
+
+app.get('/api/character-suggestion', (c) => {
+  const country = detectCountry(c.req.raw.headers)
+  return c.json({ character: countryToCrop(country) })
 })
 
 /* ── First-party analytics ── */
