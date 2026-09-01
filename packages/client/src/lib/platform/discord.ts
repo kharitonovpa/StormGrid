@@ -5,6 +5,8 @@ import { createLocalStorage, createLocalSound, noSticky } from './defaults'
 import { API_BASE } from '../config'
 import { setSafeAreaInset } from './safeArea'
 import { registerDiscordHandles } from './discordBridge'
+import { presenceText } from './discordPresence'
+import type { PresenceBucket } from './discordPresence'
 
 /**
  * Layout modes from the SDK's ACTIVITY_LAYOUT_MODE_UPDATE event:
@@ -130,25 +132,32 @@ export default class DiscordAdapter implements PlatformAdapter {
       } catch (err) {
         console.warn('[discord] participants fetch failed — automatch disabled', err)
       }
-    }
 
-    registerDiscordHandles({
-      instanceCode: `dc-${sdk.instanceId}`.toUpperCase(),
-      customId: cleanLaunchParam(sdk.customId),
-      referrerId: cleanLaunchParam(sdk.referrerId),
-      guildId: sdk.guildId,
-      shareLink: async (code, message) => {
-        try {
-          const { success } = await sdk.commands.shareLink({ message, custom_id: code })
-          return success
-        } catch { return false }
-      },
-      onParticipantCount: (cb) => {
-        this.participantCbs.add(cb)
-        cb(this.participantCount)
-        return () => this.participantCbs.delete(cb)
-      },
-    })
+      registerDiscordHandles({
+        instanceCode: `dc-${sdk.instanceId}`.toUpperCase(),
+        customId: cleanLaunchParam(sdk.customId),
+        referrerId: cleanLaunchParam(sdk.referrerId),
+        guildId: sdk.guildId,
+        shareLink: async (code, message) => {
+          try {
+            const { success } = await sdk.commands.shareLink({ message, custom_id: code })
+            return success
+          } catch { return false }
+        },
+        onParticipantCount: (cb) => {
+          this.participantCbs.add(cb)
+          cb(this.participantCount)
+          return () => this.participantCbs.delete(cb)
+        },
+        setPresence: (bucket: PresenceBucket) => {
+          // Presence is a nice-to-have, not a critical path — swallow failures
+          // silently rather than surfacing them anywhere a player would see.
+          sdk.commands.setActivity({
+            activity: { type: 0, details: presenceText(this.locale, bucket) },
+          }).catch(() => {})
+        },
+      })
+    }
   }
 
   ready(): void { /* sdk.ready() already awaited in init */ }
@@ -210,7 +219,7 @@ export default class DiscordAdapter implements PlatformAdapter {
           response_type: 'code',
           state: '',
           prompt: 'none',
-          scope: ['identify', 'applications.commands'],
+          scope: ['identify', 'applications.commands', 'rpc.activities.write'],
         }))
       } catch (err) {
         console.warn('[discord] authorize() failed — running as anonymous', err)
