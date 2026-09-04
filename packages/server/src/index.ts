@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { CHARACTERS } from '@wheee/shared'
+import type { PlayerId, PointsAward } from '@wheee/shared'
 import { countryToCrop } from './regionCrop.js'
 import { RoomManager } from './RoomManager.js'
 import { countIdleHumans } from './presence.js'
@@ -18,6 +19,8 @@ import { replyForUpdate, type TgUpdate } from './tgBot.js'
 import { createQueueAlert } from './queueAlert.js'
 import { runNudgePass } from './nudge.js'
 import { adoptDeviceStreak, seedDeviceStreak, growDeviceStreak, wipeDeviceStreak } from './db/streakStore.js'
+import { awardPoints, getPoints } from './db/pointsStore.js'
+import { pointsFor } from './points.js'
 import type { EventRow } from './db/eventStore.js'
 
 runMigrations()
@@ -176,8 +179,30 @@ const roomManager = new RoomManager({
       updateWatcherStats(data.watcherScores)
     } catch (e) { console.error('[db] updateWatcherStats failed:', e) }
 
+    // Points: result + survival + crate, halved vs bot, nothing for a leaver
+    // (see points.ts). Each human's award goes back to the room so it can ride
+    // in that player's game:end.
+    const awards: Partial<Record<PlayerId, PointsAward>> = {}
+    try {
+      for (const pid of ['A', 'B'] as const) {
+        const who = data.analytics[pid]
+        const userId = pid === 'A' ? data.playerAUserId : data.playerBUserId
+        if (!who && !userId) continue // a bot slot
+        const earned = pointsFor({
+          result: data.winner === 'draw' ? 'draw' : data.winner === pid ? 'win' : 'loss',
+          rounds: data.rounds,
+          vsBot: data.vsBot,
+          ownDisconnect: data.deathCauses[pid]?.type === 'disconnect',
+          crate: data.crateTaken[pid] === true,
+        })
+        const total = awardPoints(who?.deviceId ?? null, userId, earned)
+        awards[pid] = { earned, total }
+      }
+    } catch (e) { console.error('[db] awardPoints failed:', e) }
+
     // The room lingers on the result screen, but there is nothing left to watch.
     broadcastLobbyStatus()
+    return awards
   },
 })
 const allClients = new Set<ServerWebSocket<WsData>>()
@@ -513,6 +538,10 @@ const server = Bun.serve<WsData>({
       console.log(`[ws] connect ${ws.data.sessionId}`)
       allClients.add(ws)
       broadcastLobbyStatus()
+      // The lobby shows the running total before any match is played.
+      try {
+        send(ws, { type: 'points:total', total: getPoints(ws.data.analytics?.deviceId ?? null, ws.data.userId) })
+      } catch (e) { console.error('[db] getPoints failed:', e) }
     },
 
     message(ws, raw) {

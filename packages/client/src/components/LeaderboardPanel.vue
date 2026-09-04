@@ -123,8 +123,8 @@ onMounted(fetchLeaderboard)
           <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
           <UserAvatar :src="p.avatar" :name="p.name" :size="20" />
           <span class="lb-name">{{ p.name }}</span>
-          <span class="lb-stat lb-wins">{{ p.wins }}W</span>
-          <span class="lb-stat lb-losses">{{ p.losses }}L</span>
+          <span class="lb-stat lb-points">★ {{ p.points }}</span>
+          <span class="lb-record"><span class="lb-wins">{{ p.wins }}W</span> <span class="lb-losses">{{ p.losses }}L</span></span>
         </div>
         <RetryNotice
           v-if="moreFailed"
@@ -293,6 +293,17 @@ onMounted(fetchLeaderboard)
 
 .lb-losses {
   color: rgba(248, 113, 113, 0.6);
+}
+
+.lb-points {
+  color: rgba(255, 215, 0, 0.85);
+}
+
+.lb-record {
+  font-size: 9px;
+  font-weight: 600;
+  flex-shrink: 0;
+  opacity: 0.7;
 }
 
 .lb-score {

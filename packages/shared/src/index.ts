@@ -85,6 +85,8 @@ export type {
   TickResolveMsg,
   WeatherResultMsg,
   GameEndMsg,
+  PointsAward,
+  PointsTotalMsg,
   ErrorMsg,
   WatchAssignedMsg,
   WatchNoMatchMsg,

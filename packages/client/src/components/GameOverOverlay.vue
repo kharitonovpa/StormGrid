@@ -137,6 +137,12 @@ const subtitle = computed(() => {
   return t('gameover.tryAgain')
 })
 
+/** Points this match paid — the first chip, and the one that glows. */
+const earnedChip = computed(() => {
+  const e = props.stats?.earned
+  return typeof e === 'number' ? t('points.earned', e) : ''
+})
+
 const chips = computed(() => {
   const s = props.stats
   if (!s) return []
@@ -221,7 +227,8 @@ onUnmounted(() => {
       <h1 class="result-title">{{ title }}</h1>
       <p class="result-sub">{{ subtitle }}</p>
 
-      <div v-if="chips.length" class="stat-row">
+      <div v-if="chips.length || earnedChip" class="stat-row">
+        <span v-if="earnedChip" class="stat-chip stat-chip-points">{{ earnedChip }}</span>
         <span v-for="c in chips" :key="c" class="stat-chip">{{ c }}</span>
       </div>
 
@@ -461,6 +468,12 @@ onUnmounted(() => {
   flex-wrap: wrap;
   margin: -16px 0 24px;
   animation: fadeUp 0.5s 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.stat-chip-points {
+  border-color: rgba(255, 215, 0, 0.35);
+  background: rgba(255, 215, 0, 0.08);
+  color: rgba(255, 225, 120, 0.95);
 }
 
 .stat-chip {

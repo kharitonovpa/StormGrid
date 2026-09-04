@@ -96,8 +96,14 @@ export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number 
 /** `bonus` is set on the tick where a crate was picked up — it seeds the badge. */
 export type TickResolveMsg = { type: 'tick:resolve'; state: GameState; bonus?: { player: PlayerId; type: BonusType } }
 export type WeatherResultMsg = { type: 'weather:result'; result: WeatherResult }
-/** `rematchOffered` — a PvP ending with both humans still here; a `rematch:available` follows for old clients. */
-export type GameEndMsg = { type: 'game:end'; winner: PlayerId | 'draw'; deathCauses?: Partial<Record<PlayerId, DeathCause>>; rematchOffered?: boolean }
+export type PointsAward = { earned: number; total: number }
+/**
+ * `rematchOffered` — a PvP ending with both humans still here; a `rematch:available` follows for old clients.
+ * `points` — this player's award; each player gets their own, spectators none.
+ */
+export type GameEndMsg = { type: 'game:end'; winner: PlayerId | 'draw'; deathCauses?: Partial<Record<PlayerId, DeathCause>>; rematchOffered?: boolean; points?: PointsAward }
+/** The player's running total, sent when the socket opens. */
+export type PointsTotalMsg = { type: 'points:total'; total: number }
 export type ErrorMsg = { type: 'error'; message: string }
 
 export type WatchAssignedMsg = { type: 'watch:assigned'; roomId: string; state: GameState; watcherState: WatcherState; playerInfo?: Record<PlayerId, PlayerInfo> }
@@ -172,6 +178,8 @@ export type PlayerLeaderboardEntry = {
   losses: number
   draws: number
   gamesPlayed: number
+  /** Match points; the board is ordered by these. */
+  points: number
 }
 
 export type WatcherLeaderboardEntry = {
@@ -209,6 +217,7 @@ export type ServerMessage =
   | TickResolveMsg
   | WeatherResultMsg
   | GameEndMsg
+  | PointsTotalMsg
   | ErrorMsg
   | WatchAssignedMsg
   | WatchNoMatchMsg

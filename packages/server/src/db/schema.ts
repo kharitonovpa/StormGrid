@@ -33,10 +33,13 @@ export const userStats = sqliteTable('user_stats', {
   draws: integer('draws').notNull().default(0),
   watcherScore: integer('watcher_score').notNull().default(0),
   gamesPlayed: integer('games_played').notNull().default(0),
+  /** Match points — result + survival + crate, see server/src/points.ts. Only ever grows. */
+  points: integer('points').notNull().default(0),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 }, (t) => [
   index('user_stats_wins_idx').on(t.wins),
   index('user_stats_watcher_score_idx').on(t.watcherScore),
+  index('user_stats_points_idx').on(t.points),
 ])
 
 /**
@@ -73,6 +76,14 @@ export const events = sqliteTable('events', {
  * Keyed by device rather than user because most players here are anonymous —
  * the portals have no accounts at all.
  */
+/** The guest's copy of the match points, keyed like device_streaks. */
+export const devicePoints = sqliteTable('device_points', {
+  deviceId: text('device_id').primaryKey(),
+  points: integer('points').notNull().default(0),
+  matches: integer('matches').notNull().default(0),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
 export const deviceStreaks = sqliteTable('device_streaks', {
   deviceId: text('device_id').primaryKey(),
   streak: integer('streak').notNull().default(0),

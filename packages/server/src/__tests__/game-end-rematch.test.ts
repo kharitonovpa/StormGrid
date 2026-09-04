@@ -61,3 +61,45 @@ describe('game:end rematch offer', () => {
     expect(end.rematchOffered).toBeUndefined()
   }, 60_000)
 })
+
+/*
+ * Points ride inside game:end, per player: the card that shows "+7" is drawn
+ * from that one message, and a spectator has nothing to be paid for.
+ */
+describe('game:end points', () => {
+  it('hands each human their own award', async () => {
+    const rm = new RoomManager({ onMatchEnd: () => ({ A: { earned: 3, total: 3 }, B: { earned: 7, total: 7 } }) })
+    const room = rm.createRoom({ lightningEnabled: true })
+    const a = makeFakeWs()
+    const b = makeFakeWs()
+    room.join(a as never, 'wheat')
+    room.join(b as never, 'rice')
+
+    await Promise.all([playToEnd(a, room, 'A'), playToEnd(b, room, 'B')])
+
+    const endA = a.messages.find((m) => m.type === 'game:end') as { points?: { earned: number; total: number } }
+    const endB = b.messages.find((m) => m.type === 'game:end') as { points?: { earned: number; total: number } }
+    expect(endA.points).toEqual({ earned: 3, total: 3 })
+    expect(endB.points).toEqual({ earned: 7, total: 7 })
+  }, 20_000)
+
+  it('pays the player who stayed when the other one drops', async () => {
+    const seen: string[] = []
+    const rm = new RoomManager({
+      gracePeriodMs: 10,
+      onMatchEnd: (d) => { seen.push(d.winner); return { [d.winner]: { earned: 10, total: 10 } } },
+    })
+    const room = rm.createRoom({ lightningEnabled: true })
+    const a = makeFakeWs()
+    const b = makeFakeWs()
+    const pidA = room.join(a as never, 'wheat')
+    room.join(b as never, 'rice')
+
+    room.removePlayer(pidA!)
+    await sleep(60)
+
+    const endB = b.messages.find((m) => m.type === 'game:end') as { points?: { earned: number } }
+    expect(seen).toEqual(['B'])
+    expect(endB.points?.earned).toBe(10)
+  })
+})
