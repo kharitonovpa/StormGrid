@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'bun:test'
 import * as THREE from 'three'
 import { paintColors, current } from '../terrain.js'
 import { SIZE, SEGMENTS, HALF, CELL_SIZE } from '../constants.js'
+import { LOOK } from '../look.js'
 
 function makeSingleVertexGeo(x: number, y: number, z: number): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry()
@@ -49,8 +50,12 @@ describe('paintColors baked shading', () => {
   })
 
   it('paints the block\'s shadow darker and cooler than the same spot in the sun', () => {
-    // Toward the sun is (−x, +z) in grid space, so the shadow falls toward (+x, −z).
-    const spot = () => makeSingleVertexGeo(worldAt(2.6), 0, worldAt(0.7))
+    // The shadow of cell (1, 1) falls away from the sun: 1.5 cells from the
+    // block's centre along −(sun.x, sun.z) is inside a two-level block's shadow
+    // and more than 0.6 cell from its edge, so only the shadow term acts.
+    const [sx, , sz] = LOOK.sun.direction
+    const horiz = Math.hypot(sx, sz)
+    const spot = () => makeSingleVertexGeo(worldAt(1.5 - (sx / horiz) * 1.5), 0, worldAt(1.5 - (sz / horiz) * 1.5))
     const lit = spot()
     paintColors(lit)
     current[1][1] = 2

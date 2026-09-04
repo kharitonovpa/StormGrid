@@ -15,37 +15,40 @@ export type Vec3 = readonly [number, number, number]
 
 export const LOOK = {
   sky: {
-    zenith: 0x10163a,   // overhead indigo
-    mid: 0x2b2350,      // half way down
-    horizon: 0x8a4a52,  // dusk band along the horizon
-    rim: 0xc9754e,      // narrow warm edge right at the horizon line
-    storm: 0x2a1636,    // storm mass — darker than the horizon it sits on
+    zenith: 0x0c1030,   // overhead indigo
+    mid: 0x221a44,      // half way down
+    horizon: 0x4a2e44,  // dusk band along the horizon
+    rim: 0x7a4a3c,      // narrow warm edge right at the horizon line
+    storm: 0x1e0f2a,    // storm mass — darker than the horizon it sits on
     dim: 0x0b0d22,      // what the whole sky sinks toward at full intensity
   },
   sun: {
     color: 0xffc98a,
-    intensity: 2.2,
-    /** Unit vector toward the sun: low (elevation ≈ 28°), from the camera's left-front. */
-    direction: [-0.55, 0.47, 0.69] as Vec3,
+    intensity: 3.8,
+    /** Unit vector toward the sun: low (elevation ≈ 28°), from the right of the
+     *  default camera and a little behind the board, so the tops and right
+     *  walls are lit, the walls facing the camera sit in cool half-shade, and
+     *  the long shadows fall toward the viewer. */
+    direction: [0.6, 0.47, -0.648] as Vec3,
   },
   hemi: {
-    sky: 0x5a6cc8,      // cool fill on faces that see the sky
-    ground: 0x2b2333,   // dark plum, so the mirrored light's wrong-side fill stays small
-    intensity: 0.8,
+    sky: 0x5f6a9a,      // cool fill on faces that see the sky — a blue-grey, not a painted blue
+    ground: 0x3a2a2c,   // dark warm bounce, so the mirrored light's wrong-side fill stays small
+    intensity: 0.85,
   },
   terrain: {
-    grass: 0x3f7a3a,
-    rock: 0xb9aa9e,
+    grass: 0x4f9048,
+    rock: 0xc4b8aa,
     mud: 0x8a4b2a,
-    snow: 0xf2ead8,
-    checkerAmp: 0.08,       // ± relative lightness of alternate grass cells
-    aoStrength: 0.35,       // darkening at a block's foot
-    shadowStrength: 0.45,   // darkening inside the sun's shadow
-    shadowTint: [0.85, 0.95, 1.25] as Vec3,  // at full shadow: sky-lit, so cooler, not just darker
+    snow: 0xfff6e6,
+    checkerAmp: 0.12,       // ± relative lightness of alternate grass cells
+    aoStrength: 0.5,        // darkening at a block's foot
+    shadowStrength: 0.6,    // darkening inside the sun's shadow
+    shadowTint: [0.75, 0.88, 1.4] as Vec3,  // at full shadow: sky-lit, so cooler, not just darker
   },
   water: { deep: 0x1e5d6e, rim: 0x3d9aa8, opacity: 0.6 },
   grid: { color: 0xc8c4ff, opacity: 0.28 },
-  tone: { mode: 'agx' as const, exposure: 1.05 },
+  tone: { mode: 'agx' as const, exposure: 1.35 },
 } as const
 
 /** One sRGB channel in 0..1 → linear (the standard piecewise transfer). */
