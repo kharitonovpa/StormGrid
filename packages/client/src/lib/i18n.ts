@@ -171,6 +171,7 @@ const messages: Record<string, Record<string, string>> = {
 
     'boot.failed': 'Failed to load the game',
     'boot.failedHint': 'Check your internet connection and try again',
+    'boot.failedGeneric': 'Something went wrong. Try reloading.',
     'boot.reload': 'Reload',
 
     'action.move': 'Move',
@@ -345,6 +346,7 @@ const messages: Record<string, Record<string, string>> = {
 
     'boot.failed': 'Не удалось загрузить игру',
     'boot.failedHint': 'Проверь подключение к интернету и попробуй снова',
+    'boot.failedGeneric': 'Что-то пошло не так. Попробуй перезагрузить.',
     'boot.reload': 'Перезагрузить',
 
     'action.move': 'Ход',

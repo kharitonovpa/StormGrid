@@ -16,6 +16,7 @@ const KEYS = [
   'lobby.connecting',
   'boot.failed',
   'boot.failedHint',
+  'boot.failedGeneric',
   'boot.reload',
 ]
 
