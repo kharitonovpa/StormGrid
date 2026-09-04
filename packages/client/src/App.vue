@@ -249,15 +249,17 @@ function clearConnectWait() {
 }
 
 function ensureConnected(then: () => void) {
-  if (socket.connected.value) {
-    then()
-  } else {
-    pendingAction = then
+  if (socket.connected.value) { then(); return }
+  pendingAction = then
+  if (!connectPending.value) {
+    // The first queued action owns the clock: a later call while a connect is
+    // already pending must not restart the deadline or hide a card that's
+    // already showing.
     connectPending.value = true
     connectFailed.value = false
     armConnectTimer()
-    socket.connect()
   }
+  socket.connect()
 }
 
 watch(() => socket.connected.value, (connected) => {

@@ -85,11 +85,20 @@ describe('offline flag', () => {
     expect(socket.offline.value).toBe(false)
   })
 
+  it('arms on a refresh that replaces a healthy socket', async () => {
+    const socket = await freshSocket()
+    socket.connect()
+    FakeSocket.instances[0]!.open()
+    socket.refreshConnection()
+    jest.advanceTimersByTime(OFFLINE_AFTER_MS)
+    expect(socket.offline.value).toBe(true)
+  })
+
   it('is not pushed back by the reconnect loop making new sockets', async () => {
     const socket = await freshSocket()
     socket.connect()
-    // Fail early and let the backoff build several more sockets; the deadline
-    // is measured from the first attempt, not from the latest one.
+    // Fail early and let the backoff build a second socket; the deadline is
+    // measured from the first attempt, not from the latest one.
     FakeSocket.instances[0]!.fail()
     jest.advanceTimersByTime(OFFLINE_AFTER_MS)
     expect(FakeSocket.instances.length).toBeGreaterThan(1)

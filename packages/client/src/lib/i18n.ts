@@ -167,7 +167,7 @@ const messages: Record<string, Record<string, string>> = {
     'net.leaderboardFailed': 'Could not load the leaderboard',
     'net.replaysFailed': 'Could not load recent matches',
     'net.replayFailed': 'Could not load that replay',
-    'net.loginFailed': 'Sign-in failed',
+    'net.loginFailed': 'Could not sign in',
 
     'boot.failed': 'Failed to load the game',
     'boot.failedHint': 'Check your internet connection and try again',

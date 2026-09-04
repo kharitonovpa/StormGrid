@@ -5,13 +5,18 @@ import { initAnalytics } from './lib/analytics'
 import { setLanguage, t } from './lib/i18n'
 import App from './App.vue'
 
-initPlatform()
-  .then((platform) => {
+// The rejection handler is `.then`'s second argument, not a chained `.catch`,
+// so it only ever sees a rejected initPlatform() — a synchronous throw inside
+// mount() (a component setup(), initAnalytics, or Three.js failing to get a
+// WebGL context) must not land here and be told to the player as a network
+// problem it isn't. Do not "simplify" this back to `.then(...).catch(...)`.
+initPlatform().then(
+  (platform) => {
     setLanguage(platform.getLanguage())
     initAnalytics(platform)
     createApp(App).mount('#app')
-  })
-  .catch((err) => {
+  },
+  (err) => {
     console.error('[init] Platform initialization failed:', err)
     // The adapter never came up, so its language is unknowable — fall back to
     // the browser's. i18n has no platform dependency, so it still works here.

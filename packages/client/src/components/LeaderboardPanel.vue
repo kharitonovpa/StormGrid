@@ -109,12 +109,12 @@ onMounted(fetchLeaderboard)
         <button
           class="lb-tab"
           :class="{ active: activeTab === 'players' }"
-          @click="activeTab = 'players'"
+          @click="activeTab = 'players'; moreFailed = false"
         >{{ t('leaderboard.players') }}</button>
         <button
           class="lb-tab"
           :class="{ active: activeTab === 'watchers' }"
-          @click="activeTab = 'watchers'"
+          @click="activeTab = 'watchers'; moreFailed = false"
         >{{ t('leaderboard.watchers') }}</button>
       </div>
 
