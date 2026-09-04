@@ -29,9 +29,10 @@ const MARCH_STEP = 0.25   // cells
 export const MARCH_MAX = 4
 const NO_CEILING = -100   // "nothing in the way", finite so fields interpolate
 
-const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
-  [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
-]
+/** The 8 neighbour offsets as one flat run of (dx, dz) pairs, indexed rather
+ *  than destructured: the contact walk over them is the repaint's hottest loop. */
+const NEIGHBOURS = Int8Array.of(-1, -1, 0, -1, 1, -1, -1, 0, 1, 0, -1, 1, 0, 1, 1, 1)
+const NO_RISERS = new Int8Array(0)
 
 function smoothstep(e0: number, e1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
@@ -57,18 +58,38 @@ function baseHeight(heights: HeightAt, cells: number, gx: number, gz: number, hL
  * several tall neighbours saturate instead of stacking past 1.
  */
 export function contactOcclusion(heights: HeightAt, cells: number, gx: number, gz: number, hLevels: number): number {
+  return contactOcclusionFrom(heights, cells, gx, gz, hLevels, NEIGHBOURS)
+}
+
+/**
+ * contactOcclusion walking only the neighbours in `offsets` — a flat run of
+ * (dx, dz) pairs in NEIGHBOURS order, normally one cell's list from
+ * buildRiseLists. Leaving out a neighbour that does not rise above the cell's
+ * own top by more than DEAD_ZONE is exact: the base height h0 is never below
+ * that top, so for such a neighbour heights(n) − h0 − DEAD_ZONE ≤ 0, the full
+ * walk clamps its rise to 0 and skips it, and the product is untouched. The
+ * arithmetic and the visiting order are the full walk's, so the result is
+ * bit-identical, not merely close.
+ */
+export function contactOcclusionFrom(heights: HeightAt, cells: number, gx: number, gz: number, hLevels: number, offsets: Int8Array): number {
   const cx = cellIndex(gx, cells), cz = cellIndex(gz, cells)
   const h0 = baseHeight(heights, cells, gx, gz, hLevels)
   const fx = gx - cx, fz = gz - cz
   let clear = 1
-  for (const [dx, dz] of NEIGHBOURS) {
+  for (let i = 0, n = offsets.length; i < n; i += 2) {
+    const dx = offsets[i], dz = offsets[i + 1]
     const nx = cx + dx, nz = cz + dz
     if (nx < 0 || nz < 0 || nx >= cells || nz >= cells) continue
     const rise = Math.min(2, Math.max(0, heights(nx, nz) - h0 - DEAD_ZONE))
     if (rise === 0) continue
     const ex = dx < 0 ? fx : dx > 0 ? 1 - fx : 0
     const ez = dz < 0 ? fz : dz > 0 ? 1 - fz : 0
-    const near = Math.max(0, 1 - Math.hypot(ex, ez) / 0.6)
+    // sqrt(ex² + ez²) rather than Math.hypot: the same distance to within a few
+    // ulps of double (hypot scales by the larger term and compensates the sum),
+    // identical once stored in the float32 colours — checked bit-exact on the
+    // I4 bench board — and plain arithmetic instead of a host call in the
+    // repaint's hottest loop.
+    const near = Math.max(0, 1 - Math.sqrt(ex * ex + ez * ez) / 0.6)
     clear *= 1 - (rise / 2) * near
   }
   return 1 - clear
@@ -85,14 +106,40 @@ export function buildRiseMask(heights: HeightAt, cells: number): Uint8Array {
   for (let cz = 0; cz < cells; cz++) {
     for (let cx = 0; cx < cells; cx++) {
       const h = heights(cx, cz)
-      for (const [dx, dz] of NEIGHBOURS) {
-        const nx = cx + dx, nz = cz + dz
+      for (let i = 0; i < NEIGHBOURS.length; i += 2) {
+        const nx = cx + NEIGHBOURS[i], nz = cz + NEIGHBOURS[i + 1]
         if (nx < 0 || nz < 0 || nx >= cells || nz >= cells) continue
         if (heights(nx, nz) - h > DEAD_ZONE) { mask[cz * cells + cx] = 1; break }
       }
     }
   }
   return mask
+}
+
+/**
+ * Per cell, row-major by z: the neighbour offsets — a flat run of (dx, dz)
+ * pairs in NEIGHBOURS order — that rise above the cell by more than DEAD_ZONE,
+ * typically 0–3 of the 8. They are the only neighbours contactOcclusion can
+ * pick up anywhere in the cell (see contactOcclusionFrom), so a repaint walks
+ * just these. A list is empty exactly where buildRiseMask is 0.
+ */
+export function buildRiseLists(heights: HeightAt, cells: number): Int8Array[] {
+  const lists: Int8Array[] = []
+  const found = new Int8Array(NEIGHBOURS.length)
+  for (let cz = 0; cz < cells; cz++) {
+    for (let cx = 0; cx < cells; cx++) {
+      const h = heights(cx, cz)
+      let n = 0
+      for (let i = 0; i < NEIGHBOURS.length; i += 2) {
+        const dx = NEIGHBOURS[i], dz = NEIGHBOURS[i + 1]
+        const nx = cx + dx, nz = cz + dz
+        if (nx < 0 || nz < 0 || nx >= cells || nz >= cells) continue
+        if (heights(nx, nz) - h > DEAD_ZONE) { found[n++] = dx; found[n++] = dz }
+      }
+      lists.push(n === 0 ? NO_RISERS : found.slice(0, n))
+    }
+  }
+  return lists
 }
 
 /**

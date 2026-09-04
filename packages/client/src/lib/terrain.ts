@@ -5,7 +5,7 @@ import {
 } from './constants'
 import { clamp, noise2d, fbm, sstep, mix } from './noise'
 import { LOOK, srgbHexToLinear } from './look'
-import { buildShadowField, buildRiseMask, contactOcclusion, occlusionFromField, type HeightAt, type SunParams } from './terrainShade'
+import { buildShadowField, buildRiseLists, buildRiseMask, contactOcclusionFrom, occlusionFromField, type HeightAt, type SunParams } from './terrainShade'
 
 // --- Terrain grids ---
 export const target = Array.from({ length: CELLS }, () => new Float32Array(CELLS))
@@ -150,13 +150,14 @@ const cellHeight: HeightAt = (cx, cz) => current[cz][cx]
 const cellHeightBelow: HeightAt = (cx, cz) => -current[cz][cx]
 
 // --- Per-repaint shading cache ---
-// The shadow field and rise mask (lib/terrainShade.ts) depend only on `current`,
-// which the animation changes once per frame while paintColors runs three
-// times (top, bottom, skirt). They are keyed on a snapshot of the heights
-// rather than on terrainVersion, which does not advance when `current` is
-// written directly (as the tests do). The top face and the skirt share one
-// pair; the underside has its own, from the negated heights.
-interface ShadeTerms { field: Float32Array; rise: Uint8Array }
+// The shadow field, the rise mask and the per-cell lists of rising neighbours
+// (lib/terrainShade.ts) depend only on `current`, which the animation changes
+// once per frame while paintColors runs three times (top, bottom, skirt). They
+// are keyed on a snapshot of the heights rather than on terrainVersion, which
+// does not advance when `current` is written directly (as the tests do). The
+// top face and the skirt share one set; the underside has its own, from the
+// negated heights.
+interface ShadeTerms { field: Float32Array; rise: Uint8Array; risers: Int8Array[] }
 const shadeSnapshot = new Float32Array(CELLS * CELLS).fill(NaN)   // NaN ≠ NaN: the first call always builds
 let topShade: ShadeTerms | null = null
 let bottomShade: ShadeTerms | null = null
@@ -173,7 +174,11 @@ function shadeTerms(isBottom: boolean): ShadeTerms {
   const heights = isBottom ? cellHeightBelow : cellHeight
   const built = isBottom ? bottomShade : topShade
   if (built) return built
-  const terms: ShadeTerms = { field: buildShadowField(heights, CELLS, SUN, SHADOW_RES), rise: buildRiseMask(heights, CELLS) }
+  const terms: ShadeTerms = {
+    field: buildShadowField(heights, CELLS, SUN, SHADOW_RES),
+    rise: buildRiseMask(heights, CELLS),
+    risers: buildRiseLists(heights, CELLS),
+  }
   if (isBottom) bottomShade = terms
   else topShade = terms
   return terms
@@ -192,7 +197,7 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
   // The underside shades from its own, negated heights with its own shadow
   // field; the skirt shares the top's.
   const heights = isBottom ? cellHeightBelow : cellHeight
-  const { field: shadowField, rise: riseMask } = shadeTerms(isBottom)
+  const { field: shadowField, rise: riseMask, risers: riseLists } = shadeTerms(isBottom)
   for (let i = 0; i < p.count; i++) {
     const wx = p.getX(i), wy = p.getY(i), wz = p.getZ(i)
     const nv = noise2d(wx * 0.5 + 77, wz * 0.5 + 77) * 0.12
@@ -255,10 +260,13 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     // y = −THICKNESS, so it is lifted back to level 0 before the negation (the
     // palette's `h` above keeps its own, unlifted mirror).
     const hLevels = (isBottom ? -(wy + THICKNESS) : wy) / HEIGHT_SCALE
-    // Only a cell with a taller neighbour can be crowded; elsewhere the term is 0.
+    // Only a cell with a taller neighbour can be crowded; elsewhere the term is
+    // 0, and where it is not, only the neighbours that rise above the cell need
+    // walking (exact — see contactOcclusionFrom).
     const cellX = ckx < 0 ? 0 : ckx >= CELLS ? CELLS - 1 : ckx
     const cellZ = ckz < 0 ? 0 : ckz >= CELLS ? CELLS - 1 : ckz
-    const ao = riseMask[cellZ * CELLS + cellX] ? contactOcclusion(heights, CELLS, gx, gz, hLevels) : 0
+    const cell = cellZ * CELLS + cellX
+    const ao = riseMask[cell] ? contactOcclusionFrom(heights, CELLS, gx, gz, hLevels, riseLists[cell]) : 0
     // The own-cell lookup read straight from the grid (this runs for every vertex):
     // the same base height sampleShadowField would resolve through `heights`.
     const own = current[cellZ][cellX]

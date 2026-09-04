@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test'
 import {
-  contactOcclusion, sunOcclusion, buildShadowField, sampleShadowField, buildRiseMask, DEAD_ZONE, type SunParams,
+  contactOcclusion, contactOcclusionFrom, sunOcclusion, buildShadowField, sampleShadowField, buildRiseMask, buildRiseLists,
+  DEAD_ZONE, type SunParams,
 } from '../terrainShade.js'
 
 // A cells×cells map with raised blocks; heights(cx, cz) reads it like terrain.current[cz][cx].
@@ -106,5 +107,54 @@ describe('buildRiseMask', () => {
         }
       }
     }
+  })
+})
+
+describe('buildRiseLists / contactOcclusionFrom', () => {
+  const mixed = mapWith(6, [[4, 2, 2], [1, 4, 1], [3, 3, -1], [0, 0, 1]])
+
+  it('lists, in walk order, exactly the neighbours that rise above a cell', () => {
+    const lists = buildRiseLists(mapWith(3, [[1, 1, 2]]), 3)
+    expect(lists).toHaveLength(9)
+    expect(Array.from(lists[1 * 3 + 1])).toEqual([])          // the block: nothing rises above it
+    expect(Array.from(lists[1 * 3 + 0])).toEqual([1, 0])      // its west neighbour sees it at dx = +1
+    expect(Array.from(lists[0 * 3 + 0])).toEqual([1, 1])      // the north-west corner sees it diagonally
+    expect(Array.from(lists[2 * 3 + 1])).toEqual([0, -1])
+    expect(Array.from(buildRiseLists(mixed, 6)[3 * 6 + 3])).toHaveLength(16)   // the pit: all 8 neighbours rise
+  })
+
+  it('ignores rises within the dead zone', () => {
+    expect(buildRiseLists(mapWith(2, [[1, 0, DEAD_ZONE / 2]]), 2)[0]).toHaveLength(0)
+    expect(Array.from(buildRiseLists(mapWith(2, [[1, 0, DEAD_ZONE * 2]]), 2)[0])).toEqual([1, 0])
+  })
+
+  it('is empty exactly where buildRiseMask is clear', () => {
+    const lists = buildRiseLists(mixed, 6)
+    expect(Array.from(buildRiseMask(mixed, 6))).toEqual(lists.map(list => (list.length > 0 ? 1 : 0)))
+  })
+
+  it('walking only the risers equals the full 8-neighbour walk, exactly', () => {
+    // Every cell of the mixed map — flat ground, feet, tops, the pit, the map
+    // edge — at points near corners, edges and the centre, with the vertex
+    // below, on and above its cell's top.
+    const lists = buildRiseLists(mixed, 6)
+    const spots = [[0.02, 0.02], [0.5, 0.5], [0.98, 0.98], [0.02, 0.98], [0.98, 0.02], [0.5, 0.05], [0.95, 0.5]]
+    let points = 0, crowded = 0
+    for (let cz = 0; cz < 6; cz++) {
+      for (let cx = 0; cx < 6; cx++) {
+        for (const [fx, fz] of spots) {
+          for (const dh of [-0.24, 0, 0.3]) {
+            const gx = cx + fx, gz = cz + fz, h = mixed(cx, cz) + dh
+            const full = contactOcclusion(mixed, 6, gx, gz, h)
+            expect(contactOcclusionFrom(mixed, 6, gx, gz, h, lists[cz * 6 + cx])).toBe(full)
+            points++
+            if (full > 0) crowded++
+          }
+        }
+      }
+    }
+    expect(points).toBeGreaterThanOrEqual(50)
+    expect(crowded).toBeGreaterThan(20)            // the agreement is not just 0 = 0 …
+    expect(points - crowded).toBeGreaterThan(20)   // … nor only at crowded points
   })
 })
