@@ -1917,8 +1917,11 @@ onMounted(() => {
   controls.dampingFactor = 0.08
   controls.maxPolarAngle = Math.PI * 0.85
 
-  // Light rig (lib/look.ts): a low warm sun against a cool sky fill, both
-  // mirrored for the slab's underside so the two faces are lit the same way.
+  // Light rig (lib/look.ts): a low warm sun, mirrored in y for the slab's
+  // underside so the two faces are lit the same way — a wall facing the sun
+  // takes both suns. The fill is deliberately flat: a scene-global directional
+  // fill cannot serve both faces of a shared slab, so a blue-grey ambient
+  // stands in for the sky.
   const [sunX, sunY, sunZ] = LOOK.sun.direction
   const sun = new THREE.DirectionalLight(LOOK.sun.color, LOOK.sun.intensity)
   sun.position.set(sunX, sunY, sunZ)
@@ -1926,12 +1929,7 @@ onMounted(() => {
   const sunBottom = new THREE.DirectionalLight(LOOK.sun.color, LOOK.sun.intensity)
   sunBottom.position.set(sunX, -sunY, sunZ)
   scene.add(sunBottom)
-  const fill = new THREE.HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity)
-  fill.position.set(0, 1, 0)
-  scene.add(fill)
-  const fillBottom = new THREE.HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity)
-  fillBottom.position.set(0, -1, 0)
-  scene.add(fillBottom)
+  scene.add(new THREE.AmbientLight(LOOK.fill.color, LOOK.fill.intensity))
 
   const players = createPlayerSystem(scene, terrainState)
   playersSystem = players

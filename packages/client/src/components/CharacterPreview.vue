@@ -68,9 +68,9 @@ onMounted(() => {
   camera.position.set(0, 1.2, 3.5)
   camera.lookAt(0, 0.3, 0)
 
-  // Same sun and sky fill as the arena (lib/look.ts), so a card never argues
-  // with the scene behind it; the sun is eased back because the card has no
-  // terrain bounce to soften it.
+  // Same sun and ambient fill as the arena (lib/look.ts), so a card never
+  // argues with the scene behind it; the sun is eased back because the card
+  // has no terrain bounce to soften it.
   const [sunX, sunY, sunZ] = LOOK.sun.direction
   // The arena's sun sits behind the board relative to the default camera; the
   // card's camera looks down −z, so keep the sun on its side (|z|) or the
@@ -78,7 +78,7 @@ onMounted(() => {
   const sun = new THREE.DirectionalLight(LOOK.sun.color, LOOK.sun.intensity * 0.6)
   sun.position.set(sunX * 5, sunY * 5, Math.abs(sunZ) * 5)
   scene.add(sun)
-  scene.add(new THREE.HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity))
+  scene.add(new THREE.AmbientLight(LOOK.fill.color, LOOK.fill.intensity))
 
   loadModel()
 

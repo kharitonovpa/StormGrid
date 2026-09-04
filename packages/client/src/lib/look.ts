@@ -31,11 +31,10 @@ export const LOOK = {
      *  the long shadows fall toward the viewer. */
     direction: [0.6, 0.47, -0.648] as Vec3,
   },
-  hemi: {
-    sky: 0x5f6a9a,      // cool fill on faces that see the sky — a blue-grey, not a painted blue
-    ground: 0x3a2a2c,   // dark warm bounce, so the mirrored light's wrong-side fill stays small
-    intensity: 0.85,
-  },
+  /** Flat ambient fill, blue-grey: the sum the old up/down hemisphere pair
+   *  produced. 0x6e729f is the sRGB encoding of linear(0x5f6a9a) +
+   *  linear(0x3a2a2c) ≈ (0.157, 0.168, 0.348), so pixels stay identical. */
+  fill: { color: 0x6e729f, intensity: 0.85 },
   terrain: {
     grass: 0x4f9048,
     rock: 0xc4b8aa,

@@ -24,7 +24,9 @@ export const DEAD_ZONE = 0.05
 /** Width (levels) of the soft edge that turns a hard shadow line into a penumbra. */
 export const PENUMBRA = 0.15
 const MARCH_STEP = 0.25   // cells
-const MARCH_MAX = 4       // cells — covers a 3-level block at a 28° sun
+/** Cells marched toward the sun: covers a 2-level rise — the engine clamps
+ *  heights to ±1 — at the tuned 28° sun (lib/__tests__/look.test.ts checks). */
+export const MARCH_MAX = 4
 const NO_CEILING = -100   // "nothing in the way", finite so fields interpolate
 
 const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
