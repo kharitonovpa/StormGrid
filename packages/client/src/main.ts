@@ -15,7 +15,13 @@ initPlatform()
     console.error('[init] Platform initialization failed:', err)
     // The adapter never came up, so its language is unknowable — fall back to
     // the browser's. i18n has no platform dependency, so it still works here.
-    setLanguage(navigator.language.slice(0, 2))
+    // Guard this line: it runs before anything is rendered, so a throw here costs
+    // the player the entire error message. Use the same guard as web.ts's getLanguage.
+    setLanguage(
+      typeof navigator !== 'undefined' && navigator.language
+        ? navigator.language.slice(0, 2)
+        : 'en'
+    )
 
     const root = document.getElementById('app')!
     root.innerHTML =
