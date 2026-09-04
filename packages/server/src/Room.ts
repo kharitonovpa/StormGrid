@@ -922,11 +922,17 @@ export class Room {
 
     if (result.state.winner !== null) {
       this.saveReplay(result.state.winner, result.deathCauses)
-      const endMsg: ServerMessage = { type: 'game:end', winner: result.state.winner, deathCauses: result.deathCauses }
+      // Read before the slots are released, so the pair is still nameable —
+      // and told in game:end itself, so the card never draws without its button.
+      const pair = this.humanPair
+      const endMsg: ServerMessage = {
+        type: 'game:end',
+        winner: result.state.winner,
+        deathCauses: result.deathCauses,
+        ...(pair ? { rematchOffered: true } : {}),
+      }
       this.broadcast(endMsg)
       this.broadcastSpectators(endMsg)
-      // Read before the slots are released, so the pair is still nameable.
-      const pair = this.humanPair
       this.releasePlayerSlots()
       if (pair) this.callbacks.onRematchReady?.(this.id, pair[0], pair[1], this.lightningEnabled)
       this.scheduleCleanup()
@@ -947,6 +953,9 @@ export class Room {
       winner,
       frameCount: this.replayFrames.length,
       frames: this.replayFrames,
+      // The lobby's "Recent" reads better as two people than two crops.
+      nameA: this.playerInfoCache.A.displayName || undefined,
+      nameB: this.playerInfoCache.B.displayName || undefined,
     }
 
     this.callbacks.replayStore?.save(replay)

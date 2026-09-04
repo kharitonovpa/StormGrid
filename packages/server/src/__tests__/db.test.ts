@@ -200,6 +200,8 @@ describe('matchStore leaderboard functions', () => {
   let updateWatcherStats: typeof import('../db/matchStore')['updateWatcherStats']
   let getPlayerLeaderboard: typeof import('../db/matchStore')['getPlayerLeaderboard']
   let getWatcherLeaderboard: typeof import('../db/matchStore')['getWatcherLeaderboard']
+  let listReplays: typeof import('../db/matchStore')['listReplays']
+  let setExcludedLeaderboardUsers: typeof import('../db/matchStore')['setExcludedLeaderboardUsers']
 
   const uA = crypto.randomUUID()
   const uB = crypto.randomUUID()
@@ -212,6 +214,8 @@ describe('matchStore leaderboard functions', () => {
     updateWatcherStats = mod.updateWatcherStats
     getPlayerLeaderboard = mod.getPlayerLeaderboard
     getWatcherLeaderboard = mod.getWatcherLeaderboard
+    listReplays = mod.listReplays
+    setExcludedLeaderboardUsers = mod.setExcludedLeaderboardUsers
 
     const tdb = testDbData.db
     const now = new Date()
@@ -264,6 +268,39 @@ describe('matchStore leaderboard functions', () => {
     const row = testDbData.db.select().from(schema.matches).where(eq(schema.matches.roomId, roomId)).get()
     expect(row).not.toBeNull()
     expect(row!.vsBot).toBe(true)
+  })
+
+  test('listReplays carries player names when the replay has them', () => {
+    const id = `room-names-${crypto.randomUUID()}`
+    saveMatch(
+      { roomId: id, playerAId: null, playerBId: null, characterA: 'wheat', characterB: 'rice', winner: 'A', rounds: 1, durationMs: 1000, vsBot: false },
+      { id, charA: 'wheat', charB: 'rice', winner: 'A', frameCount: 0, frames: [], nameA: 'Bilibin', nameB: 'Lavrushka' } as unknown as ReplayData,
+    )
+    const row = listReplays(50).find((r) => r.id === id)!
+    expect(row.nameA).toBe('Bilibin')
+    expect(row.nameB).toBe('Lavrushka')
+  })
+
+  test('listReplays leaves names undefined for rows saved without them', () => {
+    const id = `room-nonames-${crypto.randomUUID()}`
+    saveMatch(
+      { roomId: id, playerAId: null, playerBId: null, characterA: 'wheat', characterB: 'rice', winner: 'B', rounds: 1, durationMs: 1000, vsBot: true },
+      { id, charA: 'wheat', charB: 'rice', winner: 'B', frameCount: 0, frames: [] } as unknown as ReplayData,
+    )
+    const row = listReplays(50).find((r) => r.id === id)!
+    expect(row.nameA).toBeUndefined()
+    expect(row.nameB).toBeUndefined()
+  })
+
+  test('excluded users are hidden from the board and its total', () => {
+    const before = getPlayerLeaderboard()
+    expect(before.items.some((r) => r.userId === uA)).toBe(true)
+    setExcludedLeaderboardUsers([uA])
+    const after = getPlayerLeaderboard()
+    expect(after.items.some((r) => r.userId === uA)).toBe(false)
+    expect(after.total).toBe(before.total - 1)
+    setExcludedLeaderboardUsers([])
+    expect(getPlayerLeaderboard().total).toBe(before.total)
   })
 
   test('updatePlayerStats — skips null userIds', () => {

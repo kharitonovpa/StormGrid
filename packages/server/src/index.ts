@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { CHARACTERS } from '@wheee/shared'
 import { countryToCrop } from './regionCrop.js'
 import { RoomManager } from './RoomManager.js'
+import { countIdleHumans } from './presence.js'
 import { Matchmaking, capsHaveLightning } from './matchmaking.js'
 import { ReplayStore } from './ReplayStore.js'
 import { parseAnalyticsIdentity, parseClientMessage, send } from './protocol.js'
@@ -11,7 +12,7 @@ import { ConnectionLimiter } from './ratelimit.js'
 import { runMigrations } from './db/migrate.js'
 import { authRoutes } from './auth/oauth.js'
 import { verifyJwt, parseCookieToken, extractToken } from './auth/jwt.js'
-import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard } from './db/matchStore.js'
+import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard, setExcludedLeaderboardUsers } from './db/matchStore.js'
 import { insertEvents, getDailySummary, getEventCounts, getPlatformSummary, getPropsAudit, setExcludedDevices } from './db/eventStore.js'
 import { replyForUpdate, type TgUpdate } from './tgBot.js'
 import { createQueueAlert } from './queueAlert.js'
@@ -58,6 +59,8 @@ const gracePeriodMs = _rawGrace !== undefined && Number.isFinite(_rawGrace) && _
 const replayStore = new ReplayStore()
 // Our own browsers, kept out of every aggregate — see setExcludedDevices.
 setExcludedDevices((process.env.STATS_EXCLUDE_DEVICES ?? '').split(','))
+// Same idea for the public boards — the owner's own accounts sit them out.
+setExcludedLeaderboardUsers((process.env.LEADERBOARD_EXCLUDE_USERS ?? '').split(','))
 
 const roomManager = new RoomManager({
   gracePeriodMs,
@@ -190,15 +193,8 @@ const queueAlert = createQueueAlert({
 })
 
 const matchmaking = new Matchmaking(roomManager, {
-  // Idle = connected and in the lobby (no room). Watchers, architects and
-  // playing players all carry a roomId and don't count as potential opponents.
-  countIdleHumans(exclude) {
-    let n = 0
-    for (const ws of allClients) {
-      if (ws !== exclude && ws.readyState === 1 && ws.data.roomId === null) n++
-    }
-    return n
-  },
+  // Idle = connected, in the lobby (no room), and recently active — see presence.ts.
+  countIdleHumans(exclude) { return countIdleHumans(allClients, exclude, Date.now()) },
   onLoneWaiter: queueAlert,
 })
 
@@ -497,7 +493,7 @@ const server = Bun.serve<WsData>({
       // player who has already gone. Null for an old client that omits it.
       const analytics = parseAnalyticsIdentity(url.searchParams)
       const ok = server.upgrade(req, {
-        data: { sessionId, userId, userName, countryCode, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter(), analytics },
+        data: { sessionId, userId, userName, countryCode, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter(), analytics, lastActiveAt: Date.now() },
       })
       if (ok) return undefined
       return new Response('WebSocket upgrade failed', { status: 400 })
@@ -549,6 +545,8 @@ const server = Bun.serve<WsData>({
         // a 15/sec refill it never competes with real traffic, and treating it as
         // special would hand anyone an unmetered way to make the server work.
         case 'ping': {
+          // Absent flag = old client: keep counting it as a live human.
+          if (msg.active !== false) ws.data.lastActiveAt = Date.now()
           send(ws, { type: 'pong' })
           break
         }

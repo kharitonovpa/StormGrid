@@ -44,7 +44,8 @@ export type ArchitectPlaceBonusMsg = { type: 'architect:place_bonus'; x: number;
 export type ReconnectMsg = { type: 'reconnect'; token: string }
 
 /** Keepalive. Sent every few seconds so an idle socket is never mistaken for a dead one. */
-export type PingMsg = { type: 'ping' }
+/** `active` — the tab is visible and was touched within the last minute. Absent on old clients. */
+export type PingMsg = { type: 'ping'; active?: boolean }
 
 /**
  * A rematch against the same opponent. Symmetric on purpose: the first
@@ -95,7 +96,8 @@ export type TickStartMsg = { type: 'tick:start'; tick: number; deadline: number 
 /** `bonus` is set on the tick where a crate was picked up — it seeds the badge. */
 export type TickResolveMsg = { type: 'tick:resolve'; state: GameState; bonus?: { player: PlayerId; type: BonusType } }
 export type WeatherResultMsg = { type: 'weather:result'; result: WeatherResult }
-export type GameEndMsg = { type: 'game:end'; winner: PlayerId | 'draw'; deathCauses?: Partial<Record<PlayerId, DeathCause>> }
+/** `rematchOffered` — a PvP ending with both humans still here; a `rematch:available` follows for old clients. */
+export type GameEndMsg = { type: 'game:end'; winner: PlayerId | 'draw'; deathCauses?: Partial<Record<PlayerId, DeathCause>>; rematchOffered?: boolean }
 export type ErrorMsg = { type: 'error'; message: string }
 
 export type WatchAssignedMsg = { type: 'watch:assigned'; roomId: string; state: GameState; watcherState: WatcherState; playerInfo?: Record<PlayerId, PlayerInfo> }
@@ -140,6 +142,9 @@ export type ReplaySummary = {
   charB: CharacterType
   winner: PlayerId | 'draw' | null
   frameCount: number
+  /** Display names as shown on the nameplates; absent on replays saved before they were stored. */
+  nameA?: string
+  nameB?: string
 }
 
 export type ReplayData = ReplaySummary & { frames: ReplayFrame[] }

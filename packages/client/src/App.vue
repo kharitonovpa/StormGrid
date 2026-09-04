@@ -22,6 +22,9 @@ import { createInsectSystem } from './lib/insects'
 import { createGlassSystem, GLASS_ORDER } from './lib/glass'
 import { createBonusSystem } from './lib/bonus'
 import { streak, canRescue, seedStreak, winStreak, breakStreak, restoreStreak } from './lib/streak'
+import { presence, installPresence } from './lib/presence'
+import type { MatchStats } from './lib/matchSummary'
+import { restDirection, isPortrait, LOBBY_PORTRAIT_OFFSET } from './lib/cameraRest'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
@@ -29,7 +32,7 @@ import { Howler } from 'howler'
 import { createAudioSystem, type AudioSystem } from './lib/audio'
 import { createReplayPlayer, fetchReplayData, type ReplayPlayer } from './lib/replayPlayer'
 import { useGameSocket } from './composables/useGameSocket'
-import { useGameState } from './composables/useGameState'
+import { useGameState, type ClientPhase } from './composables/useGameState'
 import { useAuth } from './composables/useAuth'
 import { usePlatform } from './lib/platform'
 import { storageGet, storageSet } from './lib/storage'
@@ -135,6 +138,10 @@ watch(() => game.phase.value, (phase) => {
   if (restoringSession.value && phase === 'lobby') return
   setDiscordPresence(presenceBucketForPhase(phase))
 }, { immediate: true })
+
+watch(() => game.phase.value, (p) => {
+  if (sceneCamera) applyLobbyViewOffset(sceneCamera, isLobbyPhase(p))
+})
 
 const winnerPopup = ref<{ player: 'A' | 'B'; points: number } | null>(null)
 const contextLost = ref(false)
@@ -353,6 +360,8 @@ unsubMessage1 = socket.onMessage((msg) => {
     clearBootRestoreTimer()
     bootRestoreGaveUp.value = false
     lastRoomId = msg.roomId
+    matchStartedAt = Date.now()
+    matchStats.value = null
     socket.setReconnectToken(msg.reconnectToken)
     platform.gameplayStart()
     audio.enterMatch(game.selectedCharacter.value)
@@ -397,6 +406,12 @@ unsubMessage1 = socket.onMessage((msg) => {
     }
     if (game.isPractice.value) storageSet(TUTORIAL_STORAGE_KEY, '1')
     settleStreak(msg)
+    if ((msg as { rematchOffered?: boolean }).rematchOffered) rematchState.value = 'available'
+    matchStats.value = {
+      round: game.gameState.value?.round ?? 1,
+      durationMs: matchStartedAt ? Date.now() - matchStartedAt : 0,
+      streak: streak.value,
+    }
     if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
       return
@@ -634,6 +649,9 @@ function doPlayAgain(instant = false) {
   // be sent away by hand or it hangs over the board while the player waits.
   bonusSystem?.clear()
   lastCrateCell = null
+  // Same for the storm itself: the game-over card kept it blowing as a backdrop,
+  // the queue should not.
+  stopStormVisuals()
   const lastCharacter = game.selectedCharacter.value ?? 'wheat'
   game.reset()
   game.selectedCharacter.value = lastCharacter
@@ -1017,11 +1035,17 @@ for (const x of [-HALF, HALF]) {
 }
 
 function fitCameraToBoard(cam: THREE.PerspectiveCamera) {
-  if (cam.aspect >= FIT_ASPECT) return
-  const dir = cam.position.clone()
-  if (dir.lengthSq() === 0) return
-  let dist = dir.length()
-  dir.divideScalar(dist)
+  // The bearing is fixed per screen shape (see cameraRest.ts); only the
+  // distance is fitted. A flipped camera keeps its side.
+  const rest = restDirection(cam.aspect)
+  const dir = new THREE.Vector3(rest.x, rest.y, rest.z)
+  if (cam.position.y < 0) dir.y = -dir.y
+  let dist = cam.position.length() || Math.hypot(30, 25, 30)
+  if (cam.aspect >= FIT_ASPECT && !isPortrait(cam.aspect)) {
+    cam.position.copy(dir).multiplyScalar(dist)
+    cam.lookAt(0, 0, 0)
+    return
+  }
 
   const v = new THREE.Vector3()
   // A corner's screen position is not linear in the distance, so close in on it.
@@ -1042,6 +1066,27 @@ function fitCameraToBoard(cam: THREE.PerspectiveCamera) {
 
   cam.position.copy(dir).multiplyScalar(dist)
   cam.lookAt(0, 0, 0)
+}
+
+/**
+ * On a phone held upright the lobby panel covers the lower two thirds of the
+ * screen, so the demo board would sit behind it. Sliding the render up puts
+ * the board in the empty band under the title; the offset only touches the
+ * projection, so fitting and the flip animation are unaffected.
+ */
+function isLobbyPhase(p: ClientPhase) {
+  return p === 'lobby' || p === 'queue' || p === 'friend_wait'
+}
+
+function applyLobbyViewOffset(cam: THREE.PerspectiveCamera, inLobby: boolean) {
+  if (!renderer) return
+  // The renderer's own size, not the canvas's: at first call the canvas is
+  // not in the DOM yet and measures 0×0.
+  const size = renderer.getSize(new THREE.Vector2())
+  const w = size.x, h = size.y
+  if (w === 0 || h === 0) return
+  if (inLobby && isPortrait(w / h)) cam.setViewOffset(w, h, 0, LOBBY_PORTRAIT_OFFSET * h, w, h)
+  else cam.clearViewOffset()
 }
 
 let cameraAnimTarget: THREE.Vector3 | null = null
@@ -1278,6 +1323,9 @@ let sceneCleanup: (() => void) | null = null
 const replayMode = ref(false)
 const replayPlayer = shallowRef<ReplayPlayer | null>(null)
 let lastRoomId: string | null = null
+/** When game:start landed — the card shows how long the match ran. */
+let matchStartedAt = 0
+const matchStats = ref<MatchStats | null>(null)
 let replayGeneration = 0
 /** The last replay the player asked for, so the notice's retry has a target. */
 let lastReplayId: string | null = null
@@ -1305,8 +1353,8 @@ function selectOption(action: MenuAction) {
 
 const RING_R = 64
 const BTN_HALF = 30
-const RING_R_M = 58
-const BTN_HALF_M = 28
+const RING_R_M = 46
+const BTN_HALF_M = 24
 
 function isMobileLayout() { return window.innerWidth <= 640 }
 
@@ -1356,16 +1404,10 @@ function applyGameState(state: GameState) {
   }
 }
 
-function resetVisuals() {
-  // Invalidates any in-flight weather:result chain: a watcher:redirect,
-  // reconnect, fresh round:start, or exit that lands here mid-storm must not
-  // let that stale chain's wind/rain visuals or old position data through.
-  liveStormGeneration++
-  clearTimeout(cratePopupTimer)
-  cratePopup.value = null
+/** The storm is over for this screen: wind, rain, the dome and its sound bed go. */
+function stopStormVisuals() {
   windSystem?.setVisible(false)
   rainSystem?.setVisible(false)
-  glassSystem?.close()
   // The sky over this round is done rumbling, whatever the last forecast promised.
   audio.setStormAmbience(false)
   audio.stopCrackle()
@@ -1374,6 +1416,17 @@ function resetVisuals() {
   stormSystem?.discharge('fast')
   audio.setStormBed(0)
   stormSystem?.setTremor(false)
+}
+
+function resetVisuals() {
+  // Invalidates any in-flight weather:result chain: a watcher:redirect,
+  // reconnect, fresh round:start, or exit that lands here mid-storm must not
+  // let that stale chain's wind/rain visuals or old position data through.
+  liveStormGeneration++
+  clearTimeout(cratePopupTimer)
+  cratePopup.value = null
+  stopStormVisuals()
+  glassSystem?.close()
   waterSystem?.clear()
   pendingWaterVolume = null
   // Never leave the storm waiting on water that will not come.
@@ -1825,7 +1878,10 @@ function startAnimating() {
   animating = true
 }
 
+let uninstallPresence: (() => void) | null = null
+
 onMounted(() => {
+  uninstallPresence = installPresence(presence, document, window)
   const el = container.value!
   const w = el.clientWidth
   const h = el.clientHeight
@@ -1843,6 +1899,7 @@ onMounted(() => {
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.setSize(w, h)
+  applyLobbyViewOffset(camera, isLobbyPhase(game.phase.value))
   el.appendChild(renderer.domElement)
 
   controls = new OrbitControls(camera, renderer.domElement)
@@ -2348,6 +2405,7 @@ onMounted(() => {
     camera.aspect = rw / rh
     camera.updateProjectionMatrix()
     renderer.setSize(rw, rh)
+    applyLobbyViewOffset(camera, isLobbyPhase(game.phase.value))
     // Turning a phone sideways changes what fits, so the framing is redone.
     if (!introActive.value && !demoOrbitActive) fitCameraToBoard(camera)
     if (controls instanceof TrackballControls) controls.handleResize()
@@ -2396,6 +2454,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  uninstallPresence?.()
+  uninstallPresence = null
   cancelAnimationFrame(animId)
   clearTimeout(winnerPopupTimer)
   clearTimeout(celebrateTimer)
@@ -2595,6 +2655,7 @@ onUnmounted(() => {
     :rescue-busy="rescueBusy"
     :rewarded-busy="rewardedBusy"
     :rematch-state="rematchState"
+    :stats="matchStats"
     @rematch="onRematch"
     @rematch-cancel="onRematchCancel"
     @play-again="onPlayAgain"
@@ -3238,7 +3299,7 @@ onUnmounted(() => {
 /* ── Mobile ── */
 
 @media (max-width: 640px) {
-  .radial-btn { width: 56px; height: 56px; }
+  .radial-btn { width: 48px; height: 48px; }
   .radial-label { font-size: 10px; }
   .reconnect-card { padding: 24px 32px; }
   .reconnect-text { font-size: 12px; }

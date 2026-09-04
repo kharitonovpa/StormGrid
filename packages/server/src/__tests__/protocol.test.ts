@@ -174,3 +174,18 @@ describe('parseAnalyticsIdentity', () => {
     expect(id).toBeNull()
   })
 })
+
+describe('parseClientMessage — ping presence flag', () => {
+  it('accepts a bare ping (old client)', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'ping' }))).toEqual({ type: 'ping' })
+  })
+
+  it('accepts a boolean active flag', () => {
+    const msg = parseClientMessage(JSON.stringify({ type: 'ping', active: false }))
+    expect(msg).toEqual({ type: 'ping', active: false })
+  })
+
+  it('rejects a non-boolean active flag', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'ping', active: 'yes' }))).toBeNull()
+  })
+})

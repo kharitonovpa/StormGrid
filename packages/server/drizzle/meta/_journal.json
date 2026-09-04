@@ -64,6 +64,13 @@
       "when": 1787210913177,
       "tag": "0008_add_device_streaks",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787210913178,
+      "tag": "0009_add_replay_names",
+      "breakpoints": true
     }
   ]
 }
