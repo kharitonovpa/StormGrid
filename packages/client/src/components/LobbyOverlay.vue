@@ -8,6 +8,7 @@ import { useAuth } from '../composables/useAuth'
 import { usePlatform } from '../lib/platform'
 import CharacterPreview from './CharacterPreview.vue'
 import LeaderboardPanel from './LeaderboardPanel.vue'
+import RetryNotice from './RetryNotice.vue'
 import UserAvatar from './UserAvatar.vue'
 import { t, TAGLINES } from '../lib/i18n'
 
@@ -35,6 +36,8 @@ const props = defineProps<{
   hasIncomingInvite: boolean
   /** The followed link was dead; say so once, above the Play button. */
   inviteFailed: boolean
+  /** The replay the player just clicked could not be fetched. */
+  replayFailed: boolean
 }>()
 
 /** The architect role is off the lobby until it is worth handing to a newcomer. */
@@ -46,6 +49,7 @@ const emit = defineEmits<{
   watch: []
   architect: []
   watchReplay: [roomId: string]
+  retryReplay: []
   cancelSearch: []
   invite: [character: CharacterType]
   shareInvite: []
@@ -83,6 +87,20 @@ const characters = computed(() => [
 
 const selected = ref<CharacterType>('wheat')
 const replays = ref<ReplaySummary[]>([])
+const replaysFailed = ref(false)
+const replaysRetrying = ref(false)
+
+async function loadReplays() {
+  const list = await fetchReplayList()
+  replaysFailed.value = list === null
+  replays.value = list ? list.slice(0, 5) : []
+}
+
+async function retryReplays() {
+  replaysRetrying.value = true
+  await loadReplays()
+  replaysRetrying.value = false
+}
 
 function selectChar(id: CharacterType) {
   if (props.characterLocked) return
@@ -152,7 +170,7 @@ onMounted(async () => {
   selected.value = props.committedCharacter
   document.addEventListener('click', onClickOutside, true)
   fetchMe()
-  replays.value = (await fetchReplayList()).slice(0, 5)
+  loadReplays()
 })
 
 onUnmounted(() => {
@@ -321,8 +339,14 @@ onUnmounted(() => {
     </div>
 
     <!-- Recent Matches — top-right corner -->
-    <div v-if="replays.length > 0" class="recent-corner">
+    <div v-if="replays.length > 0 || replaysFailed || replayFailed" class="recent-corner">
       <span class="recent-label">{{ t('lobby.recent') }}</span>
+      <RetryNotice
+        v-if="replaysFailed || replayFailed"
+        :message="replaysFailed ? t('net.replaysFailed') : t('net.replayFailed')"
+        :busy="replaysRetrying"
+        @retry="replaysFailed ? retryReplays() : emit('retryReplay')"
+      />
       <button
         v-for="r in replays"
         :key="r.id"

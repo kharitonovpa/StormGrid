@@ -2,16 +2,30 @@ import { ref, computed } from 'vue'
 import type { ReplayFrame, ReplayData, ReplaySummary } from '@wheee/shared'
 import { API_BASE } from './config'
 
-export async function fetchReplayList(): Promise<ReplaySummary[]> {
-  const res = await fetch(`${API_BASE}/api/replays`, { credentials: 'include' })
-  if (!res.ok) return []
-  return res.json()
+/**
+ * `null` and `[]` mean different things and the lobby renders them differently:
+ * `null` is "we could not reach the server, offer a retry", `[]` is "we asked
+ * and there is nothing to show". A thrown fetch used to become an unhandled
+ * rejection in the caller's `onMounted`, which the player saw as silence.
+ */
+export async function fetchReplayList(): Promise<ReplaySummary[] | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/replays`, { credentials: 'include' })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
 }
 
 export async function fetchReplayData(id: string): Promise<ReplayData | null> {
-  const res = await fetch(`${API_BASE}/api/replay/${id}`, { credentials: 'include' })
-  if (!res.ok) return null
-  return res.json()
+  try {
+    const res = await fetch(`${API_BASE}/api/replay/${id}`, { credentials: 'include' })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
 }
 
 export type ReplayPlayer = ReturnType<typeof createReplayPlayer>

@@ -779,6 +779,10 @@ function onRetryConnection() {
   socket.retryConnection()
 }
 
+function onRetryReplay() {
+  if (lastReplayId) startReplay(lastReplayId)
+}
+
 /** Abandon the dead match rather than stare at a frozen board. */
 function onGiveUpToLobby() {
   socket.retryConnection()
@@ -806,9 +810,17 @@ function checkTickStall() {
 
 async function startReplay(roomId: string) {
   track('replay_watch')
+  lastReplayId = roomId
+  replayLoadFailed.value = false
   const gen = ++replayGeneration
   const data = await fetchReplayData(roomId)
-  if (!data || data.frames.length === 0 || gen !== replayGeneration) return
+  // Generation first: a replay the player has already navigated away from must
+  // not raise a notice for a screen they are no longer looking at.
+  if (gen !== replayGeneration) return
+  if (!data || data.frames.length === 0) {
+    replayLoadFailed.value = true
+    return
+  }
 
   game.reset()
   stopLobbyDemo()
@@ -1210,6 +1222,9 @@ const replayMode = ref(false)
 const replayPlayer = shallowRef<ReplayPlayer | null>(null)
 let lastRoomId: string | null = null
 let replayGeneration = 0
+/** The last replay the player asked for, so the notice's retry has a target. */
+let lastReplayId: string | null = null
+const replayLoadFailed = ref(false)
 /** Bumped on every replay frame and on exit, so an abandoned storm cannot finish late. */
 let replayStormGeneration = 0
 /**
@@ -2411,11 +2426,13 @@ onUnmounted(() => {
     :is-instance-wait="isInstanceWait"
     :has-incoming-invite="!!incomingInvite"
     :invite-failed="game.inviteFailed.value"
+    :replay-failed="replayLoadFailed"
     @play="onPlay"
     @how-to-play="onHowToPlay"
     @watch="onWatch"
     @architect="onArchitect"
     @watch-replay="startReplay"
+    @retry-replay="onRetryReplay"
     @cancel-search="onCancelSearch"
     @invite="onInvite"
     @share-invite="onShareInvite"
