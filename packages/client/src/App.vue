@@ -583,9 +583,6 @@ function doPlayAgain(instant = false) {
   if (rematchState.value !== 'none') { socket.cancelRematch(); rematchState.value = 'none' }
   track('play_again', { instant })
   pendingGameEnd = null
-  // Same staleness risk as onBackToLobby: this screen's own notice must not
-  // carry over to the next match's game-over screen.
-  replayLoadFailed.value = false
   socket.setReconnectToken(null)
   // Straight into the queue without a full visual reset, so the crystal has to
   // be sent away by hand or it hangs over the board while the player waits.
@@ -636,9 +633,6 @@ async function onBackToLobby() {
   bootRestoreGaveUp.value = false
   await platform.showInterstitial().catch(() => {})
   pendingGameEnd = null
-  // A replay's stale failure notice must not resurface on a lobby the player
-  // reaches through an unrelated match — only startReplay's own outcome may set it.
-  replayLoadFailed.value = false
   game.reset()
   terrainState.resetFlat()
   resetVisuals()
@@ -1231,6 +1225,9 @@ let replayGeneration = 0
 /** The last replay the player asked for, so the notice's retry has a target. */
 let lastReplayId: string | null = null
 const replayLoadFailed = ref(false)
+// Any phase change means the player has moved off whichever screen raised the
+// last replay-fetch failure — the notice must not follow them to the next one.
+watch(() => game.phase.value, () => { replayLoadFailed.value = false })
 /** Bumped on every replay frame and on exit, so an abandoned storm cannot finish late. */
 let replayStormGeneration = 0
 /**
