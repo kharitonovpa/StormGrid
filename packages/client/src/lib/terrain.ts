@@ -5,7 +5,7 @@ import {
 } from './constants'
 import { clamp, noise2d, fbm, sstep, mix } from './noise'
 import { LOOK, srgbHexToLinear } from './look'
-import { buildShadowField, contactOcclusion, sampleShadowField, type SunParams } from './terrainShade'
+import { buildShadowField, contactOcclusion, sampleShadowField, type HeightAt, type SunParams } from './terrainShade'
 
 // --- Terrain grids ---
 export const target = Array.from({ length: CELLS }, () => new Float32Array(CELLS))
@@ -157,9 +157,11 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     col = new THREE.Float32BufferAttribute(new Float32Array(p.count * 3), 3)
     geo.setAttribute('color', col)
   }
-  // The underside mirrors the top (same cell heights, negated), so one shadow
-  // field serves both faces and the skirt.
-  const shadowField = buildShadowField(cellHeight, CELLS, SUN, SHADOW_RES)
+  // The underside is the negated world — a top hill is an underside pit — so it
+  // shades from its own, negated heights and gets its own shadow field; the
+  // skirt shares the top's.
+  const heights: HeightAt = isBottom ? (cx, cz) => -current[cz][cx] : cellHeight
+  const shadowField = buildShadowField(heights, CELLS, SUN, SHADOW_RES)
   for (let i = 0; i < p.count; i++) {
     const wx = p.getX(i), wy = p.getY(i), wz = p.getZ(i)
     const nv = noise2d(wx * 0.5 + 77, wz * 0.5 + 77) * 0.12
@@ -218,9 +220,12 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     // darken whatever the palette produced; the shadow also tints cooler,
     // because a shadowed face is lit by the sky rather than the sun.
     const gx = (wx + HALF) / CELL_SIZE, gz = (wz + HALF) / CELL_SIZE
-    const hLevels = h / HEIGHT_SCALE
-    const ao = contactOcclusion(cellHeight, CELLS, gx, gz, hLevels)
-    const shadow = sampleShadowField(shadowField, cellHeight, CELLS, SHADOW_RES, gx, gz, hLevels)
+    // The vertex's level in the shaded world: the flat underside sits at
+    // y = −THICKNESS, so it is lifted back to level 0 before the negation (the
+    // palette's `h` above keeps its own, unlifted mirror).
+    const hLevels = (isBottom ? -(wy + THICKNESS) : wy) / HEIGHT_SCALE
+    const ao = contactOcclusion(heights, CELLS, gx, gz, hLevels)
+    const shadow = sampleShadowField(shadowField, heights, CELLS, SHADOW_RES, gx, gz, hLevels)
     const shade = (1 - ao * AO_STRENGTH) * (1 - shadow * SHADOW_STRENGTH)
     r *= shade * (1 + (SHADOW_TINT[0] - 1) * shadow)
     g *= shade * (1 + (SHADOW_TINT[1] - 1) * shadow)

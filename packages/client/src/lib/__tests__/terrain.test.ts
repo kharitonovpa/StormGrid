@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import * as THREE from 'three'
 import { paintColors, current } from '../terrain.js'
-import { SIZE, SEGMENTS, HALF, CELL_SIZE } from '../constants.js'
+import { SIZE, SEGMENTS, HALF, CELL_SIZE, THICKNESS } from '../constants.js'
 import { LOOK } from '../look.js'
 
 function makeSingleVertexGeo(x: number, y: number, z: number): THREE.BufferGeometry {
@@ -65,6 +65,21 @@ describe('paintColors baked shading', () => {
     const [sr, , sb] = colourOf(shadowed)
     const [lr, , lb] = colourOf(lit)
     expect(sb / sr).toBeGreaterThan(lb / lr)   // bluer relative to red: sky-lit shadow
+  })
+
+  it('shades the underside from its own, negated heights', () => {
+    // An underside ground vertex just west of cell (1, 1): the flat underside sits at y = −THICKNESS.
+    const beside = () => makeSingleVertexGeo(worldAt(0.95), -THICKNESS, worldAt(1.5))
+    const flat = beside()
+    paintColors(flat, true)
+    current[1][1] = 2   // a top hill is an underside pit: nothing rises beside it from below
+    const byPit = beside()
+    paintColors(byPit, true)
+    expect(brightness(byPit)).toBeCloseTo(brightness(flat), 6)
+    current[1][1] = -2  // a top pit is an underside hill: its foot is crowded
+    const byHill = beside()
+    paintColors(byHill, true)
+    expect(brightness(byHill)).toBeLessThan(brightness(flat) * 0.8)
   })
 
   it('repaints a full board-sized plane within budget', () => {
