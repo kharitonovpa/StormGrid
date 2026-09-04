@@ -7,18 +7,20 @@ describe('CROP_THEME', () => {
       const theme = CROP_THEME[crop]
       expect(theme.paletteAccent).toHaveLength(3)
       for (const channel of theme.paletteAccent) {
-        expect(channel).toBeGreaterThanOrEqual(-1)
-        expect(channel).toBeLessThanOrEqual(1)
+        expect(channel).toBeGreaterThanOrEqual(-0.1)
+        expect(channel).toBeLessThanOrEqual(0.1)
       }
-      expect(Number.isInteger(theme.skyTint)).toBe(true)
-      expect(theme.skyTint).toBeGreaterThanOrEqual(0)
-      expect(theme.skyTint).toBeLessThanOrEqual(0xffffff)
+      expect(theme.skyTint).toHaveLength(3)
+      for (const channel of theme.skyTint) {
+        expect(channel).toBeGreaterThanOrEqual(0.85)
+        expect(channel).toBeLessThanOrEqual(1.15)
+      }
       expect(typeof theme.resultAccent).toBe('string')
       expect(theme.resultAccent.length).toBeGreaterThan(0)
     }
   })
 
-  it('keeps wheat at today\'s exact sky color', () => {
-    expect(CROP_THEME.wheat.skyTint).toBe(0x0a0e14)
+  it('leaves the sky untinted for wheat, the default crop', () => {
+    expect(CROP_THEME.wheat.skyTint).toEqual([1, 1, 1])
   })
 })

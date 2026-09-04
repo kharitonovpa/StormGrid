@@ -2019,7 +2019,7 @@ onMounted(() => {
   rainSystem = rain
   const lightning = createLightningSystem(scene, camera)
   lightningSystem = lightning
-  const storm = createStormSystem(scene, new THREE.Color(CROP_THEME[game.selectedCharacter.value].skyTint))
+  const storm = createStormSystem(scene, CROP_THEME[game.selectedCharacter.value].skyTint)
   stormSystem = storm
   const compass = createCompassSystem(scene)
   const preview = createPreviewSystem(scene, terrainState)
@@ -2230,7 +2230,7 @@ onMounted(() => {
   rebuildGrid()
 
   watch(() => game.selectedCharacter.value, (character) => {
-    storm.setBaseColor(new THREE.Color(CROP_THEME[character].skyTint))
+    storm.setTint(CROP_THEME[character].skyTint)
     repaintTerrain()
   })
 

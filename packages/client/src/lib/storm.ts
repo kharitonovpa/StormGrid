@@ -1,13 +1,45 @@
 import * as THREE from 'three'
 import { HALF } from './constants'
 import type { WindDir } from '@wheee/shared'
+import { LOOK, srgbHexToLinear, type Vec3 } from './look'
 
 /* ── Constants ──────────────────────────────────────────── */
 
 const DOME_RADIUS = 220            // verify: must sit inside the camera far plane
-const BASE = new THREE.Color(0x0a0e14)          // today's void, exactly
-const STORM = new THREE.Color(0x1a1230)         // deep slate-violet mass
-const DIM = new THREE.Color(0x070a10)           // the rest of the sky sinks slightly
+// Sky colours come from lib/look.ts; THREE.Color converts the sRGB hex to
+// linear, which is what the shader — and its TypeScript twin skyGradient — use.
+const SKY_ZENITH = new THREE.Color(LOOK.sky.zenith)
+const SKY_MID = new THREE.Color(LOOK.sky.mid)
+const SKY_HORIZON = new THREE.Color(LOOK.sky.horizon)
+const SKY_RIM = new THREE.Color(LOOK.sky.rim)
+const STORM = new THREE.Color(LOOK.sky.storm)   // storm mass: a dark bank against the horizon
+const DIM = new THREE.Color(LOOK.sky.dim)       // the rest of the sky sinks slightly
+
+function smooth01(e0: number, e1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
+  return t * t * (3 - 2 * t)
+}
+
+/**
+ * The calm sky's base colour for a view direction with vertical component y
+ * (−1..1), in linear RGB — the TypeScript twin of the dome shader's gradient,
+ * kept in step so it can be unit-tested. Symmetric in |y| because the slab's
+ * underside is a mirrored world that must see the same sky.
+ */
+export function skyGradient(y: number, sky: typeof LOOK.sky = LOOK.sky): Vec3 {
+  const ay = Math.abs(y)
+  const H = srgbHexToLinear(sky.horizon), M = srgbHexToLinear(sky.mid)
+  const Z = srgbHexToLinear(sky.zenith), R = srgbHexToLinear(sky.rim)
+  const t1 = smooth01(0.08, 0.45, ay), t2 = smooth01(0.45, 1.0, ay)
+  const rim = (1 - smooth01(0.0, 0.06, ay)) * 0.6
+  const out: [number, number, number] = [0, 0, 0]
+  for (let i = 0; i < 3; i++) {
+    const a = H[i] + (M[i] - H[i]) * t1
+    const b = a + (Z[i] - a) * t2
+    out[i] = b + (R[i] - b) * rim
+  }
+  return out
+}
 
 // CONVENTION: WindDir ('N'/'E'/'S'/'W') names the direction the wind TRAVELS
 // (see DIRECTIONS in packages/shared/src/constants.ts and pushPlayer in
@@ -127,7 +159,7 @@ function makeFrontParticles(): FrontParticle[] {
   return arr
 }
 
-export function createStormSystem(scene: THREE.Scene, baseTint: THREE.Color = BASE) {
+export function createStormSystem(scene: THREE.Scene, tint: Vec3 = [1, 1, 1]) {
   /* ── Dome ── */
   const geo = new THREE.SphereGeometry(DOME_RADIUS, 48, 24)
   const mat = new THREE.ShaderMaterial({
@@ -145,7 +177,11 @@ export function createStormSystem(scene: THREE.Scene, baseTint: THREE.Color = BA
       uSpread:    { value: SPREAD_MIN },
       uZenith:    { value: 0 },      // 1 = calm+stormy: menace overhead, horizon clean
       uCalmClean: { value: 0 },      // 1 = calm+dry: no horizon mass, no zenith either — dim only
-      uBase:  { value: baseTint.clone() },
+      uSkyZenith:  { value: SKY_ZENITH },
+      uSkyMid:     { value: SKY_MID },
+      uSkyHorizon: { value: SKY_HORIZON },
+      uSkyRim:     { value: SKY_RIM },
+      uTint:       { value: new THREE.Vector3(tint[0], tint[1], tint[2]) },
       uStorm: { value: STORM },
       uDim:   { value: DIM },
     },
@@ -159,7 +195,7 @@ export function createStormSystem(scene: THREE.Scene, baseTint: THREE.Color = BA
     fragmentShader: /* glsl */ `
       uniform float uAzimuthA, uAzimuthB, uMassA, uMassB;
       uniform float uIntensity, uSpread, uZenith, uCalmClean;
-      uniform vec3 uBase, uStorm, uDim;
+      uniform vec3 uSkyZenith, uSkyMid, uSkyHorizon, uSkyRim, uTint, uStorm, uDim;
       varying vec3 vDir;
       // One horizon sector: strongest at the horizon on bearing az, fading by
       // 45 degrees up, and fading out again just BELOW the horizon so no mass
@@ -184,14 +220,24 @@ export function createStormSystem(scene: THREE.Scene, baseTint: THREE.Color = BA
         // zenith mode: darkness pools overhead instead
         float zenith = smoothstep(0.25, 0.9, vDir.y) * uZenith;
         float mass = clamp(horizon + zenith, 0.0, 1.0) * uIntensity;
-        vec3 sky = mix(uBase, uDim, uIntensity * 0.6);   // the whole world dims a little
+        // Calm sky: a dusk gradient by |y| (the underside is a mirrored world
+        // and sees the same sky), tinted per crop. Keep in step with
+        // skyGradient() in this file.
+        float ay = abs(vDir.y);
+        vec3 base = mix(uSkyHorizon, uSkyMid, smoothstep(0.08, 0.45, ay));
+        base = mix(base, uSkyZenith, smoothstep(0.45, 1.0, ay));
+        base = mix(base, uSkyRim, (1.0 - smoothstep(0.0, 0.06, ay)) * 0.6);
+        base *= uTint;
+        vec3 sky = mix(base, uDim, uIntensity * 0.6);   // the whole world dims a little
         gl_FragColor = vec4(mix(sky, uStorm, mass), 1.0);
         // Colour management: THREE.Color holds linear-sRGB, and three.js appends the
         // output transform only to its own materials — a ShaderMaterial that writes
         // gl_FragColor has to ask for it. Without this line every colour above is
-        // written raw into an sRGB framebuffer and the whole sky lands ~9x too dark:
-        // BASE #0a0e14 renders as #010102 and the storm mass as #030208, which is
-        // both invisible and darker than the scene background it replaces.
+        // written raw into an sRGB framebuffer and the whole sky lands ~9x too dark,
+        // both washed out and darker than the scene background it replaces.
+        //
+        // The renderer tone-maps its own materials; a ShaderMaterial has to ask.
+        #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
     `,
@@ -453,11 +499,12 @@ export function createStormSystem(scene: THREE.Scene, baseTint: THREE.Color = BA
   }
 
   return {
-    getBaseColor(): THREE.Color {
-      return mat.uniforms.uBase.value as THREE.Color
+    getTint(): Vec3 {
+      const v = mat.uniforms.uTint.value as THREE.Vector3
+      return [v.x, v.y, v.z]
     },
-    setBaseColor(color: THREE.Color): void {
-      ;(mat.uniforms.uBase.value as THREE.Color).copy(color)
+    setTint(t: Vec3): void {
+      ;(mat.uniforms.uTint.value as THREE.Vector3).set(t[0], t[1], t[2])
     },
     setForecast(c: WindDir[], broken: boolean, stormy: boolean, baroBroken: boolean) {
       const prevCount = activeCount

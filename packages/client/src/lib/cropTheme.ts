@@ -8,19 +8,18 @@ import type { CharacterType } from '@wheee/shared'
  * functional signal and stay universal (see the design spec's Non-goals).
  */
 export interface CropTheme {
-  /** Small RGB delta blended into the terrain palette (paintColors), each channel roughly -0.1..0.1. */
+  /** Small linear-RGB delta added to the terrain palette (paintColors) — the palette is linear, so keep these around 10% of the grass channels. */
   paletteAccent: readonly [number, number, number]
-  /** Calm-sky base color for the storm system's resting state, 0xRRGGBB. */
-  skyTint: number
+  /** Per-channel multiplier on the calm-sky gradient (lib/look.ts); [1, 1, 1] leaves it untouched. */
+  skyTint: readonly [number, number, number]
   /** CSS color for the result-screen accent border. */
   resultAccent: string
 }
 
 export const CROP_THEME: Record<CharacterType, CropTheme> = {
-  // wheat's skyTint matches today's BASE (packages/client/src/lib/storm.ts)
-  // exactly, so the default crop's sky is unchanged. Its paletteAccent, like
-  // the other two, adds a small warm shift to the terrain on top of that.
-  wheat: { paletteAccent: [0.05, 0.02, -0.03], skyTint: 0x0a0e14, resultAccent: 'rgba(210, 180, 90, 0.55)' },
-  rice: { paletteAccent: [-0.02, 0.01, 0.04], skyTint: 0x0a1018, resultAccent: 'rgba(220, 70, 70, 0.5)' },
-  corn: { paletteAccent: [0.06, 0.04, -0.04], skyTint: 0x120e0a, resultAccent: 'rgba(230, 160, 40, 0.55)' },
+  // wheat leaves the sky at its dusk base and warms the field a touch; rice
+  // cools both, corn warms both — the same whisper in every layer.
+  wheat: { paletteAccent: [0.012, 0.006, -0.006], skyTint: [1, 1, 1], resultAccent: 'rgba(210, 180, 90, 0.55)' },
+  rice: { paletteAccent: [-0.006, 0.003, 0.012], skyTint: [0.94, 0.98, 1.08], resultAccent: 'rgba(220, 70, 70, 0.5)' },
+  corn: { paletteAccent: [0.016, 0.010, -0.010], skyTint: [1.10, 0.98, 0.90], resultAccent: 'rgba(230, 160, 40, 0.55)' },
 }
