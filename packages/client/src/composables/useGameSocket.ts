@@ -20,6 +20,14 @@ const IN_MATCH_MAX_RECONNECT_ATTEMPTS = 100
 const HEARTBEAT_MS = 25_000
 
 /**
+ * How long without an open socket before the UI is allowed to say so out loud.
+ * Long enough that a normal `refreshConnection()` — fired on every auth change
+ * and on a stalled tick — never flickers a "no connection" line at a player
+ * whose connection is fine.
+ */
+const OFFLINE_AFTER_MS = 8_000
+
+/**
  * Declared on every matchmaking-entry message so the server can tell this
  * build apart from an old portal client that cannot render the bolt — a room
  * only enables lightning once every human in it has declared the cap.
@@ -31,6 +39,12 @@ export function useGameSocket() {
   const reconnecting = ref(false)
   /** Every reconnect attempt has been spent — the player needs a way out. */
   const gaveUp = ref(false)
+  /**
+   * No open socket for OFFLINE_AFTER_MS. Purely a reporting flag: it is read by
+   * the lobby and written by nothing in the reconnect path, whose counters and
+   * budgets it must not touch.
+   */
+  const offline = ref(false)
   const reconnectToken = ref<string | null>(loadReconnectToken())
   const ws = shallowRef<WebSocket | null>(null)
   const handlers = new Set<MessageHandler>()
@@ -38,6 +52,25 @@ export function useGameSocket() {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
   let intentionalClose = false
+  let offlineTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * Armed once per outage, not once per attempt: the backoff loop builds a new
+   * socket every few seconds, and re-arming there would push the deadline out
+   * forever and the flag would never latch.
+   */
+  function armOfflineTimer() {
+    if (offlineTimer || offline.value) return
+    offlineTimer = setTimeout(() => {
+      offlineTimer = null
+      offline.value = true
+    }, OFFLINE_AFTER_MS)
+  }
+
+  function clearOfflineTimer() {
+    if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null }
+    offline.value = false
+  }
 
   function connect() {
     if (ws.value && ws.value.readyState <= WebSocket.OPEN) return
@@ -71,11 +104,13 @@ export function useGameSocket() {
   }
 
   function createSocket() {
+    armOfflineTimer()
     const socket = new WebSocket(buildWsUrl())
     ws.value = socket
 
     socket.onopen = () => {
       connected.value = true
+      clearOfflineTimer()
       reconnecting.value = false
       gaveUp.value = false
       reconnectAttempts = 0
@@ -267,6 +302,7 @@ export function useGameSocket() {
     setReconnectToken(null)
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
     stopHeartbeat()
+    clearOfflineTimer()
     ws.value?.close()
     ws.value = null
     connected.value = false
@@ -286,6 +322,7 @@ export function useGameSocket() {
     connected,
     reconnecting,
     gaveUp,
+    offline,
     reconnectToken,
     connect,
     disconnect,
