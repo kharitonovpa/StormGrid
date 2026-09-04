@@ -11,7 +11,7 @@ import LeaderboardPanel from './LeaderboardPanel.vue'
 import RetryNotice from './RetryNotice.vue'
 import UserAvatar from './UserAvatar.vue'
 import { t, TAGLINES } from '../lib/i18n'
-import { recentRowLabels } from '../lib/recentRow'
+import { recentRowSides } from '../lib/recentRow'
 
 const props = defineProps<{
   phase: string
@@ -378,8 +378,10 @@ onUnmounted(() => {
         class="replay-item"
         @click="audio?.play('ui-click'); emit('watchReplay', r.id)"
       >
-        <span class="ri-chars">{{ recentRowLabels(r, charLabel, t).title }}</span>
-        <span class="ri-result">{{ recentRowLabels(r, charLabel, t).result }}</span>
+        <!-- The colour of a name is the result: green won, red lost, yellow drew. -->
+        <span class="ri-side" :class="'ri-' + recentRowSides(r, charLabel)[0].outcome">{{ recentRowSides(r, charLabel)[0].label }}</span>
+        <span class="ri-vs">{{ t('lobby.vs') }}</span>
+        <span class="ri-side" :class="'ri-' + recentRowSides(r, charLabel)[1].outcome">{{ recentRowSides(r, charLabel)[1].label }}</span>
       </button>
     </div>
   </div>
@@ -854,9 +856,9 @@ onUnmounted(() => {
 
 .replay-item {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   padding: 5px 10px;
   border: none;
   border-radius: 6px;
@@ -873,19 +875,23 @@ onUnmounted(() => {
   color: rgba(200, 210, 225, 0.85);
 }
 
-.ri-chars {
+.ri-side {
   font-weight: 600;
-  max-width: 120px;
+  max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ri-result {
-  white-space: nowrap;
+.ri-vs {
   font-size: 10px;
-  color: rgba(139, 180, 255, 0.6);
+  color: rgba(200, 210, 225, 0.35);
 }
+
+/* Same palette as the leaderboard's W/L and the game-over draw title. */
+.ri-win { color: rgba(74, 222, 128, 0.85); }
+.ri-lose { color: rgba(248, 113, 113, 0.7); }
+.ri-draw { color: rgba(255, 220, 100, 0.8); }
 
 /* ── Queue ── */
 

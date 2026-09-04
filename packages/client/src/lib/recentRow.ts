@@ -1,13 +1,20 @@
 import type { ReplaySummary } from '@wheee/shared'
 
-type T = (key: string, ...args: (string | number)[]) => string
+export type SideOutcome = 'win' | 'lose' | 'draw' | 'none'
+export type RecentSide = { label: string; outcome: SideOutcome }
 
-/** One "Recent" row: who played and who won, by name when the replay knows it. */
-export function recentRowLabels(r: ReplaySummary, charLabel: Record<string, string>, t: T): { title: string; result: string } {
-  const a = r.nameA || charLabel[r.charA] || r.charA
-  const b = r.nameB || charLabel[r.charB] || r.charB
-  const title = `${a} ${t('lobby.vs')} ${b}`
-  if (r.winner === 'draw') return { title, result: t('lobby.draw') }
-  const winnerName = r.winner === 'A' ? (r.nameA || 'A') : r.winner === 'B' ? (r.nameB || 'B') : ''
-  return { title, result: t('lobby.won', winnerName) }
+/**
+ * One "Recent" row: the two players, by name when the replay knows them, each
+ * with how it went for them — the colour of the name carries the result.
+ */
+export function recentRowSides(r: ReplaySummary, charLabel: Record<string, string>): [RecentSide, RecentSide] {
+  const outcomeFor = (side: 'A' | 'B'): SideOutcome => {
+    if (r.winner === null || r.winner === undefined) return 'none'
+    if (r.winner === 'draw') return 'draw'
+    return r.winner === side ? 'win' : 'lose'
+  }
+  return [
+    { label: r.nameA || charLabel[r.charA] || r.charA, outcome: outcomeFor('A') },
+    { label: r.nameB || charLabel[r.charB] || r.charB, outcome: outcomeFor('B') },
+  ]
 }
