@@ -464,6 +464,14 @@ const HUSH_MS = 800
  */
 const WIND_ONSET_MS = 400
 
+// The lobby emits this on every card click, not only Play — the arena's
+// crop watcher and the persisted preference (useGameState's
+// watch(selectedCharacter, saveCharacterPreference)) both key off
+// game.selectedCharacter, so the pick has to land there on click.
+function onSelectCharacter(character: CharacterType) {
+  game.selectedCharacter.value = character
+}
+
 function onPlay(character: CharacterType) {
   game.selectedCharacter.value = character
   game.inviteFailed.value = false
@@ -2423,6 +2431,7 @@ onUnmounted(() => {
     :is-instance-wait="isInstanceWait"
     :has-incoming-invite="!!incomingInvite"
     :invite-failed="game.inviteFailed.value"
+    @select="onSelectCharacter"
     @play="onPlay"
     @how-to-play="onHowToPlay"
     @watch="onWatch"
