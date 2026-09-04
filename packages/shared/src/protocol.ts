@@ -172,6 +172,8 @@ export type PlayerLeaderboardEntry = {
   losses: number
   draws: number
   gamesPlayed: number
+  /** Match points; the board is ordered by these. */
+  points: number
 }
 
 export type WatcherLeaderboardEntry = {

@@ -125,7 +125,7 @@ export function getUserMatches(userId: string, limit = 50): MatchSummary[] {
 
 /* ── Stats ── */
 
-function ensureStats(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], userId: string) {
+export function ensureStatsRow(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], userId: string) {
   const existing = tx.select({ userId: schema.userStats.userId })
     .from(schema.userStats)
     .where(eq(schema.userStats.userId, userId))
@@ -134,7 +134,7 @@ function ensureStats(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], us
     tx.insert(schema.userStats).values({
       userId,
       wins: 0, losses: 0, draws: 0,
-      watcherScore: 0, gamesPlayed: 0,
+      watcherScore: 0, gamesPlayed: 0, points: 0,
       updatedAt: new Date(),
     }).run()
   }
@@ -149,7 +149,7 @@ export function updatePlayerStats(
     const now = new Date()
     for (const [uid, side] of [[playerAId, 'A'], [playerBId, 'B']] as const) {
       if (!uid) continue
-      ensureStats(tx, uid)
+      ensureStatsRow(tx, uid)
       const won = winner === side
       const drew = winner === 'draw'
       tx.update(schema.userStats)
@@ -171,7 +171,7 @@ export function updateWatcherStats(entries: WatcherScoreEntry[]): void {
   db.transaction((tx) => {
     const now = new Date()
     for (const { userId, score } of entries) {
-      ensureStats(tx, userId)
+      ensureStatsRow(tx, userId)
       tx.update(schema.userStats)
         .set({
           watcherScore: sql`${schema.userStats.watcherScore} + ${score}`,
@@ -206,11 +206,12 @@ export function getPlayerLeaderboard(limit = 20, offset = 0): Paginated<PlayerLe
     losses: schema.userStats.losses,
     draws: schema.userStats.draws,
     gamesPlayed: schema.userStats.gamesPlayed,
+    points: schema.userStats.points,
   })
     .from(schema.userStats)
     .innerJoin(schema.users, eq(schema.userStats.userId, schema.users.id))
     .where(sql`${schema.userStats.gamesPlayed} > 0 AND ${userAllowed()}`)
-    .orderBy(desc(schema.userStats.wins), desc(schema.userStats.gamesPlayed), asc(schema.userStats.userId))
+    .orderBy(desc(schema.userStats.points), desc(schema.userStats.wins), desc(schema.userStats.gamesPlayed), asc(schema.userStats.userId))
     .limit(limit)
     .offset(offset)
     .all()

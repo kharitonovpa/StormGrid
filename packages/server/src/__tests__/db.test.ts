@@ -202,6 +202,8 @@ describe('matchStore leaderboard functions', () => {
   let getWatcherLeaderboard: typeof import('../db/matchStore')['getWatcherLeaderboard']
   let listReplays: typeof import('../db/matchStore')['listReplays']
   let setExcludedLeaderboardUsers: typeof import('../db/matchStore')['setExcludedLeaderboardUsers']
+  let awardPoints: typeof import('../db/pointsStore')['awardPoints']
+  let getPoints: typeof import('../db/pointsStore')['getPoints']
 
   const uA = crypto.randomUUID()
   const uB = crypto.randomUUID()
@@ -216,6 +218,9 @@ describe('matchStore leaderboard functions', () => {
     getWatcherLeaderboard = mod.getWatcherLeaderboard
     listReplays = mod.listReplays
     setExcludedLeaderboardUsers = mod.setExcludedLeaderboardUsers
+    const pts = await import('../db/pointsStore')
+    awardPoints = pts.awardPoints
+    getPoints = pts.getPoints
 
     const tdb = testDbData.db
     const now = new Date()
@@ -301,6 +306,26 @@ describe('matchStore leaderboard functions', () => {
     expect(after.total).toBe(before.total - 1)
     setExcludedLeaderboardUsers([])
     expect(getPlayerLeaderboard().total).toBe(before.total)
+  })
+
+  test('awardPoints — guest accrues on the device, total read back', () => {
+    expect(awardPoints('dev-1', null, 5)).toBe(5)
+    expect(awardPoints('dev-1', null, 7)).toBe(12)
+    expect(getPoints('dev-1', null)).toBe(12)
+  })
+
+  test('awardPoints — signed in: device and account both grow, the account total is shown', () => {
+    expect(awardPoints('dev-2', uA, 10)).toBe(10)
+    expect(getPoints('dev-2', null)).toBe(10)
+    expect(getPoints(null, uA)).toBe(10)
+    expect(getPoints('dev-2', uA)).toBe(10)
+    expect(getPlayerLeaderboard().items.find((r) => r.userId === uA)!.points).toBe(10)
+  })
+
+  test('leaderboard is ordered by points before wins', () => {
+    awardPoints('dev-3', uB, 25)
+    const rows = getPlayerLeaderboard().items
+    expect(rows[0].userId).toBe(uB)
   })
 
   test('updatePlayerStats — skips null userIds', () => {
