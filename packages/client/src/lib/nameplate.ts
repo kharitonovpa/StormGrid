@@ -153,12 +153,14 @@ function createPlate(scene: THREE.Scene): NameplateHandle {
   texture.magFilter = THREE.LinearFilter
   texture.colorSpace = THREE.SRGBColorSpace
 
+  // Text: opt out of the scene's tone mapping so the plate renders exactly as drawn.
   const mat = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
     depthWrite: false,
     depthTest: true,
     fog: false,
+    toneMapped: false,
   })
 
   const sprite = new THREE.Sprite(mat)

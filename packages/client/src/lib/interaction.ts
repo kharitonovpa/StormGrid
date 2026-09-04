@@ -50,6 +50,7 @@ export function createInteractionSystem(
   hlGeo.setAttribute('position', hlPosAttr)
   hlGeo.setIndex(hlIndices)
 
+  // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const hlMat = new THREE.MeshBasicMaterial({
     color: 0x44bbff,
     transparent: true,
@@ -57,6 +58,7 @@ export function createInteractionSystem(
     side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+    toneMapped: false,
   })
   const hlMesh = new THREE.Mesh(hlGeo, hlMat)
   hlMesh.visible = false

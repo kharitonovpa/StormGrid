@@ -186,9 +186,10 @@ export function createLightningSystem(scene: THREE.Scene, camera: THREE.Camera) 
   const sparkGeo = new THREE.BufferGeometry()
   const sparkPos = new Float32Array(40 * 3)
   sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3))
+  // Signal colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const sparkMat = new THREE.PointsMaterial({
     color: 0xcfe4ff, size: SPARK_SIZE, transparent: true, opacity: 0,
-    blending: THREE.AdditiveBlending, depthWrite: false,
+    blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
   })
   const sparks = new THREE.Points(sparkGeo, sparkMat)
   scene.add(sparks)

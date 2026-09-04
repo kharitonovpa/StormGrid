@@ -1901,6 +1901,11 @@ onMounted(() => {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   // AgX keeps the dusk palette's saturated colours from skewing hue as they
   // brighten; exposure lives in lib/look.ts with the rest of the look.
+  // Policy: tone mapping is for the lit scene. Unlit in-scene signal or text
+  // materials (wind, rain, lightning sparks, nameplates, compass, player
+  // markers, bonus sprites) set `toneMapped: false` so their functional
+  // colours render exactly as authored; the tuned look (terrain grid lines,
+  // water, sky dome, glass, the bonus crystal) stays tone-mapped.
   renderer.toneMapping = THREE.AgXToneMapping
   renderer.toneMappingExposure = LOOK.tone.exposure
   renderer.setSize(w, h)

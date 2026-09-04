@@ -211,7 +211,8 @@ export function createInsectSystem(
 
   const insects: Insect[] = []
   for (let i = 0; i < COUNT; i++) {
-    const mat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    // Signal colour: opt out of the scene's tone mapping so it renders exactly as authored.
+    const mat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthWrite: false, toneMapped: false })
     const sprite = new THREE.Sprite(mat)
     sprite.scale.setScalar(SPRITE_SIZE)
     group.add(sprite)

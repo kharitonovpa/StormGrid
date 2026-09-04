@@ -79,12 +79,14 @@ function createDustGeo() {
 }
 
 export function createWindSystem(scene: THREE.Scene, terrain: TerrainState) {
+  // Signal colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const streamMat = new THREE.LineBasicMaterial({
     vertexColors: true,
     transparent: true,
     opacity: 0.7,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+    toneMapped: false,
   })
 
   const dustMat = new THREE.ShaderMaterial({

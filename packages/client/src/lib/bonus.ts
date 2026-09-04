@@ -178,6 +178,7 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   // Halo at each exit point, so the glow reads from either side of the slab.
   const haloTex = radialTexture('rgba(255,190,205,0.95)', 'rgba(230,50,85,0.5)')
+  // Signal colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const haloMat = new THREE.SpriteMaterial({
     map: haloTex,
     color: RUBY.halo,
@@ -185,6 +186,7 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
     opacity: HALO_OPACITY,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    toneMapped: false,
   })
   const haloTop = new THREE.Sprite(haloMat)
   const haloBottom = new THREE.Sprite(haloMat)
@@ -193,6 +195,7 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
   group.add(haloTop, haloBottom)
 
   const sparkTex = radialTexture('rgba(255,225,232,1)', 'rgba(240,90,125,0.65)')
+  // Signal colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const sparkMat = new THREE.SpriteMaterial({
     map: sparkTex,
     color: RUBY.halo,
@@ -200,6 +203,7 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
     opacity: SPARK_OPACITY,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    toneMapped: false,
   })
   const sparks: { sprite: THREE.Sprite; mat: THREE.SpriteMaterial; phase: number; speed: number; lift: number }[] = []
   for (let i = 0; i < SPARK_COUNT; i++) {
@@ -222,12 +226,14 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
   /** A hairline hoop: it marks the cell without drawing a target on it. */
   function makeHoop(inner: number, outer: number, opacity: number) {
     const geo = new THREE.RingGeometry(CELL_SIZE * inner, CELL_SIZE * outer, 64)
+    // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
     const mat = new THREE.MeshBasicMaterial({
       color: RUBY.hoop,
       transparent: true,
       opacity,
       side: THREE.DoubleSide,
       depthWrite: false,
+      toneMapped: false,
     })
     const mesh = new THREE.Mesh(geo, mat)
     mesh.rotation.x = -Math.PI / 2

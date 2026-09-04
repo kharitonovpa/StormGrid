@@ -29,13 +29,15 @@ interface RainSet {
 }
 
 export function createRainSystem(scene: THREE.Scene, terrain: TerrainState) {
+  // Signal colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const rainMat = new THREE.LineBasicMaterial({
     vertexColors: true, transparent: true, opacity: 0.5,
-    depthWrite: false, blending: THREE.AdditiveBlending,
+    depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
   })
+  // Signal colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const splashMat = new THREE.LineBasicMaterial({
     vertexColors: true, transparent: true, opacity: 0.7,
-    depthWrite: false, blending: THREE.AdditiveBlending,
+    depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
   })
 
   function createRainSet(dir: 1 | -1): RainSet {

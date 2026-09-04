@@ -47,6 +47,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     }
   }
 
+  // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const hlMat = new THREE.MeshBasicMaterial({
     color: 0xffcc66,
     transparent: true,
@@ -54,6 +55,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+    toneMapped: false,
   })
 
   function createCellHighlight(): THREE.Mesh {
@@ -117,6 +119,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   const RING_REST = 0.2
   const RING_HOVER = 0.4
 
+  // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const ringMat = new THREE.MeshBasicMaterial({
     color: 0x66ddff,
     transparent: true,
@@ -124,6 +127,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+    toneMapped: false,
   })
   const ring = new THREE.Mesh(ringGeo, ringMat)
   ring.renderOrder = 996
@@ -186,6 +190,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   arrowGeo.setAttribute('position', arrowPosAttr)
   arrowGeo.setIndex(arrowIdx)
 
+  // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const arrowMat = new THREE.MeshBasicMaterial({
     color: 0xffcc55,
     transparent: true,
@@ -193,6 +198,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+    toneMapped: false,
   })
 
   const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat)

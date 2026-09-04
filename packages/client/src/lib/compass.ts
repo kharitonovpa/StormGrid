@@ -13,18 +13,22 @@ export function createCompassSystem(scene: THREE.Scene) {
   const CENTER_R = 2.0
   const CENTER_INNER = 0.7
 
+  // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const lineMat = new THREE.LineBasicMaterial({
     color: 0x7a8fa3,
     transparent: true,
     opacity: 0.18,
     depthWrite: false,
+    toneMapped: false,
   })
 
+  // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const accentMat = new THREE.LineBasicMaterial({
     color: 0x9ab0c8,
     transparent: true,
     opacity: 0.28,
     depthWrite: false,
+    toneMapped: false,
   })
 
   // --- Compass rose lines (from center outward) ---
@@ -89,12 +93,14 @@ export function createCompassSystem(scene: THREE.Scene) {
   group.add(new THREE.LineSegments(frameGeo, lineMat))
 
   // --- North arrow ---
+  // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const arrowMat = new THREE.MeshBasicMaterial({
     color: 0xd45522,
     transparent: true,
     opacity: 0.55,
     side: THREE.DoubleSide,
     depthWrite: false,
+    toneMapped: false,
   })
 
   const aw = 0.7
@@ -127,11 +133,13 @@ export function createCompassSystem(scene: THREE.Scene) {
     const tex = new THREE.CanvasTexture(canvas)
     tex.needsUpdate = true
 
+    // Text: opt out of the scene's tone mapping so the letter renders exactly as drawn.
     const mat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
       side: THREE.DoubleSide,
       depthWrite: false,
+      toneMapped: false,
     })
 
     const geo = new THREE.PlaneGeometry(5, 5)
