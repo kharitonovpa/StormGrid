@@ -20,6 +20,8 @@ const props = defineProps<{
   /** Crop used for this matchmaking session when `characterLocked`. */
   committedCharacter: CharacterType
   onlineCount: number
+  /** The local player's match points; hidden until there are any. */
+  points: number
   inQueue: number
   /** Matches running right now — with none, there is nothing to watch. */
   liveMatches: number
@@ -354,6 +356,7 @@ onUnmounted(() => {
           <div class="online-dot" />
           <span>{{ t('lobby.online', onlineCount) }}</span>
         </div>
+        <div class="points-badge" v-if="points > 0" :title="t('points.yours')">★ {{ points }}</div>
 
         <!-- Leaderboard -->
         <template v-if="canShowLeaderboard">
@@ -804,6 +807,15 @@ onUnmounted(() => {
 
 /* ── Online badge ── */
 
+.points-badge {
+  color: rgba(255, 215, 0, 0.85);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  margin-top: 6px;
+}
+
 .online-badge {
   display: flex;
   align-items: center;
@@ -1108,6 +1120,7 @@ onUnmounted(() => {
   }
 
   .online-badge { justify-content: center; }
+  .points-badge { text-align: center; }
 
   .recent-corner { display: none; }
 }

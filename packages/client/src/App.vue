@@ -24,6 +24,7 @@ import { createBonusSystem } from './lib/bonus'
 import { streak, canRescue, seedStreak, winStreak, breakStreak, restoreStreak } from './lib/streak'
 import { presence, installPresence } from './lib/presence'
 import type { MatchStats } from './lib/matchSummary'
+import { points } from './lib/points'
 import { restDirection, isPortrait, LOBBY_PORTRAIT_OFFSET } from './lib/cameraRest'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
@@ -351,6 +352,7 @@ unsubMessage1 = socket.onMessage((msg) => {
     liveMatches.value = Number.isFinite(msg.liveMatches) ? msg.liveMatches : 0
     return
   }
+  if (msg.type === 'points:total') points.setTotal(msg.total)
   if (msg.type === 'rematch:available') rematchState.value = 'available'
   if (msg.type === 'rematch:offered') rematchState.value = 'offered'
   if (msg.type === 'rematch:waiting') rematchState.value = 'waiting'
@@ -362,6 +364,7 @@ unsubMessage1 = socket.onMessage((msg) => {
     lastRoomId = msg.roomId
     matchStartedAt = Date.now()
     matchStats.value = null
+    points.clearAward()
     socket.setReconnectToken(msg.reconnectToken)
     platform.gameplayStart()
     audio.enterMatch(game.selectedCharacter.value)
@@ -407,10 +410,13 @@ unsubMessage1 = socket.onMessage((msg) => {
     if (game.isPractice.value) storageSet(TUTORIAL_STORAGE_KEY, '1')
     settleStreak(msg)
     if ((msg as { rematchOffered?: boolean }).rematchOffered) rematchState.value = 'available'
+    const award = (msg as { points?: { earned: number; total: number } }).points
+    if (award) points.award(award)
     matchStats.value = {
       round: game.gameState.value?.round ?? 1,
       durationMs: matchStartedAt ? Date.now() - matchStartedAt : 0,
       streak: streak.value,
+      ...(award ? { earned: award.earned } : {}),
     }
     if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
@@ -1326,6 +1332,8 @@ let lastRoomId: string | null = null
 /** When game:start landed — the card shows how long the match ran. */
 let matchStartedAt = 0
 const matchStats = ref<MatchStats | null>(null)
+/** The lobby's own-points chip; a plain object's inner ref does not unwrap in templates. */
+const myPoints = computed(() => points.total.value)
 let replayGeneration = 0
 /** The last replay the player asked for, so the notice's retry has a target. */
 let lastReplayId: string | null = null
@@ -2567,6 +2575,7 @@ onUnmounted(() => {
     :character-locked="lobbyCharacterLocked"
     :committed-character="lobbyCommittedCharacter"
     :online-count="onlineCount"
+    :points="myPoints"
     :in-queue="inQueue"
     :live-matches="liveMatches"
     :queue-countdown="game.queueCountdown.value"

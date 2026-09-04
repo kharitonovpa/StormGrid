@@ -6,6 +6,8 @@ export type MatchStats = {
   durationMs: number
   /** Badge streak after the result is settled; 0 = no chip. */
   streak: number
+  /** Points this match paid, when the server said. */
+  earned?: number
 }
 
 export function formatDuration(ms: number): string {
