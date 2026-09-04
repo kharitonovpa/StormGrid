@@ -583,6 +583,9 @@ function doPlayAgain(instant = false) {
   if (rematchState.value !== 'none') { socket.cancelRematch(); rematchState.value = 'none' }
   track('play_again', { instant })
   pendingGameEnd = null
+  // Same staleness risk as onBackToLobby: this screen's own notice must not
+  // carry over to the next match's game-over screen.
+  replayLoadFailed.value = false
   socket.setReconnectToken(null)
   // Straight into the queue without a full visual reset, so the crystal has to
   // be sent away by hand or it hangs over the board while the player waits.
@@ -633,6 +636,9 @@ async function onBackToLobby() {
   bootRestoreGaveUp.value = false
   await platform.showInterstitial().catch(() => {})
   pendingGameEnd = null
+  // A replay's stale failure notice must not resurface on a lobby the player
+  // reaches through an unrelated match — only startReplay's own outcome may set it.
+  replayLoadFailed.value = false
   game.reset()
   terrainState.resetFlat()
   resetVisuals()
@@ -2490,6 +2496,7 @@ onUnmounted(() => {
     :winner="game.winner.value"
     :my-player-id="game.myPlayerId.value"
     :room-id="lastRoomId"
+    :replay-failed="replayLoadFailed"
     :death-causes="game.deathCauses.value"
     :wind-spared="game.windSpared.value"
     :rain-spared="game.rainSpared.value"
@@ -2506,6 +2513,7 @@ onUnmounted(() => {
     @rewarded-play-again="onRewardedPlayAgain"
     @rescue-streak="onRescueStreak"
     @watch-replay="startReplay"
+    @retry-replay="onRetryReplay"
     @back-to-lobby="onBackToLobby"
   />
 

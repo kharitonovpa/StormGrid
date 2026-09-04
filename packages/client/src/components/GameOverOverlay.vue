@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, computed, inject } from 'vue'
 import type { DeathCause, PlayerId } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
+import RetryNotice from './RetryNotice.vue'
 import { t } from '../lib/i18n'
 
 function dirLabel(d: string): string {
@@ -13,6 +14,8 @@ const props = defineProps<{
   winner: PlayerId | 'draw' | null
   myPlayerId: PlayerId | null
   roomId: string | null
+  /** The replay the player just clicked could not be fetched. */
+  replayFailed: boolean
   deathCauses?: Partial<Record<PlayerId, DeathCause>> | null
   /** Player the wind released because the other one left the board first. */
   windSpared?: PlayerId | null
@@ -43,6 +46,7 @@ const emit = defineEmits<{
   rewardedPlayAgain: []
   rescueStreak: []
   watchReplay: [roomId: string]
+  retryReplay: []
   backToLobby: []
 }>()
 
@@ -263,6 +267,12 @@ onUnmounted(() => {
           <span>{{ t('gameover.replay') }}</span>
         </button>
       </div>
+
+      <RetryNotice
+        v-if="replayFailed"
+        :message="t('net.replayFailed')"
+        @retry="emit('retryReplay')"
+      />
 
       <button
         type="button"
