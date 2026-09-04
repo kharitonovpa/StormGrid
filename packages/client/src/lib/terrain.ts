@@ -4,6 +4,8 @@ import {
   HEIGHT_SCALE, THICKNESS, NOISE_AMP, NOISE_FREQ, GROW_SPEED,
 } from './constants'
 import { clamp, noise2d, fbm, sstep, mix } from './noise'
+import { LOOK, srgbHexToLinear } from './look'
+import { buildShadowField, contactOcclusion, sampleShadowField, type SunParams } from './terrainShade'
 
 // --- Terrain grids ---
 export const target = Array.from({ length: CELLS }, () => new Float32Array(CELLS))
@@ -127,6 +129,24 @@ export function rebuildMesh(
   }
 }
 
+// --- Palette (lib/look.ts), converted once: vertex colours are linear ---
+const GRASS = srgbHexToLinear(LOOK.terrain.grass)
+const ROCK = srgbHexToLinear(LOOK.terrain.rock)
+const MUD = srgbHexToLinear(LOOK.terrain.mud)
+const SNOW = srgbHexToLinear(LOOK.terrain.snow)
+const { checkerAmp: CHECKER_AMP, aoStrength: AO_STRENGTH, shadowStrength: SHADOW_STRENGTH, shadowTint: SHADOW_TINT } = LOOK.terrain
+
+// The sun in grid space for the baked shadow (lib/terrainShade.ts): the
+// horizontal unit direction plus the climb per cell — tan(elevation) rescaled
+// from world units (CELL_SIZE across, HEIGHT_SCALE up) to cells and levels.
+const SUN: SunParams = (() => {
+  const [x, y, z] = LOOK.sun.direction
+  const horiz = Math.hypot(x, z)
+  return { dirX: x / horiz, dirZ: z / horiz, riseLevelsPerCell: ((y / horiz) * CELL_SIZE) / HEIGHT_SCALE }
+})()
+const SHADOW_RES = 4
+const cellHeight = (cx: number, cz: number) => current[cz][cx]
+
 // --- Vertex coloring ---
 export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?: readonly [number, number, number]) {
   const p = geo.attributes.position as THREE.BufferAttribute
@@ -137,6 +157,9 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     col = new THREE.Float32BufferAttribute(new Float32Array(p.count * 3), 3)
     geo.setAttribute('color', col)
   }
+  // The underside mirrors the top (same cell heights, negated), so one shadow
+  // field serves both faces and the skirt.
+  const shadowField = buildShadowField(cellHeight, CELLS, SUN, SHADOW_RES)
   for (let i = 0; i < p.count; i++) {
     const wx = p.getX(i), wy = p.getY(i), wz = p.getZ(i)
     const nv = noise2d(wx * 0.5 + 77, wz * 0.5 + 77) * 0.12
@@ -152,29 +175,32 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     const patchN = noise2d(wx * 0.2, wz * 0.2)
     const sgb = sstep(0.35, 0.55, patchN) * 0.4
 
-    const gr0 = 0.18 + nv + nv2, gr1 = 0.44 + nv + nv2, gr2 = 0.1 + nv * 0.5
-    const md0 = 0.39 + nv * 0.7, md1 = 0.27 + nv * 0.5, md2 = 0.13 + nv * 0.3
-    const sn0 = 0.88 + nv * 0.3 - sgb * 0.55
-    const sn1 = 0.90 + nv * 0.3 - sgb * 0.35
-    const sn2 = 0.97 + nv * 0.2 - sgb * 0.65
+    // Each material is its token colour modulated by the noise fields —
+    // relative, so one recipe serves a dark mud and a near-white snow alike.
+    const gk = 1 + nv + nv2
+    const gr0 = GRASS[0] * gk, gr1 = GRASS[1] * gk, gr2 = GRASS[2] * (1 + nv * 0.5)
+    const mk = 1 + nv * 0.7
+    const md0 = MUD[0] * mk, md1 = MUD[1] * mk, md2 = MUD[2] * mk
+    const sk = 1 + nv * 0.3 - sgb * 0.5
+    const sn0 = SNOW[0] * sk, sn1 = SNOW[1] * sk, sn2 = SNOW[2] * (sk - sgb * 0.15)
 
     let r = gr0 * grassW + md0 * mudW + sn0 * snowW
     let g = gr1 * grassW + md1 * mudW + sn1 * snowW
     let b = gr2 * grassW + md2 * mudW + sn2 * snowW
 
     const rockW = 1 - sstep(0.3, 0.75, slope)
-    const rk0 = 0.38 + nv * 0.6, rk1 = 0.34 + nv * 0.5, rk2 = 0.30 + nv * 0.5
-    r = mix(r, rk0, rockW)
-    g = mix(g, rk1, rockW)
-    b = mix(b, rk2, rockW)
+    const rk = 1 + nv * 0.6
+    r = mix(r, ROCK[0] * rk, rockW)
+    g = mix(g, ROCK[1] * rk, rockW)
+    b = mix(b, ROCK[2] * rk, rockW)
 
     // Height has to read before the extremes: sun on anything rising, shadow in
     // every hollow, not only mud at -3.5 and snow at +2 (UX review §3).
-    const lift = sstep(0.2, HEIGHT_SCALE * 0.7, h) * 0.13
-    const sink = (1 - sstep(-HEIGHT_SCALE * 0.7, -0.2, h)) * 0.16
-    r += lift - sink
-    g += lift * 1.15 - sink
-    b += lift * 0.6 - sink * 0.7
+    const lift = sstep(0.2, HEIGHT_SCALE * 0.7, h) * 0.30
+    const sink = (1 - sstep(-HEIGHT_SCALE * 0.7, -0.2, h)) * 0.35
+    r *= 1 + lift - sink
+    g *= 1 + lift * 1.15 - sink
+    b *= 1 + lift * 0.6 - sink * 0.7
 
     // Checkerboard: the flat board was a featureless green sheet (UX review §3).
     // Alternate cells get a light/dark grass tint; kept off rock, mud and snow
@@ -182,10 +208,23 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     const ckx = Math.floor((wx + HALF) / CELL_SIZE)
     const ckz = Math.floor((wz + HALF) / CELL_SIZE)
     const checker = ((ckx + ckz) & 1) === 0 ? 1 : -1
-    const checkerAmp = 0.045 * grassW * (1 - rockW)
-    r += checker * checkerAmp * 0.7
-    g += checker * checkerAmp * 1.3
-    b += checker * checkerAmp * 0.4
+    const ck = checker * CHECKER_AMP * grassW * (1 - rockW)
+    r *= 1 + ck * 0.7
+    g *= 1 + ck * 1.3
+    b *= 1 + ck * 0.4
+
+    // Baked shading (lib/terrainShade.ts): contact occlusion at block feet and
+    // the sun's shadow, both from the cell heightmap. Multiplicative, so they
+    // darken whatever the palette produced; the shadow also tints cooler,
+    // because a shadowed face is lit by the sky rather than the sun.
+    const gx = (wx + HALF) / CELL_SIZE, gz = (wz + HALF) / CELL_SIZE
+    const hLevels = h / HEIGHT_SCALE
+    const ao = contactOcclusion(cellHeight, CELLS, gx, gz, hLevels)
+    const shadow = sampleShadowField(shadowField, cellHeight, CELLS, SHADOW_RES, gx, gz, hLevels)
+    const shade = (1 - ao * AO_STRENGTH) * (1 - shadow * SHADOW_STRENGTH)
+    r *= shade * (1 + (SHADOW_TINT[0] - 1) * shadow)
+    g *= shade * (1 + (SHADOW_TINT[1] - 1) * shadow)
+    b *= shade * (1 + (SHADOW_TINT[2] - 1) * shadow)
 
     // A crop's decorative palette accent (see lib/cropTheme.ts), blended in
     // last so it rides on top of height/slope/checkerboard shading rather
