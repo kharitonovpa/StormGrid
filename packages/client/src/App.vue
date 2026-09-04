@@ -22,6 +22,7 @@ import { createGlassSystem, GLASS_ORDER } from './lib/glass'
 import { createBonusSystem } from './lib/bonus'
 import { streak, canRescue, seedStreak, winStreak, breakStreak, restoreStreak } from './lib/streak'
 import { presence, installPresence } from './lib/presence'
+import type { MatchStats } from './lib/matchSummary'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
@@ -316,6 +317,8 @@ unsubMessage1 = socket.onMessage((msg) => {
     clearBootRestoreTimer()
     bootRestoreGaveUp.value = false
     lastRoomId = msg.roomId
+    matchStartedAt = Date.now()
+    matchStats.value = null
     socket.setReconnectToken(msg.reconnectToken)
     platform.gameplayStart()
     audio.enterMatch()
@@ -360,6 +363,12 @@ unsubMessage1 = socket.onMessage((msg) => {
     }
     if (game.isPractice.value) storageSet(TUTORIAL_STORAGE_KEY, '1')
     settleStreak(msg)
+    if ((msg as { rematchOffered?: boolean }).rematchOffered) rematchState.value = 'available'
+    matchStats.value = {
+      round: game.gameState.value?.round ?? 1,
+      durationMs: matchStartedAt ? Date.now() - matchStartedAt : 0,
+      streak: streak.value,
+    }
     if (pendingGameEnd === null && game.phase.value === 'weather' && !weatherAnimDone) {
       pendingGameEnd = msg as { type: 'game:end'; winner: 'A' | 'B' | 'draw' }
       return
@@ -1210,6 +1219,9 @@ let sceneCleanup: (() => void) | null = null
 const replayMode = ref(false)
 const replayPlayer = shallowRef<ReplayPlayer | null>(null)
 let lastRoomId: string | null = null
+/** When game:start landed — the card shows how long the match ran. */
+let matchStartedAt = 0
+const matchStats = ref<MatchStats | null>(null)
 let replayGeneration = 0
 /** Bumped on every replay frame and on exit, so an abandoned storm cannot finish late. */
 let replayStormGeneration = 0
@@ -2489,6 +2501,7 @@ onUnmounted(() => {
     :rescue-busy="rescueBusy"
     :rewarded-busy="rewardedBusy"
     :rematch-state="rematchState"
+    :stats="matchStats"
     @rematch="onRematch"
     @rematch-cancel="onRematchCancel"
     @play-again="onPlayAgain"

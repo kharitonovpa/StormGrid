@@ -4,6 +4,7 @@ import type { DeathCause, PlayerId } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
 import { t } from '../lib/i18n'
+import { formatDuration, streakChip, type MatchStats } from '../lib/matchSummary'
 
 function dirLabel(d: string): string {
   return t(`dir.${d}`)
@@ -34,6 +35,8 @@ const props = defineProps<{
    * finished — see the server's Room.humanPair.
    */
   rematchState?: 'none' | 'available' | 'waiting' | 'offered'
+  /** Rounds, length and badge — the match the card is about. */
+  stats?: MatchStats | null
 }>()
 
 const emit = defineEmits<{
@@ -128,6 +131,15 @@ const subtitle = computed(() => {
   return t('gameover.tryAgain')
 })
 
+const chips = computed(() => {
+  const s = props.stats
+  if (!s) return []
+  const out = [t('gameover.statRound', s.round), t('gameover.statTime', formatDuration(s.durationMs))]
+  const sc = streakChip(s.streak)
+  if (sc) out.push(sc)
+  return out
+})
+
 const resultClass = computed(() => {
   if (isDraw.value) return 'draw'
   if (isSpectator.value) return 'spectator'
@@ -154,7 +166,7 @@ function launchFireworks() {
   const w = window.innerWidth
   const h = window.innerHeight
   const cx = w / 2
-  const cy = h / 2
+  const cy = h * 0.3
 
   for (let i = 0; i < 5; i++) {
     fireworkTimeouts.push(window.setTimeout(() => {
@@ -168,7 +180,7 @@ function launchFireworks() {
 
   fireworkInterval = window.setInterval(() => {
     const sx = Math.random() * w
-    const sy = h * 0.15 + Math.random() * h * 0.5
+    const sy = h * 0.08 + Math.random() * h * 0.4
     const tx = sx + (Math.random() - 0.5) * 80
     const ty = sy - 30 - Math.random() * 50
     celebrate(sx, sy, tx, ty, 0)
@@ -200,6 +212,10 @@ onUnmounted(() => {
 
       <h1 class="result-title">{{ title }}</h1>
       <p class="result-sub">{{ subtitle }}</p>
+
+      <div v-if="chips.length" class="stat-row">
+        <span v-for="c in chips" :key="c" class="stat-chip">{{ c }}</span>
+      </div>
 
       <div class="btn-row">
         <!-- A human opponent is the scarce thing in this game: the queue hands
@@ -281,8 +297,12 @@ onUnmounted(() => {
   inset: 0;
   z-index: 200;
   display: flex;
-  align-items: center;
+  /* Low on the screen, not over it: the board and whoever is still standing
+     on it stay in view above the card. */
+  align-items: flex-end;
   justify-content: center;
+  padding-bottom: calc(8vh + var(--sg-safe-bottom, 0px));
+  box-sizing: border-box;
   pointer-events: none;
   animation: overlayIn 0.5s ease both;
 }
@@ -406,6 +426,28 @@ onUnmounted(() => {
 }
 
 /* ── Button ── */
+
+/* ── Stats ── */
+
+.stat-row {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: -16px 0 24px;
+  animation: fadeUp 0.5s 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.stat-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(200, 210, 225, 0.7);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
 
 .btn-again {
   display: inline-flex;
@@ -587,7 +629,8 @@ onUnmounted(() => {
 /* ── Mobile ── */
 
 @media (max-width: 640px) {
-  .gameover-card { padding: 32px 28px; }
+  .gameover { padding-bottom: calc(6vh + var(--sg-safe-bottom, 0px)); }
+  .gameover-card { padding: 28px 24px; }
   .result-title { font-size: 32px; }
   .result-sub { margin: 0 0 20px; font-size: 12px; }
   .btn-row { flex-direction: column; align-items: center; }

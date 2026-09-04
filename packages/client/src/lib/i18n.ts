@@ -95,6 +95,8 @@ const messages: Record<string, Record<string, string>> = {
     'crate.theyTook': 'Your opponent took the gem',
     'gameover.replay': 'Replay',
     'gameover.backToLobby': 'Back to lobby',
+    'gameover.statRound': 'Round {0}',
+    'gameover.statTime': '{0}',
 
     'dir.N': 'north',
     'dir.S': 'south',
@@ -258,6 +260,8 @@ const messages: Record<string, Record<string, string>> = {
     'crate.theyTook': 'Самоцвет забрал соперник',
     'gameover.replay': 'Повтор',
     'gameover.backToLobby': 'В лобби',
+    'gameover.statRound': 'Раунд {0}',
+    'gameover.statTime': '{0}',
 
     'dir.N': 'северного',
     'dir.S': 'южного',
