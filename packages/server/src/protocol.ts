@@ -131,7 +131,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       case 'watch:leave':
       case 'architect:join':
       case 'architect:leave':
+        return msg
       case 'ping':
+        if ('active' in msg && typeof (msg as { active?: unknown }).active !== 'boolean') return null
         return msg
       case 'action:submit':
         if (!isValidAction(msg.action)) return null
@@ -219,6 +221,8 @@ export type WsData = {
   roomId: string | null
   playerId: PlayerId | null
   role: Exclude<Role, 'guest'> | null
+  /** Last moment this socket reported an active tab (`ping.active`); see presence.ts. */
+  lastActiveAt: number
   limiter: ConnectionLimiter
   /** Null when an old client connects without the params, or they fail validation. */
   analytics: AnalyticsIdentity | null

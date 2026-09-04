@@ -13,7 +13,7 @@ type FakeWs = {
 function makeFakeWs(): FakeWs {
   const messages: ServerMessage[] = []
   return {
-    data: { sessionId: crypto.randomUUID(), userId: null, userName: null, countryCode: null, roomId: null, playerId: null, role: null },
+    data: { sessionId: crypto.randomUUID(), userId: null, userName: null, countryCode: null, roomId: null, playerId: null, role: null, lastActiveAt: 0 },
     readyState: 1,
     send(data: string) { messages.push(JSON.parse(data)) },
     messages,

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { CHARACTERS } from '@wheee/shared'
 import { RoomManager } from './RoomManager.js'
+import { countIdleHumans } from './presence.js'
 import { Matchmaking, capsHaveLightning } from './matchmaking.js'
 import { ReplayStore } from './ReplayStore.js'
 import { parseAnalyticsIdentity, parseClientMessage, send } from './protocol.js'
@@ -189,15 +190,8 @@ const queueAlert = createQueueAlert({
 })
 
 const matchmaking = new Matchmaking(roomManager, {
-  // Idle = connected and in the lobby (no room). Watchers, architects and
-  // playing players all carry a roomId and don't count as potential opponents.
-  countIdleHumans(exclude) {
-    let n = 0
-    for (const ws of allClients) {
-      if (ws !== exclude && ws.readyState === 1 && ws.data.roomId === null) n++
-    }
-    return n
-  },
+  // Idle = connected, in the lobby (no room), and recently active — see presence.ts.
+  countIdleHumans(exclude) { return countIdleHumans(allClients, exclude, Date.now()) },
   onLoneWaiter: queueAlert,
 })
 
@@ -491,7 +485,7 @@ const server = Bun.serve<WsData>({
       // player who has already gone. Null for an old client that omits it.
       const analytics = parseAnalyticsIdentity(url.searchParams)
       const ok = server.upgrade(req, {
-        data: { sessionId, userId, userName, countryCode, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter(), analytics },
+        data: { sessionId, userId, userName, countryCode, roomId: null, playerId: null, role: null, limiter: new ConnectionLimiter(), analytics, lastActiveAt: Date.now() },
       })
       if (ok) return undefined
       return new Response('WebSocket upgrade failed', { status: 400 })
@@ -543,6 +537,8 @@ const server = Bun.serve<WsData>({
         // a 15/sec refill it never competes with real traffic, and treating it as
         // special would hand anyone an unmetered way to make the server work.
         case 'ping': {
+          // Absent flag = old client: keep counting it as a live human.
+          if (msg.active !== false) ws.data.lastActiveAt = Date.now()
           send(ws, { type: 'pong' })
           break
         }

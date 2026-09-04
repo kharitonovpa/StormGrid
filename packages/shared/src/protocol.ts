@@ -44,7 +44,8 @@ export type ArchitectPlaceBonusMsg = { type: 'architect:place_bonus'; x: number;
 export type ReconnectMsg = { type: 'reconnect'; token: string }
 
 /** Keepalive. Sent every few seconds so an idle socket is never mistaken for a dead one. */
-export type PingMsg = { type: 'ping' }
+/** `active` — the tab is visible and was touched within the last minute. Absent on old clients. */
+export type PingMsg = { type: 'ping'; active?: boolean }
 
 /**
  * A rematch against the same opponent. Symmetric on purpose: the first
