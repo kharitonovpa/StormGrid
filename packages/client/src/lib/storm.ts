@@ -127,7 +127,7 @@ function makeFrontParticles(): FrontParticle[] {
   return arr
 }
 
-export function createStormSystem(scene: THREE.Scene) {
+export function createStormSystem(scene: THREE.Scene, baseTint: THREE.Color = BASE) {
   /* ── Dome ── */
   const geo = new THREE.SphereGeometry(DOME_RADIUS, 48, 24)
   const mat = new THREE.ShaderMaterial({
@@ -145,7 +145,7 @@ export function createStormSystem(scene: THREE.Scene) {
       uSpread:    { value: SPREAD_MIN },
       uZenith:    { value: 0 },      // 1 = calm+stormy: menace overhead, horizon clean
       uCalmClean: { value: 0 },      // 1 = calm+dry: no horizon mass, no zenith either — dim only
-      uBase:  { value: BASE },
+      uBase:  { value: baseTint.clone() },
       uStorm: { value: STORM },
       uDim:   { value: DIM },
     },
@@ -453,6 +453,12 @@ export function createStormSystem(scene: THREE.Scene) {
   }
 
   return {
+    getBaseColor(): THREE.Color {
+      return mat.uniforms.uBase.value as THREE.Color
+    },
+    setBaseColor(color: THREE.Color): void {
+      ;(mat.uniforms.uBase.value as THREE.Color).copy(color)
+    },
     setForecast(c: WindDir[], broken: boolean, stormy: boolean, baroBroken: boolean) {
       const prevCount = activeCount
       candidates = [...c]
