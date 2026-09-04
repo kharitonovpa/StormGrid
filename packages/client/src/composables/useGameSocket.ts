@@ -4,6 +4,7 @@ import { WS_URL } from '../lib/config'
 import { getAnalyticsIdentity } from '../lib/analytics'
 import { getAuthToken } from './useAuth'
 import { loadReconnectToken, saveReconnectToken, clearReconnectToken } from './sessionToken'
+import { presence } from '../lib/presence'
 
 export type MessageHandler = (msg: ServerMessage) => void
 
@@ -37,6 +38,7 @@ export function useGameSocket() {
   let reconnectAttempts = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  let presenceUnsub: (() => void) | null = null
   let intentionalClose = false
 
   function connect() {
@@ -109,13 +111,22 @@ export function useGameSocket() {
     }
   }
 
+  /** The heartbeat doubles as presence: the server waits only for tabs that are looked at. */
+  function sendPing() { send({ type: 'ping', active: presence.isActive() }) }
+
   function startHeartbeat() {
     stopHeartbeat()
-    heartbeatTimer = setInterval(() => { send({ type: 'ping' }) }, HEARTBEAT_MS)
+    heartbeatTimer = setInterval(sendPing, HEARTBEAT_MS)
+    // A tab that comes back (or goes away) is reported within the second, not
+    // at the next heartbeat.
+    presenceUnsub?.()
+    presenceUnsub = presence.onChange(() => sendPing())
   }
 
   function stopHeartbeat() {
     if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
+    presenceUnsub?.()
+    presenceUnsub = null
   }
 
   function scheduleReconnect() {

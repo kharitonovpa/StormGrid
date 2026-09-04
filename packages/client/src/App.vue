@@ -21,6 +21,7 @@ import { createInsectSystem } from './lib/insects'
 import { createGlassSystem, GLASS_ORDER } from './lib/glass'
 import { createBonusSystem } from './lib/bonus'
 import { streak, canRescue, seedStreak, winStreak, breakStreak, restoreStreak } from './lib/streak'
+import { presence, installPresence } from './lib/presence'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
 import { preloadModels } from './lib/models'
@@ -1750,7 +1751,10 @@ function startAnimating() {
   animating = true
 }
 
+let uninstallPresence: (() => void) | null = null
+
 onMounted(() => {
+  uninstallPresence = installPresence(presence, document, window)
   const el = container.value!
   const w = el.clientWidth
   const h = el.clientHeight
@@ -2310,6 +2314,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  uninstallPresence?.()
+  uninstallPresence = null
   cancelAnimationFrame(animId)
   clearTimeout(winnerPopupTimer)
   clearTimeout(celebrateTimer)
