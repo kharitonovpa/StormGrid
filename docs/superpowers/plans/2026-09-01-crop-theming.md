@@ -129,7 +129,7 @@ Expected: PASS, 6 tests.
 git add packages/server/src/regionCrop.ts packages/server/src/__tests__/regionCrop.test.ts
 git commit -m "Add country-to-crop mapping for the suggestion endpoint
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -196,7 +196,7 @@ Confirm each returns the expected crop before moving on.
 git add packages/server/src/index.ts
 git commit -m "Add GET /api/character-suggestion endpoint
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -290,7 +290,7 @@ Expected: PASS, 3 tests.
 git add packages/client/src/lib/characterPreference.ts packages/client/src/lib/__tests__/characterPreference.test.ts
 git commit -m "Return null from loadCharacterPreference when unset
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -323,7 +323,7 @@ describe('character suggestion fetch', () => {
   it('stores the suggested character from a successful response', async () => {
     globalThis.fetch = (() => Promise.resolve(
       new Response(JSON.stringify({ character: 'rice' }), { status: 200 }),
-    )) as typeof fetch
+    )) as unknown as typeof fetch
     await fetchCharacterSuggestion()
     expect(getSuggestedCharacter()).toBe('rice')
   })
@@ -331,13 +331,13 @@ describe('character suggestion fetch', () => {
   it('ignores a response with an unrecognized character', async () => {
     globalThis.fetch = (() => Promise.resolve(
       new Response(JSON.stringify({ character: 'nope' }), { status: 200 }),
-    )) as typeof fetch
+    )) as unknown as typeof fetch
     await fetchCharacterSuggestion()
     expect(getSuggestedCharacter()).toBeNull()
   })
 
   it('resolves to null on a network error', async () => {
-    globalThis.fetch = (() => Promise.reject(new Error('offline'))) as typeof fetch
+    globalThis.fetch = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch
     await fetchCharacterSuggestion()
     expect(getSuggestedCharacter()).toBeNull()
   })
@@ -345,7 +345,7 @@ describe('character suggestion fetch', () => {
   it('resolves to null when the request exceeds its timeout', async () => {
     globalThis.fetch = ((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
-    })) as typeof fetch
+    })) as unknown as typeof fetch
     await fetchCharacterSuggestion(20)
     expect(getSuggestedCharacter()).toBeNull()
   })
@@ -474,7 +474,7 @@ Expected: all tests pass, output pristine.
 git add packages/client/src/lib/characterSuggestion.ts packages/client/src/lib/__tests__/characterSuggestion.test.ts packages/client/src/main.ts
 git commit -m "Fetch a geo-based character suggestion before app mount
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -507,7 +507,7 @@ const originalFetch = globalThis.fetch
 function mockSuggestion(character: string) {
   globalThis.fetch = (() => Promise.resolve(
     new Response(JSON.stringify({ character }), { status: 200 }),
-  )) as typeof fetch
+  )) as unknown as typeof fetch
 }
 
 describe('useGameState character persistence', () => {
@@ -593,7 +593,7 @@ Expected: all tests pass, output pristine.
 git add packages/client/src/composables/useGameState.ts packages/client/src/composables/__tests__/useGameState.characterPersistence.test.ts
 git commit -m "Apply geo character suggestion only when no preference is saved
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -631,7 +631,7 @@ describe('CROP_THEME', () => {
     }
   })
 
-  it('keeps wheat at today\'s exact sky color, so the default crop is visually unchanged', () => {
+  it('keeps wheat at today\'s exact sky color', () => {
     expect(CROP_THEME.wheat.skyTint).toBe(0x0a0e14)
   })
 })
@@ -666,8 +666,8 @@ export interface CropTheme {
 
 export const CROP_THEME: Record<CharacterType, CropTheme> = {
   // wheat's skyTint matches today's BASE (packages/client/src/lib/storm.ts)
-  // exactly, so picking the default crop looks identical to before this
-  // feature existed.
+  // exactly, so the default crop's sky is unchanged. Its paletteAccent, like
+  // the other two, adds a small warm shift to the terrain on top of that.
   wheat: { paletteAccent: [0.05, 0.02, -0.03], skyTint: 0x0a0e14, resultAccent: 'rgba(210, 180, 90, 0.55)' },
   rice: { paletteAccent: [-0.02, 0.01, 0.04], skyTint: 0x0a1018, resultAccent: 'rgba(220, 70, 70, 0.5)' },
   corn: { paletteAccent: [0.06, 0.04, -0.04], skyTint: 0x120e0a, resultAccent: 'rgba(230, 160, 40, 0.55)' },
@@ -685,7 +685,7 @@ Expected: PASS, 2 tests.
 git add packages/client/src/lib/cropTheme.ts packages/client/src/lib/__tests__/cropTheme.test.ts
 git commit -m "Add per-crop decorative theme table
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -792,7 +792,7 @@ Expected: all tests pass, output pristine.
 git add packages/client/src/lib/terrain.ts packages/client/src/lib/__tests__/terrain.test.ts
 git commit -m "Add optional palette accent parameter to paintColors
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -804,9 +804,9 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Test: `packages/client/src/lib/__tests__/storm.test.ts`
 
 **Interfaces:**
-- Produces (changed): `createStormSystem(scene: THREE.Scene, baseTint?: THREE.Color)`, whose returned object gains `getBaseColor(): THREE.Color`. Consumed by Task 10 (the `baseTint` parameter; `getBaseColor()` exists only to make this task's tint testable and has no other caller).
+- Produces (changed): `createStormSystem(scene: THREE.Scene, baseTint?: THREE.Color)`, whose returned object gains `getBaseColor(): THREE.Color` and `setBaseColor(color: THREE.Color): void`. Consumed by Task 10 (the `baseTint` parameter for the initial tint and `setBaseColor()` to follow a crop change made in the lobby; `getBaseColor()` exists only to make this task's tint testable and has no other caller).
 
-`createStormSystem()`'s returned object is otherwise a closure with no accessor for its internal `THREE.ShaderMaterial`/uniforms. `getBaseColor()` is added specifically so a test can observe the tint without reaching into Three.js internals from outside.
+`createStormSystem()`'s returned object is otherwise a closure with no accessor for its internal `THREE.ShaderMaterial`/uniforms. `getBaseColor()` is added specifically so a test can observe the tint without reaching into Three.js internals from outside. The `uBase` uniform must own its `THREE.Color` instance (clone the parameter): `BASE` is a module-level constant shared by every storm system, so a `setBaseColor()` that copied into it would retint every instance and permanently alter the default.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -827,6 +827,20 @@ describe('createStormSystem base tint', () => {
     const scene = new THREE.Scene()
     const storm = createStormSystem(scene, new THREE.Color(0x120e0a))
     expect(storm.getBaseColor().getHex()).toBe(0x120e0a)
+  })
+
+  it('retints the calm sky base through setBaseColor', () => {
+    const scene = new THREE.Scene()
+    const storm = createStormSystem(scene)
+    storm.setBaseColor(new THREE.Color(0x0a1018))
+    expect(storm.getBaseColor().getHex()).toBe(0x0a1018)
+  })
+
+  it('does not leak a setBaseColor tint into the shared default', () => {
+    const tinted = createStormSystem(new THREE.Scene())
+    tinted.setBaseColor(new THREE.Color(0x120e0a))
+    const fresh = createStormSystem(new THREE.Scene())
+    expect(fresh.getBaseColor().getHex()).toBe(0x0a0e14)
   })
 })
 ```
@@ -864,7 +878,7 @@ export function createStormSystem(scene: THREE.Scene, baseTint: THREE.Color = BA
 and the uniform to:
 
 ```ts
-      uBase:  { value: baseTint },
+      uBase:  { value: baseTint.clone() },
 ```
 
 `BASE` stays defined and used as the parameter's own default, so every existing caller (none pass a second argument yet) keeps today's exact color.
@@ -876,12 +890,15 @@ Then add the accessor to the returned object. The function currently returns (st
     setForecast(c: WindDir[], broken: boolean, stormy: boolean, baroBroken: boolean) {
 ```
 
-Add a new method right before `setForecast`:
+Add two new methods right before `setForecast`:
 
 ```ts
   return {
     getBaseColor(): THREE.Color {
       return mat.uniforms.uBase.value as THREE.Color
+    },
+    setBaseColor(color: THREE.Color): void {
+      ;(mat.uniforms.uBase.value as THREE.Color).copy(color)
     },
     setForecast(c: WindDir[], broken: boolean, stormy: boolean, baroBroken: boolean) {
 ```
@@ -891,7 +908,7 @@ Add a new method right before `setForecast`:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `bun test src/lib/__tests__/storm.test.ts`
-Expected: PASS, 2 tests.
+Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Run the full client test suite and type-check**
 
@@ -902,9 +919,9 @@ Expected: all tests pass; no new type errors.
 
 ```bash
 git add packages/client/src/lib/storm.ts packages/client/src/lib/__tests__/storm.test.ts
-git commit -m "Add optional calm-sky base tint parameter to createStormSystem
+git commit -m "Add calm-sky base tint parameter and setter to createStormSystem
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1037,7 +1054,7 @@ Expected: all tests pass; no new type errors (the `enterLobby`/`enterMatch`/`ent
 git add packages/client/src/lib/audio.ts packages/client/src/lib/__tests__/audio.test.ts
 git commit -m "Add per-crop music track resolution (architecture only)
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1049,7 +1066,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Modify: `packages/client/src/components/GameOverOverlay.vue`
 
 **Interfaces:**
-- Consumes: `CROP_THEME` (Task 6), `paintColors(geo, isBottom?, accent?)` (Task 7), `createStormSystem(scene, baseTint?)` (Task 8), `resolveMusicId`/character-aware `enterLobby`/`enterMatch`/`enterFinished` (Task 9), `game.selectedCharacter` (existing, `useGameState.ts:33`).
+- Consumes: `CROP_THEME` (Task 6), `paintColors(geo, isBottom?, accent?)` (Task 7), `createStormSystem(scene, baseTint?)` and its `setBaseColor()` (Task 8), `resolveMusicId`/character-aware `enterLobby`/`enterMatch`/`enterFinished` (Task 9), `game.selectedCharacter` (existing, `useGameState.ts:33`).
 
 No new automated test: `App.vue` and `GameOverOverlay.vue` have no test files today, and this project has no `@vue/test-utils`/component-test setup at all — consistent with that, this task is verified manually (see "Note on test coverage for Task 10" above).
 
@@ -1061,9 +1078,9 @@ Add near the top of `App.vue`'s `<script setup>`, alongside the existing `lib/` 
 import { CROP_THEME } from './lib/cropTheme'
 ```
 
-- [ ] **Step 2: Thread the accent into `paintColors` calls**
+- [ ] **Step 2: Thread the accent into `paintColors` through one helper**
 
-`App.vue` calls `terrainState.paintColors` in two places, `App.vue:2087-2089` and `App.vue:2185-2187`:
+`App.vue` calls `terrainState.paintColors` in two places inside `onMounted` — the one-time "Start flat" paint (`App.vue:2087-2089`) and the per-frame repaint in the animation loop (`App.vue:2185-2187`):
 
 ```ts
   terrainState.paintColors(geo)
@@ -1071,13 +1088,21 @@ import { CROP_THEME } from './lib/cropTheme'
   terrainState.paintColors(skirtGeo)
 ```
 
-Change both occurrences (both triplets) to:
+Add a helper directly above the `// Start flat` comment (`App.vue:2079`; `geo`, `bottomGeo`, `skirtGeo` and `game` are already in scope there):
 
 ```ts
-  terrainState.paintColors(geo, false, CROP_THEME[game.selectedCharacter.value].paletteAccent)
-  terrainState.paintColors(bottomGeo, true, CROP_THEME[game.selectedCharacter.value].paletteAccent)
-  terrainState.paintColors(skirtGeo, false, CROP_THEME[game.selectedCharacter.value].paletteAccent)
+  // The terrain palette carries the current crop's decorative accent
+  // (lib/cropTheme.ts); every repaint goes through here so the accent can't
+  // drift between the initial paint, the animation loop, and a lobby change.
+  const repaintTerrain = () => {
+    const accent = CROP_THEME[game.selectedCharacter.value].paletteAccent
+    terrainState.paintColors(geo, false, accent)
+    terrainState.paintColors(bottomGeo, true, accent)
+    terrainState.paintColors(skirtGeo, false, accent)
+  }
 ```
+
+and replace each of the two triplets with a single `repaintTerrain()` call.
 
 - [ ] **Step 3: Thread the sky tint into `createStormSystem`**
 
@@ -1095,7 +1120,20 @@ Change to:
 
 (`THREE` is already imported at the top of `App.vue` for the rest of the scene setup.)
 
-- [ ] **Step 4: Pass the character into every audio scene-transition call**
+- [ ] **Step 4: Follow a crop change made in the lobby**
+
+The storm system is created once at mount (Step 3) and the flat lobby terrain is painted once (Step 2), so without this step a crop picked in the lobby would only show after a reload. Right after the `// Start flat` block's `rebuildGrid()` call (`App.vue:2090`, before `sceneReady = true`), add:
+
+```ts
+  watch(() => game.selectedCharacter.value, (character) => {
+    storm.setBaseColor(new THREE.Color(CROP_THEME[character].skyTint))
+    repaintTerrain()
+  })
+```
+
+`watch` is called synchronously inside `onMounted`, so Vue binds it to the component instance and stops it on unmount. Confirm `watch` is among `App.vue`'s existing imports from `'vue'` and add it if not.
+
+- [ ] **Step 5: Pass the character into every audio scene-transition call**
 
 Update each of the following call sites in `App.vue` to pass `game.selectedCharacter.value`:
 
@@ -1113,7 +1151,7 @@ Update each of the following call sites in `App.vue` to pass `game.selectedChara
 
 Before editing, re-read each surrounding block with the file's current line numbers (this task is the first to touch `App.vue`, so the numbers above match — but confirm locally since earlier tasks in this plan don't modify this file).
 
-- [ ] **Step 5: Pass `character` to `GameOverOverlay`**
+- [ ] **Step 6: Pass `character` to `GameOverOverlay`**
 
 In `packages/client/src/components/GameOverOverlay.vue`, add `character` to the props type (`GameOverOverlay.vue:12-37`):
 
@@ -1145,7 +1183,7 @@ and import it at the top of the file alongside the other lib imports:
 import { CROP_THEME } from '../lib/cropTheme'
 ```
 
-- [ ] **Step 6: Apply the accent in the template and CSS**
+- [ ] **Step 7: Apply the accent in the template and CSS**
 
 In the template (`GameOverOverlay.vue:197`), bind the accent as a CSS custom property on the existing card element:
 
@@ -1170,7 +1208,7 @@ Add a new rule right after the existing state-specific border rules (after `.gam
 
 `.gameover-card` already has `overflow: hidden` and `border-radius: 24px` (`GameOverOverlay.vue:299,307`), so the parent clips this strip's corners to match the card — no radius needed on the pseudo-element itself. This is purely additive — a thin accent strip along the top edge — and doesn't touch the existing win/lose/draw/spectator border-color or box-shadow rules.
 
-- [ ] **Step 7: Pass `character` from `App.vue`'s `<GameOverOverlay>` usage**
+- [ ] **Step 8: Pass `character` from `App.vue`'s `<GameOverOverlay>` usage**
 
 `App.vue:2471-2493` currently is:
 
@@ -1197,31 +1235,32 @@ Add the new prop right after `:room-id`:
     ...
 ```
 
-- [ ] **Step 8: Type-check**
+- [ ] **Step 9: Type-check**
 
 Run (from `packages/client/`): `bunx vue-tsc -b --noEmit`
 Expected: no new errors.
 
-- [ ] **Step 9: Run the full client test suite**
+- [ ] **Step 10: Run the full client test suite**
 
 Run: `bun test`
 Expected: all tests pass, output pristine (this task adds no new automated tests, so the count is unchanged from Task 9).
 
-- [ ] **Step 10: Manual verification**
+- [ ] **Step 11: Manual verification**
 
 Run the app locally against a dev server. For each of the three crops (pick each in the lobby, in a fresh browser profile or after clearing site storage between runs so the persisted-preference precedence doesn't mask the change):
 
-1. Start a practice/bot match and confirm the sky's calm-state color and the terrain's palette carry a subtle, crop-distinct tint (wheat should look identical to `main` before this feature; rice and corn should look subtly different from wheat and from each other).
+1. Start a practice/bot match and confirm the sky's calm-state color and the terrain's palette carry a subtle, crop-distinct tint (wheat's sky should look identical to `main` before this feature while its terrain carries a slight warm shift; rice and corn should look subtly different from wheat and from each other).
 2. Let the match end and confirm `GameOverOverlay`'s card shows a thin accent-colored strip along its top edge, colored per the crop that was played, on win, loss, and draw.
 3. Confirm no wind/rain/lightning particle or line color changed for any crop (these must look identical across all three).
+4. Back in the lobby, switch between the three crops and confirm the sky tint and terrain accent follow the pick immediately, without a reload.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add packages/client/src/App.vue packages/client/src/components/GameOverOverlay.vue
 git commit -m "Wire per-crop theme into the arena, audio, and result screen
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
