@@ -1,4 +1,3 @@
-// packages/client/src/composables/__tests__/useGameState.characterPersistence.test.ts
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { nextTick, effectScope } from 'vue'
 import { useGameState } from '../useGameState.js'
@@ -25,7 +24,12 @@ describe('useGameState character persistence', () => {
     scope = effectScope()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // The suggestion lives in a module-level singleton that outlives this file's
+    // tests under bun's test runner — reset it here so whatever the last test set
+    // never leaks into a later test file's run.
+    globalThis.fetch = (() => Promise.reject(new Error('reset'))) as unknown as typeof fetch
+    await fetchCharacterSuggestion()
     globalThis.fetch = originalFetch
     scope.stop()
   })
@@ -67,5 +71,13 @@ describe('useGameState character persistence', () => {
     // change and would never fire, so commitCharacter must save unconditionally.
     game.commitCharacter('rice')
     expect(loadCharacterPreference()).toBe('rice')
+  })
+
+  it('falls back to wheat with no preference and no suggestion', async () => {
+    // Safe only because the afterEach above resets the suggestion singleton —
+    // otherwise a leaked 'rice'/'corn' from an earlier test (this file or
+    // characterSuggestion.test.ts) could make this flake depending on run order.
+    const game = scope.run(() => useGameState())!
+    expect(game.selectedCharacter.value).toBe('wheat')
   })
 })

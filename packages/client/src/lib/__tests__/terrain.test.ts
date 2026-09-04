@@ -1,4 +1,3 @@
-// packages/client/src/lib/__tests__/terrain.test.ts
 import { describe, it, expect } from 'bun:test'
 import * as THREE from 'three'
 import { paintColors } from '../terrain.js'

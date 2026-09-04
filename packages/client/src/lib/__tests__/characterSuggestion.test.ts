@@ -4,7 +4,12 @@ import { fetchCharacterSuggestion, getSuggestedCharacter } from '../characterSug
 const originalFetch = globalThis.fetch
 
 describe('character suggestion fetch', () => {
-  afterEach(() => {
+  afterEach(async () => {
+    // The suggestion lives in a module-level singleton that outlives this file's
+    // tests under bun's test runner — reset it here so whatever the last test set
+    // never leaks into a later test file's run.
+    globalThis.fetch = (() => Promise.reject(new Error('reset'))) as unknown as typeof fetch
+    await fetchCharacterSuggestion()
     globalThis.fetch = originalFetch
   })
 
