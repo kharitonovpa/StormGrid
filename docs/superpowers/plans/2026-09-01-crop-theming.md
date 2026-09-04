@@ -44,11 +44,13 @@ describe('countryToCrop', () => {
   it('maps an Asian country to rice', () => {
     expect(countryToCrop('JP')).toBe('rice')
     expect(countryToCrop('IN')).toBe('rice')
+    expect(countryToCrop('GE')).toBe('rice')
   })
 
   it('maps an Americas country to corn', () => {
     expect(countryToCrop('US')).toBe('corn')
     expect(countryToCrop('BR')).toBe('corn')
+    expect(countryToCrop('PR')).toBe('corn')
   })
 
   it('maps a European country to wheat', () => {
@@ -100,6 +102,7 @@ const ASIA = new Set([
   'KZ', 'UZ', 'TM', 'TJ', 'KG',
   'AE', 'SA', 'IL', 'TR', 'IR', 'IQ', 'JO', 'LB', 'SY', 'YE', 'OM', 'QA',
   'KW', 'BH', 'AF',
+  'AZ', 'GE', 'AM', 'BT', 'MV', 'PS',
 ])
 
 const AMERICAS = new Set([
@@ -107,6 +110,8 @@ const AMERICAS = new Set([
   'BR', 'AR', 'CL', 'CO', 'PE', 'VE', 'EC', 'BO', 'PY', 'UY', 'GY', 'SR',
   'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'BZ',
   'CU', 'DO', 'HT', 'JM', 'TT', 'BS', 'BB',
+  'PR', 'GL', 'BM', 'KY', 'AG', 'LC', 'GD', 'VC', 'DM', 'KN', 'AW', 'CW',
+  'SX', 'BQ', 'VI', 'VG', 'TC', 'AI', 'MS', 'GP', 'MQ', 'GF',
 ])
 
 export function countryToCrop(countryCode: string | null): CharacterType {
@@ -488,6 +493,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `loadCharacterPreference(): CharacterType | null` (Task 3), `getSuggestedCharacter(): CharacterType | null` and `fetchCharacterSuggestion` (Task 4).
 - Produces (changed behavior): `selectedCharacter` now initializes to `preference ?? suggestion ?? 'wheat'` instead of `preference ?? 'wheat'`.
+- Produces: `commitCharacter(character: CharacterType)` on the returned object — sets `selectedCharacter` and calls `saveCharacterPreference(character)` unconditionally. Needed because assigning a value the ref already holds (accepting the pre-selected suggestion at Play) is a no-op for the persistence `watch`, which would otherwise never save an accepted suggestion. Consumed by Task 10's lobby handlers.
 
 - [ ] **Step 1: Extend the test file with the new precedence cases**
 
@@ -549,6 +555,8 @@ describe('useGameState character persistence', () => {
 })
 ```
 
+Three hygiene points the snippet above doesn't show, all required: (1) run every `useGameState()` inside a Vue `effectScope()` (stopped in `afterEach`) — the composable registers `onScopeDispose`, and a bare call prints a Vue warning that breaks the pristine-output requirement; (2) `afterEach` must also reset the suggestion singleton in `characterSuggestion.ts` — bun runs all test files in one process, so a suggestion left set here leaks into later files — by pointing `globalThis.fetch` at a rejecting stub, awaiting `fetchCharacterSuggestion()` (its own reset leaves `null` on failure), then restoring `fetch` (do the same in `characterSuggestion.test.ts`); (3) two more cases: `commitCharacter('rice')` with the suggestion mocked as `'rice'` and no saved preference persists `'rice'` (a same-value commit must still save), and no preference + no suggestion initializes to `'wheat'`.
+
 - [ ] **Step 2: Run test to verify the new cases fail**
 
 Run (from `packages/client/`): `bun test src/composables/__tests__/useGameState.characterPersistence.test.ts`
@@ -568,7 +576,18 @@ Replace it with:
 ```ts
   const selectedCharacter = ref<CharacterType>(loadCharacterPreference() ?? getSuggestedCharacter() ?? 'wheat')
   watch(selectedCharacter, saveCharacterPreference)
+  /**
+   * Explicit save on top of the watch above: assigning a value Vue already
+   * holds (e.g. accepting the pre-selected suggested crop) is a no-op for
+   * `watch`, which would otherwise silently skip persisting it.
+   */
+  function commitCharacter(character: CharacterType) {
+    selectedCharacter.value = character
+    saveCharacterPreference(character)
+  }
 ```
+
+Return `commitCharacter` from the composable alongside `selectedCharacter`.
 
 And update the import line just above it (currently `import { loadCharacterPreference, saveCharacterPreference } from '../lib/characterPreference'`) to also pull in the suggestion accessor:
 
@@ -933,7 +952,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `packages/client/src/lib/__tests__/audio.test.ts`
 
 **Interfaces:**
-- Produces: `resolveMusicId(base: 'lobby-music' | 'match-music', character?: CharacterType): SoundId` (exported, pure). `enterLobby`, `enterMatch`, `enterFinished` (all returned from `createAudioSystem()`, so part of `AudioSystem`) each gain an optional `character?: CharacterType` parameter. Consumed by Task 10.
+- Produces: `resolveMusicId(base: 'lobby-music' | 'match-music', character?: CharacterType): LoopId` (exported, pure). `enterLobby` and `enterMatch` (returned from `createAudioSystem()`, so part of `AudioSystem`) each gain an optional `character?: CharacterType` parameter; `enterFinished` keeps its no-argument signature because it only fades the music layer out. Consumed by Task 10.
 
 `createAudioSystem()` itself is not unit-tested (it builds real `Howl` instances, which need a DOM/Web Audio environment this bun:test setup doesn't provide, and no existing test in this codebase exercises it) — `resolveMusicId` is written as a standalone pure function specifically so the new logic is testable without touching `createAudioSystem()`.
 
@@ -983,9 +1002,9 @@ Add this in `packages/client/src/lib/audio.ts` directly after the `// --- Per-so
  * public/sounds and its SoundId case in def()) is the whole integration
  * point for a future crop-specific track.
  */
-const MUSIC_TRACKS: Partial<Record<CharacterType, Partial<Record<'lobby-music' | 'match-music', SoundId>>>> = {}
+const MUSIC_TRACKS: Partial<Record<CharacterType, Partial<Record<'lobby-music' | 'match-music', LoopId>>>> = {}
 
-export function resolveMusicId(base: 'lobby-music' | 'match-music', character?: CharacterType): SoundId {
+export function resolveMusicId(base: 'lobby-music' | 'match-music', character?: CharacterType): LoopId {
   return (character && MUSIC_TRACKS[character]?.[base]) || base
 }
 ```
@@ -1022,21 +1041,21 @@ Then update the three scene-transition functions inside `createAudioSystem()` to
     cancelSceneTimers()
     stopWeather()
     fadeOut('lobby-pad', 1000)
-    fadeOut(resolveMusicId('lobby-music', character), 1000)
+    fadeOutLayer('music', 1000)
     sceneTimers.push(safeTimeout(() => {
       fadeIn('game-drone', 1200)
       fadeIn(resolveMusicId('match-music', character), 1500)
     }, 600))
   }
 
-  function enterFinished(character?: CharacterType) {
+  function enterFinished() {
     stopWeather()
     fadeOut('game-drone', 800)
-    fadeOut(resolveMusicId('match-music', character), 800)
+    fadeOutLayer('music', 800)
   }
 ```
 
-`enterMatch`'s `fadeOut('lobby-music', 1000)` and `enterFinished`'s `fadeOut('match-music', 800)` both change to `resolveMusicId(...)` too — not just the `fadeIn` calls — so that whichever track ID a scene actually faded in is the same one later faded out. `MUSIC_TRACKS` is empty today so this is a no-op change in current behavior, but it's the detail that would otherwise silently leak a still-playing per-crop track once one is configured.
+Fade-outs are layer-based on purpose: `enterMatch` and `enterFinished` call `fadeOutLayer('music', …)` (as `enterLobby` already does) instead of fading out a resolved id. A resolved fade-out would name the *current* crop's track, which is not the one playing when the crop changed between entering the lobby and pressing Play — and the still-playing track would leak under the next scene. For the same reason `beginHush`/`endHush` operate on the music layer's active loops (the way `duckMusic` does) rather than naming `'match-music'`. `resolveMusicId` is therefore used only where a track is faded in. `MUSIC_TRACKS` is empty today, so all of this is a no-op change in current behavior.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1046,7 +1065,7 @@ Expected: PASS, 2 tests.
 - [ ] **Step 5: Run the full client test suite and type-check**
 
 Run: `bun test` then `bunx vue-tsc -b --noEmit`
-Expected: all tests pass; no new type errors (the `enterLobby`/`enterMatch`/`enterFinished` call sites in `App.vue` still compile because the new parameter is optional — they get updated in Task 10).
+Expected: all tests pass; no new type errors (the `enterLobby`/`enterMatch` call sites in `App.vue` still compile because the new parameter is optional — they get updated in Task 10; `enterFinished` call sites are unchanged).
 
 - [ ] **Step 6: Commit**
 
@@ -1067,7 +1086,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `packages/client/src/components/LobbyOverlay.vue`
 
 **Interfaces:**
-- Consumes: `CROP_THEME` (Task 6), `paintColors(geo, isBottom?, accent?)` (Task 7), `createStormSystem(scene, baseTint?)` and its `setBaseColor()` (Task 8), `resolveMusicId`/character-aware `enterLobby`/`enterMatch`/`enterFinished` (Task 9), `game.selectedCharacter` (existing, `useGameState.ts:33`).
+- Consumes: `CROP_THEME` (Task 6), `paintColors(geo, isBottom?, accent?)` (Task 7), `createStormSystem(scene, baseTint?)` and its `setBaseColor()` (Task 8), `resolveMusicId`/character-aware `enterLobby`/`enterMatch` (Task 9), `game.selectedCharacter` (existing, `useGameState.ts:33`).
 
 No new automated test: `App.vue` and `GameOverOverlay.vue` have no test files today, and this project has no `@vue/test-utils`/component-test setup at all — consistent with that, this task is verified manually (see "Note on test coverage for Task 10" above).
 
@@ -1144,18 +1163,17 @@ The watcher only helps if the lobby pick actually reaches `game.selectedCharacte
 // game.selectedCharacter, so the lobby pick has to reach it on click,
 // not only on Play.
 function onSelectCharacter(character: CharacterType) {
-  game.selectedCharacter.value = character
+  game.commitCharacter(character)
 }
 ```
 
-This also persists the pick through `useGameState`'s `watch(selectedCharacter, saveCharacterPreference)` — intended: the last crop picked in the lobby is the preference a returning player gets back.
+`commitCharacter` (Task 5) both sets the ref and saves the preference; switch `onPlay`/`onHowToPlay`/`onInvite` to it as well, so accepting the pre-selected suggestion at Play — a same-value assignment the persistence `watch` would ignore — is saved too. The last crop committed in the lobby is the preference a returning player gets back.
 
 - [ ] **Step 5: Pass the character into every audio scene-transition call**
 
-Update each of the following call sites in `App.vue` to pass `game.selectedCharacter.value`:
+Update each of the following call sites in `App.vue` to pass `game.selectedCharacter.value` (`enterFinished` takes no character, so its two call sites at `App.vue:374` and `App.vue:1602` stay as they are):
 
 - `App.vue:320`: `audio.enterMatch()` → `audio.enterMatch(game.selectedCharacter.value)`
-- `App.vue:374`: `audio.enterFinished()` → `audio.enterFinished(game.selectedCharacter.value)`
 - `App.vue:594`: `audio.enterLobby()` → `audio.enterLobby(game.selectedCharacter.value)`
 - `App.vue:667`: `audio.enterLobby()` → `audio.enterLobby(game.selectedCharacter.value)`
 - `App.vue:883`: `audio.enterLobby()` → `audio.enterLobby(game.selectedCharacter.value)`
@@ -1163,7 +1181,6 @@ Update each of the following call sites in `App.vue` to pass `game.selectedChara
 - `App.vue:1470`: `audio.enterLobby()` → `audio.enterLobby(game.selectedCharacter.value)`
 - `App.vue:1492`: `audio.enterMatch()` → `audio.enterMatch(game.selectedCharacter.value)`
 - `App.vue:1515`: `audio.enterMatch()` → `audio.enterMatch(game.selectedCharacter.value)`
-- `App.vue:1602`: `audio.enterFinished()` → `audio.enterFinished(game.selectedCharacter.value)`
 - `App.vue:2093`: `audio.enterLobby()` → `audio.enterLobby(game.selectedCharacter.value)`
 
 Before editing, re-read each surrounding block with the file's current line numbers (this task is the first to touch `App.vue`, so the numbers above match — but confirm locally since earlier tasks in this plan don't modify this file).
