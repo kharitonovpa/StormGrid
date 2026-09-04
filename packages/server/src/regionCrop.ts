@@ -16,6 +16,7 @@ const ASIA = new Set([
   'KZ', 'UZ', 'TM', 'TJ', 'KG',
   'AE', 'SA', 'IL', 'TR', 'IR', 'IQ', 'JO', 'LB', 'SY', 'YE', 'OM', 'QA',
   'KW', 'BH', 'AF',
+  'AZ', 'GE', 'AM', 'BT', 'MV', 'PS',
 ])
 
 const AMERICAS = new Set([
@@ -23,6 +24,8 @@ const AMERICAS = new Set([
   'BR', 'AR', 'CL', 'CO', 'PE', 'VE', 'EC', 'BO', 'PY', 'UY', 'GY', 'SR',
   'GT', 'HN', 'SV', 'NI', 'CR', 'PA', 'BZ',
   'CU', 'DO', 'HT', 'JM', 'TT', 'BS', 'BB',
+  'PR', 'GL', 'BM', 'KY', 'AG', 'LC', 'GD', 'VC', 'DM', 'KN', 'AW', 'CW',
+  'SX', 'BQ', 'VI', 'VG', 'TC', 'AI', 'MS', 'GP', 'MQ', 'GF',
 ])
 
 export function countryToCrop(countryCode: string | null): CharacterType {

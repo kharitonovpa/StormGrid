@@ -5,11 +5,13 @@ describe('countryToCrop', () => {
   it('maps an Asian country to rice', () => {
     expect(countryToCrop('JP')).toBe('rice')
     expect(countryToCrop('IN')).toBe('rice')
+    expect(countryToCrop('GE')).toBe('rice')
   })
 
   it('maps an Americas country to corn', () => {
     expect(countryToCrop('US')).toBe('corn')
     expect(countryToCrop('BR')).toBe('corn')
+    expect(countryToCrop('PR')).toBe('corn')
   })
 
   it('maps a European country to wheat', () => {
