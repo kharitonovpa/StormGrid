@@ -5,6 +5,7 @@ import { API_BASE } from '../lib/config'
 import { t } from '../lib/i18n'
 import { usePlatform } from '../lib/platform'
 import UserAvatar from './UserAvatar.vue'
+import RetryNotice from './RetryNotice.vue'
 
 const platform = usePlatform()
 
@@ -18,6 +19,12 @@ const watchers = ref<WatcherLeaderboardEntry[]>([])
 const watchersTotal = ref(0)
 const loaded = ref(false)
 const loadingMore = ref(false)
+/** Both leaderboard requests failed — say so instead of rendering "no players". */
+const failed = ref(false)
+/** A "load more" page failed — its own notice, the first page is still good. */
+const moreFailed = ref(false)
+/** The failure notice's own button is mid-attempt. */
+const retrying = ref(false)
 
 function isPaginated<T>(v: unknown, check: (e: unknown) => boolean): v is Paginated<T> {
   return typeof v === 'object' && v !== null && 'items' in v && 'total' in v
@@ -28,7 +35,6 @@ const isPlayerEntry = (e: unknown) => typeof e === 'object' && e !== null && 'wi
 const isWatcherEntry = (e: unknown) => typeof e === 'object' && e !== null && 'watcherScore' in e && 'userId' in e
 
 async function fetchLeaderboard(retries = 2) {
-  let failed = false
   try {
     const [pRaw, wRaw] = await Promise.all([
       fetch(`${API_BASE}/api/leaderboard/players?limit=${PAGE_SIZE}`).then(r => r.ok ? r.json() : null),
@@ -42,24 +48,35 @@ async function fetchLeaderboard(retries = 2) {
       watchers.value = wRaw.items
       watchersTotal.value = wRaw.total
     }
-    failed = pRaw === null && wRaw === null
+    failed.value = pRaw === null && wRaw === null
   } catch {
-    failed = true
+    // A CSP-blocked fetch rejects, so this — not the null branch above — is the
+    // path the Yandex sandbox actually takes.
+    failed.value = true
   }
-  if (failed && retries > 0) {
+  if (failed.value && retries > 0) {
     setTimeout(() => fetchLeaderboard(retries - 1), 1500)
     return
   }
   loaded.value = true
 }
 
+/** The notice's button: one more full attempt, the button dead meanwhile. */
+async function retryLeaderboard() {
+  retrying.value = true
+  await fetchLeaderboard(0)
+  retrying.value = false
+}
+
 async function loadMore(tab: Tab) {
   loadingMore.value = true
+  moreFailed.value = false
   try {
     const offset = tab === 'players' ? players.value.length : watchers.value.length
     const url = `${API_BASE}/api/leaderboard/${tab}?limit=${PAGE_SIZE}&offset=${offset}`
     const raw = await fetch(url).then(r => r.ok ? r.json() : null)
-    if (tab === 'players' && isPaginated<PlayerLeaderboardEntry>(raw, isPlayerEntry)) {
+    if (raw === null) moreFailed.value = true
+    else if (tab === 'players' && isPaginated<PlayerLeaderboardEntry>(raw, isPlayerEntry)) {
       players.value = [...players.value, ...raw.items]
       playersTotal.value = raw.total
     } else if (tab === 'watchers' && isPaginated<WatcherLeaderboardEntry>(raw, isWatcherEntry)) {
@@ -68,6 +85,7 @@ async function loadMore(tab: Tab) {
     }
   } catch (e) {
     if (import.meta.env.DEV) console.warn('[leaderboard] load more failed:', e)
+    moreFailed.value = true
   }
   loadingMore.value = false
 }
@@ -79,51 +97,72 @@ onMounted(fetchLeaderboard)
 
 <template>
   <div class="lb" v-if="loaded">
-    <div class="lb-tabs">
-      <button
-        class="lb-tab"
-        :class="{ active: activeTab === 'players' }"
-        @click="activeTab = 'players'"
-      >{{ t('leaderboard.players') }}</button>
-      <button
-        class="lb-tab"
-        :class="{ active: activeTab === 'watchers' }"
-        @click="activeTab = 'watchers'"
-      >{{ t('leaderboard.watchers') }}</button>
-    </div>
+    <RetryNotice
+      v-if="failed"
+      :message="t('net.leaderboardFailed')"
+      :busy="retrying"
+      @retry="retryLeaderboard"
+    />
 
-    <div class="lb-list" v-if="activeTab === 'players'">
-      <div v-for="(p, i) in players" :key="p.userId" class="lb-row">
-        <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
-        <UserAvatar :src="p.avatar" :name="p.name" :size="20" />
-        <span class="lb-name">{{ p.name }}</span>
-        <span class="lb-stat lb-wins">{{ p.wins }}W</span>
-        <span class="lb-stat lb-losses">{{ p.losses }}L</span>
+    <template v-else>
+      <div class="lb-tabs">
+        <button
+          class="lb-tab"
+          :class="{ active: activeTab === 'players' }"
+          @click="activeTab = 'players'"
+        >{{ t('leaderboard.players') }}</button>
+        <button
+          class="lb-tab"
+          :class="{ active: activeTab === 'watchers' }"
+          @click="activeTab = 'watchers'"
+        >{{ t('leaderboard.watchers') }}</button>
       </div>
-      <button
-        v-if="players.length < playersTotal"
-        class="lb-more"
-        :disabled="loadingMore"
-        @click="loadMore('players')"
-      >{{ loadingMore ? '···' : t('leaderboard.more', playersTotal - players.length) }}</button>
-      <div v-if="players.length === 0" class="lb-empty">{{ t('leaderboard.noPlayers') }}</div>
-    </div>
 
-    <div class="lb-list" v-if="activeTab === 'watchers'">
-      <div v-for="(w, i) in watchers" :key="w.userId" class="lb-row">
-        <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
-        <UserAvatar :src="w.avatar" :name="w.name" :size="20" />
-        <span class="lb-name">{{ w.name }}</span>
-        <span class="lb-stat lb-score">{{ w.watcherScore }}pts</span>
+      <div class="lb-list" v-if="activeTab === 'players'">
+        <div v-for="(p, i) in players" :key="p.userId" class="lb-row">
+          <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
+          <UserAvatar :src="p.avatar" :name="p.name" :size="20" />
+          <span class="lb-name">{{ p.name }}</span>
+          <span class="lb-stat lb-wins">{{ p.wins }}W</span>
+          <span class="lb-stat lb-losses">{{ p.losses }}L</span>
+        </div>
+        <RetryNotice
+          v-if="moreFailed"
+          :message="t('net.leaderboardFailed')"
+          :busy="loadingMore"
+          @retry="loadMore('players')"
+        />
+        <button
+          v-else-if="players.length < playersTotal"
+          class="lb-more"
+          :disabled="loadingMore"
+          @click="loadMore('players')"
+        >{{ loadingMore ? '···' : t('leaderboard.more', playersTotal - players.length) }}</button>
+        <div v-if="players.length === 0" class="lb-empty">{{ t('leaderboard.noPlayers') }}</div>
       </div>
-      <button
-        v-if="watchers.length < watchersTotal"
-        class="lb-more"
-        :disabled="loadingMore"
-        @click="loadMore('watchers')"
-      >{{ loadingMore ? '···' : t('leaderboard.more', watchersTotal - watchers.length) }}</button>
-      <div v-if="watchers.length === 0" class="lb-empty">{{ t('leaderboard.noWatchers') }}</div>
-    </div>
+
+      <div class="lb-list" v-if="activeTab === 'watchers'">
+        <div v-for="(w, i) in watchers" :key="w.userId" class="lb-row">
+          <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
+          <UserAvatar :src="w.avatar" :name="w.name" :size="20" />
+          <span class="lb-name">{{ w.name }}</span>
+          <span class="lb-stat lb-score">{{ w.watcherScore }}pts</span>
+        </div>
+        <RetryNotice
+          v-if="moreFailed"
+          :message="t('net.leaderboardFailed')"
+          :busy="loadingMore"
+          @retry="loadMore('watchers')"
+        />
+        <button
+          v-else-if="watchers.length < watchersTotal"
+          class="lb-more"
+          :disabled="loadingMore"
+          @click="loadMore('watchers')"
+        >{{ loadingMore ? '···' : t('leaderboard.more', watchersTotal - watchers.length) }}</button>
+        <div v-if="watchers.length === 0" class="lb-empty">{{ t('leaderboard.noWatchers') }}</div>
+      </div>
+    </template>
 
     <a
       v-if="platform.canLinkOut()"
