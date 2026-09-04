@@ -71,7 +71,7 @@ export const LOOK = {
   hemi:    { sky: 0x5a6cc8, ground: 0x2b2333, intensity: 0.8 },
   terrain: { grass: 0x3f7a3a, rock: 0xb9aa9e, mud: 0x8a4b2a, snow: 0xf2ead8,
              checkerAmp: 0.08, aoStrength: 0.35, shadowStrength: 0.45,
-             shadowCool: [-0.03, -0.01, 0.05] },
+             shadowTint: [0.85, 0.95, 1.25] },   // multiplier at full shadow: sky-lit, so cooler
   water:   { deep: 0x1e5d6e, rim: 0x3d9aa8, opacity: 0.6 },
   grid:    { color: 0xc8c4ff, opacity: 0.28 },
   tone:    { mode: 'agx', exposure: 1.05 },
@@ -137,13 +137,18 @@ checkerboard, crop accent, clamp). Changes:
     plane in ¼-cell steps up to 4 cells; the ray rises by `tan(elevation)` per
     world unit; a step is occluded when the cell height there exceeds the ray by
     more than a soft threshold (smoothstep over 0.15 level → penumbra). The result
-    is the occluded fraction: `rgb *= 1 − shadow · shadowStrength`, then
-    `rgb += shadow · shadowCool` (shadows are lit by the sky, so they go cooler,
-    not just darker). At 28° a one-level block casts a ≈1.25-cell shadow
+    is the occlusion: `rgb *= (1 − shadow · shadowStrength) · mix(1, shadowTint, shadow)`
+    (shadows are lit by the sky, so they go cooler, not just darker — a
+    multiplier, because an additive cool shift would zero the grass's small
+    linear red channel). At 28° a one-level block casts a ≈1.25-cell shadow
     (5 world units / tan 28° ≈ 9.4 units, cell = 7.5).
   - The underside (`isBottom`) uses the same functions with the mirrored sun and
     `h = −wy` exactly as the existing code already mirrors heights.
   - Grid coordinates: `gx = (wx + HALF) / CELL_SIZE`, `gz` likewise.
+  - `paintColors` reads the shadow term from a lattice built once per call
+    (`buildShadowField`, 4 samples per cell, one bilinear read per vertex) instead
+    of marching per vertex; the per-vertex `sunOcclusion` stays as the reference
+    and the two agree on lattice points.
 
 - Cost: ~20 O(1) lookups per vertex × ~29k vertices (top, bottom, skirt) ≈ 1–2 ms
   per repaint on a laptop; repaints happen only when the terrain animates or the
@@ -166,7 +171,7 @@ checkerboard, crop accent, clamp). Changes:
   `setTint(t)`, `getTint()` replace `baseTint`/`setBaseColor`/`getBaseColor`.
   `cropTheme.ts` `skyTint` becomes a `readonly [number, number, number]`
   multiplier: wheat `[1, 1, 1]`, rice `[0.94, 0.98, 1.08]`, corn
-  `[1.10, 0.98, 0.90]`; `paletteAccent` and `resultAccent` unchanged. `App.vue`'s
+  `[1.10, 0.98, 0.90]`; `paletteAccent` re-expressed in linear units (≈ 10% of the grass channels, since the palette is now linear); `resultAccent` unchanged. `App.vue`'s
   mount call and the crop watcher pass the tuple.
 - Lightning (`lightning.ts`) is untouched: white-blue on indigo/plum reads at least
   as well as on black.
