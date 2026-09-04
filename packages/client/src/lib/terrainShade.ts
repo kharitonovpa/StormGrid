@@ -75,6 +75,27 @@ export function contactOcclusion(heights: HeightAt, cells: number, gx: number, g
 }
 
 /**
+ * Per-cell flag, row-major by z: 1 when some neighbour rises above the cell by
+ * more than DEAD_ZONE. Those are the only cells where contactOcclusion can be
+ * non-zero — a vertex's base height is never below its own cell's top — so a
+ * repaint can skip the 8-neighbour walk everywhere else.
+ */
+export function buildRiseMask(heights: HeightAt, cells: number): Uint8Array {
+  const mask = new Uint8Array(cells * cells)
+  for (let cz = 0; cz < cells; cz++) {
+    for (let cx = 0; cx < cells; cx++) {
+      const h = heights(cx, cz)
+      for (const [dx, dz] of NEIGHBOURS) {
+        const nx = cx + dx, nz = cz + dz
+        if (nx < 0 || nz < 0 || nx >= cells || nz >= cells) continue
+        if (heights(nx, nz) - h > DEAD_ZONE) { mask[cz * cells + cx] = 1; break }
+      }
+    }
+  }
+  return mask
+}
+
+/**
  * The shadow ceiling at (gx, gz): the highest level a point there could sit at
  * and still be shaded by something between it and the sun, or NO_CEILING when
  * nothing stands in the way. Marches toward the sun in ¼-cell steps up to
@@ -117,8 +138,11 @@ export function buildShadowField(heights: HeightAt, cells: number, sun: SunParam
   return field
 }
 
-/** Sun occlusion 0..1 at a vertex, read from a field built by buildShadowField. */
-export function sampleShadowField(field: Float32Array, heights: HeightAt, cells: number, res: number, gx: number, gz: number, hLevels: number): number {
+/** Sun occlusion 0..1 of a point already resolved to its base height (see
+ *  baseHeight), read bilinearly from a field built by buildShadowField. The
+ *  hot loop in terrain.ts calls this with the base height taken straight from
+ *  the cell grid. */
+export function occlusionFromField(field: Float32Array, cells: number, res: number, gx: number, gz: number, baseLevel: number): number {
   const n = cells * res + 1
   const fx = Math.min(n - 1, Math.max(0, gx * res)), fz = Math.min(n - 1, Math.max(0, gz * res))
   const ix = Math.min(n - 2, Math.floor(fx)), iz = Math.min(n - 2, Math.floor(fz))
@@ -126,5 +150,10 @@ export function sampleShadowField(field: Float32Array, heights: HeightAt, cells:
   const top = field[iz * n + ix] + (field[iz * n + ix + 1] - field[iz * n + ix]) * tx
   const bottom = field[(iz + 1) * n + ix] + (field[(iz + 1) * n + ix + 1] - field[(iz + 1) * n + ix]) * tx
   const ceiling = top + (bottom - top) * tz
-  return occlusionFromCeiling(ceiling, baseHeight(heights, cells, gx, gz, hLevels))
+  return occlusionFromCeiling(ceiling, baseLevel)
+}
+
+/** Sun occlusion 0..1 at a vertex, read from a field built by buildShadowField. */
+export function sampleShadowField(field: Float32Array, heights: HeightAt, cells: number, res: number, gx: number, gz: number, hLevels: number): number {
+  return occlusionFromField(field, cells, res, gx, gz, baseHeight(heights, cells, gx, gz, hLevels))
 }

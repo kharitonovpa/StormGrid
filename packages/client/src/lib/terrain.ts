@@ -5,7 +5,7 @@ import {
 } from './constants'
 import { clamp, noise2d, fbm, sstep, mix } from './noise'
 import { LOOK, srgbHexToLinear } from './look'
-import { buildShadowField, contactOcclusion, sampleShadowField, type HeightAt, type SunParams } from './terrainShade'
+import { buildShadowField, buildRiseMask, contactOcclusion, occlusionFromField, type HeightAt, type SunParams } from './terrainShade'
 
 // --- Terrain grids ---
 export const target = Array.from({ length: CELLS }, () => new Float32Array(CELLS))
@@ -145,7 +145,39 @@ const SUN: SunParams = (() => {
   return { dirX: x / horiz, dirZ: z / horiz, riseLevelsPerCell: ((y / horiz) * CELL_SIZE) / HEIGHT_SCALE }
 })()
 const SHADOW_RES = 4
-const cellHeight = (cx: number, cz: number) => current[cz][cx]
+const cellHeight: HeightAt = (cx, cz) => current[cz][cx]
+// The underside is the negated world — a top hill is an underside pit.
+const cellHeightBelow: HeightAt = (cx, cz) => -current[cz][cx]
+
+// --- Per-repaint shading cache ---
+// The shadow field and rise mask (lib/terrainShade.ts) depend only on `current`,
+// which the animation changes once per frame while paintColors runs three
+// times (top, bottom, skirt). They are keyed on a snapshot of the heights
+// rather than on terrainVersion, which does not advance when `current` is
+// written directly (as the tests do). The top face and the skirt share one
+// pair; the underside has its own, from the negated heights.
+interface ShadeTerms { field: Float32Array; rise: Uint8Array }
+const shadeSnapshot = new Float32Array(CELLS * CELLS).fill(NaN)   // NaN ≠ NaN: the first call always builds
+let topShade: ShadeTerms | null = null
+let bottomShade: ShadeTerms | null = null
+
+function shadeTerms(isBottom: boolean): ShadeTerms {
+  let unchanged = true
+  for (let cz = 0; cz < CELLS; cz++) {
+    const row = current[cz]
+    for (let cx = 0; cx < CELLS; cx++) {
+      if (shadeSnapshot[cz * CELLS + cx] !== row[cx]) { unchanged = false; shadeSnapshot[cz * CELLS + cx] = row[cx] }
+    }
+  }
+  if (!unchanged) { topShade = null; bottomShade = null }
+  const heights = isBottom ? cellHeightBelow : cellHeight
+  const built = isBottom ? bottomShade : topShade
+  if (built) return built
+  const terms: ShadeTerms = { field: buildShadowField(heights, CELLS, SUN, SHADOW_RES), rise: buildRiseMask(heights, CELLS) }
+  if (isBottom) bottomShade = terms
+  else topShade = terms
+  return terms
+}
 
 // --- Vertex coloring ---
 export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?: readonly [number, number, number]) {
@@ -157,11 +189,10 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     col = new THREE.Float32BufferAttribute(new Float32Array(p.count * 3), 3)
     geo.setAttribute('color', col)
   }
-  // The underside is the negated world — a top hill is an underside pit — so it
-  // shades from its own, negated heights and gets its own shadow field; the
-  // skirt shares the top's.
-  const heights: HeightAt = isBottom ? (cx, cz) => -current[cz][cx] : cellHeight
-  const shadowField = buildShadowField(heights, CELLS, SUN, SHADOW_RES)
+  // The underside shades from its own, negated heights with its own shadow
+  // field; the skirt shares the top's.
+  const heights = isBottom ? cellHeightBelow : cellHeight
+  const { field: shadowField, rise: riseMask } = shadeTerms(isBottom)
   for (let i = 0; i < p.count; i++) {
     const wx = p.getX(i), wy = p.getY(i), wz = p.getZ(i)
     const nv = noise2d(wx * 0.5 + 77, wz * 0.5 + 77) * 0.12
@@ -224,8 +255,14 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     // y = −THICKNESS, so it is lifted back to level 0 before the negation (the
     // palette's `h` above keeps its own, unlifted mirror).
     const hLevels = (isBottom ? -(wy + THICKNESS) : wy) / HEIGHT_SCALE
-    const ao = contactOcclusion(heights, CELLS, gx, gz, hLevels)
-    const shadow = sampleShadowField(shadowField, heights, CELLS, SHADOW_RES, gx, gz, hLevels)
+    // Only a cell with a taller neighbour can be crowded; elsewhere the term is 0.
+    const cellX = ckx < 0 ? 0 : ckx >= CELLS ? CELLS - 1 : ckx
+    const cellZ = ckz < 0 ? 0 : ckz >= CELLS ? CELLS - 1 : ckz
+    const ao = riseMask[cellZ * CELLS + cellX] ? contactOcclusion(heights, CELLS, gx, gz, hLevels) : 0
+    // The own-cell lookup read straight from the grid (this runs for every vertex):
+    // the same base height sampleShadowField would resolve through `heights`.
+    const own = current[cellZ][cellX]
+    const shadow = occlusionFromField(shadowField, CELLS, SHADOW_RES, gx, gz, Math.max(hLevels, isBottom ? -own : own))
     const shade = (1 - ao * AO_STRENGTH) * (1 - shadow * SHADOW_STRENGTH)
     r *= shade * (1 + (SHADOW_TINT[0] - 1) * shadow)
     g *= shade * (1 + (SHADOW_TINT[1] - 1) * shadow)
