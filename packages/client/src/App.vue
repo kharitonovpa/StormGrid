@@ -218,17 +218,52 @@ const canShareInvite = computed(() => !isInstanceWait.value && (!!inviteUrl.valu
  */
 let pendingAction: (() => void) | null = null
 
+/**
+ * How long a queued lobby action may sit waiting on a socket before the player
+ * is told. The socket's own `gaveUp` is twenty backoff attempts — about two and
+ * a half minutes — far too long to leave a tapped button looking dead.
+ */
+const PLAY_CONNECT_TIMEOUT_MS = 8_000
+
+/** An action is queued behind a connect that has not landed yet. */
+const connectPending = ref(false)
+/** That connect has been slow enough to say so — without cancelling it. */
+const connectFailed = ref(false)
+let connectTimer = 0
+
+function armConnectTimer() {
+  if (connectTimer) clearTimeout(connectTimer)
+  // Reports the wait; never drops `pendingAction`. A socket that lands at, say,
+  // eleven seconds still starts the match and closes the card on its own — only
+  // Cancel throws the queued action away.
+  connectTimer = window.setTimeout(() => {
+    connectTimer = 0
+    if (pendingAction) connectFailed.value = true
+  }, PLAY_CONNECT_TIMEOUT_MS)
+}
+
+function clearConnectWait() {
+  if (connectTimer) { clearTimeout(connectTimer); connectTimer = 0 }
+  connectPending.value = false
+  connectFailed.value = false
+}
+
 function ensureConnected(then: () => void) {
   if (socket.connected.value) {
     then()
   } else {
     pendingAction = then
+    connectPending.value = true
+    connectFailed.value = false
+    armConnectTimer()
     socket.connect()
   }
 }
 
 watch(() => socket.connected.value, (connected) => {
-  if (connected && pendingAction) {
+  if (!connected) return
+  clearConnectWait()
+  if (pendingAction) {
     const fn = pendingAction
     pendingAction = null
     fn()
@@ -777,6 +812,17 @@ function onRetryConnection() {
     if (restoringSession.value) armBootRestoreTimer()
   }
   socket.retryConnection()
+}
+
+function onRetryConnect() {
+  connectFailed.value = false
+  armConnectTimer()
+  socket.retryConnection()
+}
+
+function onCancelConnect() {
+  pendingAction = null
+  clearConnectWait()
 }
 
 function onRetryReplay() {
@@ -2389,6 +2435,21 @@ onUnmounted(() => {
     </div>
   </Transition>
 
+  <!-- A queued lobby action waiting on a socket that has not come up. This
+       card only reports the wait: `pendingAction` stays armed, so a late
+       connect still starts the match and dismisses this on its own. -->
+  <Transition name="rc">
+    <div v-if="connectFailed" class="reconnect-overlay">
+      <div class="reconnect-card">
+        <div class="reconnect-text">{{ t('net.connectFailed') }}</div>
+        <div class="reconnect-actions">
+          <button class="reconnect-btn primary" @click="onRetryConnect">{{ t('app.retry') }}</button>
+          <button class="reconnect-btn" @click="onCancelConnect">{{ t('lobby.cancel') }}</button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
   <!-- Crate collected — says plainly whose badge just started -->
   <Transition name="crate-pop">
     <div v-if="cratePopup" class="crate-banner" :class="{ mine: cratePopup.mine }">
@@ -2430,12 +2491,15 @@ onUnmounted(() => {
     :has-incoming-invite="!!incomingInvite"
     :invite-failed="game.inviteFailed.value"
     :replay-failed="replayLoadFailed"
+    :offline="socket.offline.value && !restoringSession"
+    :connecting="connectPending"
     @play="onPlay"
     @how-to-play="onHowToPlay"
     @watch="onWatch"
     @architect="onArchitect"
     @watch-replay="startReplay"
     @retry-replay="onRetryReplay"
+    @retry-connect="onRetryConnection"
     @cancel-search="onCancelSearch"
     @invite="onInvite"
     @share-invite="onShareInvite"

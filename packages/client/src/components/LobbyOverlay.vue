@@ -38,6 +38,10 @@ const props = defineProps<{
   inviteFailed: boolean
   /** The replay the player just clicked could not be fetched. */
   replayFailed: boolean
+  /** No socket for long enough that it is worth saying so. */
+  offline: boolean
+  /** A tapped action is queued behind a connect that has not landed. */
+  connecting: boolean
 }>()
 
 /** The architect role is off the lobby until it is worth handing to a newcomer. */
@@ -50,6 +54,7 @@ const emit = defineEmits<{
   architect: []
   watchReplay: [roomId: string]
   retryReplay: []
+  retryConnect: []
   cancelSearch: []
   invite: [character: CharacterType]
   shareInvite: []
@@ -252,14 +257,21 @@ onUnmounted(() => {
           </template>
           <template v-else>
             <div v-if="inviteFailed" class="invite-failed">{{ t('lobby.inviteFail') }}</div>
+            <RetryNotice
+              v-if="offline"
+              class="lobby-offline"
+              :message="t('net.offline')"
+              @retry="emit('retryConnect')"
+            />
             <div class="actions-primary">
               <button
                 class="btn-play"
                 :class="{ 'btn-play-hot': props.inQueue > 0 }"
+                :disabled="connecting"
                 :aria-label="props.inQueue > 0 ? t('lobby.play.instant') : t('lobby.play')"
                 @click="emit('play', selected)"
               >
-                <span class="btn-play-text">{{ hasIncomingInvite ? t('lobby.playFriend') : t('lobby.play') }}</span>
+                <span class="btn-play-text">{{ connecting ? t('lobby.connecting') : (hasIncomingInvite ? t('lobby.playFriend') : t('lobby.play')) }}</span>
                 <svg class="btn-play-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M5 12h14M13 6l6 6-6 6" />
                 </svg>
@@ -561,6 +573,12 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 4px 20px rgba(233, 69, 96, 0.25);
+}
+
+.btn-play:disabled {
+  cursor: default;
+  opacity: 0.65;
+  box-shadow: none;
 }
 
 .btn-play:hover {
@@ -947,6 +965,11 @@ onUnmounted(() => {
   color: rgba(230, 180, 100, 0.9);
   font-size: 11px;
   letter-spacing: 0.3px;
+  max-width: 340px;
+}
+
+.lobby-offline {
+  margin-bottom: 10px;
   max-width: 340px;
 }
 
