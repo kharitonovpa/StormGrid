@@ -1,4 +1,5 @@
-import { ref, shallowRef, computed, onScopeDispose } from 'vue'
+import { ref, shallowRef, computed, watch, onScopeDispose } from 'vue'
+import { loadCharacterPreference, saveCharacterPreference } from '../lib/characterPreference'
 import type {
   DeathCause,
   GameState,
@@ -30,7 +31,8 @@ export function useGameState() {
   const weatherResult = ref<WeatherResult | null>(null)
   const winner = ref<PlayerId | 'draw' | null>(null)
   const deathCauses = ref<Partial<Record<PlayerId, DeathCause>> | null>(null)
-  const selectedCharacter = ref<CharacterType>('wheat')
+  const selectedCharacter = ref<CharacterType>(loadCharacterPreference())
+  watch(selectedCharacter, saveCharacterPreference)
   const tickDeadline = ref(0)
   const forecastDeadline = ref(0)
   const currentTick = ref(0)
