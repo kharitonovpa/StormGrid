@@ -25,8 +25,10 @@ export type PointsInput = {
   /** Round the match ended in (GameState.round at game end, 1-based). */
   rounds: number
   vsBot: boolean
-  /** This player lost by dropping the connection. */
+  /** This player lost by dropping the connection (or leaving — the server cannot tell them apart). */
   ownDisconnect: boolean
+  /** This player picked up the crate during the match. */
+  crate: boolean
 }
 export function pointsFor(i: PointsInput): number
 ```
@@ -37,13 +39,18 @@ export function pointsFor(i: PointsInput): number
 | Draw | 3 |
 | Loss | 1 |
 | Survival: each round survived after the first | +2 × (rounds − 1) |
+| Picked up the crate | +2 (at most one crate per match) |
 | Against a bot | the sum halved, rounded up |
-| Own disconnect | 0 (nothing to reward; the opponent's win is unaffected) |
+| Left / dropped | 0 — no base, no survival, no crate. Staying to the end always pays more than leaving. The opponent's forfeit win is scored like any win. No negative points: a bad connection must not be a fine |
 | Tutorial (practice) | not scored — `Room.saveReplay` already returns before `onMatchEnd` |
 
 Examples: round-1 win vs bot = 5; round-1 loss vs human = 1; round-3 draw vs
 human = 7; round-4 win vs human = 16. Surviving storms is worth more than
 beating a bot once. Points never go down.
+
+The crate is worth a move, not a match: walking to it costs the action that
+could have built shelter, and 2 points is that price. The badge streak stays
+cosmetic and separate — points must not vanish when a streak does.
 
 Draw stays above loss on purpose: a draw is "neither built shelter", a loss is
 "the opponent did and you did not". The table is the only place to change
@@ -96,8 +103,12 @@ id and analytics device id, so the lobby shows the number before any match.
 Old clients ignore unknown message types already (`useGameState` switch has a
 default).
 
+`MatchEndData` gains `crateTaken: Partial<Record<PlayerId, true>>`, set by the
+room on the tick that reports `activatedBonus` for that player (the same tick
+`onStreakChange` fires `seed`).
+
 `index.ts` `onMatchEnd`: for each human slot, `pointsFor(...)` from `winner`,
-`rounds`, `vsBot`, and `deathCauses[pid].type === 'disconnect'`, then
+`rounds`, `vsBot`, `crateTaken[pid]`, and `deathCauses[pid].type === 'disconnect'`, then
 `awardPoints(deviceId, userId, earned)`; returns the map. Wrapped in the same
 try/catch pattern as the neighbouring stores — a DB failure logs and returns
 `{}`, never breaks the ending.
@@ -125,7 +136,8 @@ Copy: no plural forms — the star carries the unit. i18n keys:
 ## Tests
 
 - `points.test.ts` (server): every row of the table, the bot halving with
-  rounding, disconnect zero, and that survival is counted from round 2.
+  rounding, disconnect zero even with rounds and crate, the crate bonus, and
+  that survival is counted from round 2.
 - `pointsStore` in `db.test.ts`: device-only award, device+user award, totals
   read back for guest and for user, transaction atomicity not asserted.
 - `game-end-rematch.test.ts` grows a case: with an `onMatchEnd` that returns
