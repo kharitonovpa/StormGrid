@@ -269,7 +269,7 @@ if (platform.type === 'discord') {
 }
 
 function onInvite(character: CharacterType) {
-  game.selectedCharacter.value = character
+  game.commitCharacter(character)
   game.inviteFailed.value = false
   audio.play('queue-enter')
   stopLobbyDemo()
@@ -469,11 +469,11 @@ const WIND_ONSET_MS = 400
 // watch(selectedCharacter, saveCharacterPreference)) both key off
 // game.selectedCharacter, so the pick has to land there on click.
 function onSelectCharacter(character: CharacterType) {
-  game.selectedCharacter.value = character
+  game.commitCharacter(character)
 }
 
 function onPlay(character: CharacterType) {
-  game.selectedCharacter.value = character
+  game.commitCharacter(character)
   game.inviteFailed.value = false
   audio.play('queue-enter')
   stopLobbyDemo()
@@ -503,7 +503,7 @@ function onPlay(character: CharacterType) {
  * learn the rules that reused portal accounts can always find.
  */
 function onHowToPlay(character: CharacterType) {
-  game.selectedCharacter.value = character
+  game.commitCharacter(character)
   game.inviteFailed.value = false
   audio.play('queue-enter')
   stopLobbyDemo()

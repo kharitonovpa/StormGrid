@@ -57,4 +57,15 @@ describe('useGameState character persistence', () => {
     const game = scope.run(() => useGameState())!
     expect(game.selectedCharacter.value).toBe('wheat')
   })
+
+  it('persists a committed character even when it equals the current selection', async () => {
+    mockSuggestion('rice')
+    await fetchCharacterSuggestion()
+    const game = scope.run(() => useGameState())!
+    expect(game.selectedCharacter.value).toBe('rice')
+    // Same value as the current selection: watch(selectedCharacter, ...) sees no
+    // change and would never fire, so commitCharacter must save unconditionally.
+    game.commitCharacter('rice')
+    expect(loadCharacterPreference()).toBe('rice')
+  })
 })
