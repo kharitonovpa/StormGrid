@@ -286,14 +286,14 @@ describe('presence', () => {
     p.setVisible(false)
     p.setVisible(false)
     p.setVisible(true)
+    // The window passing is not an event (no timer in the pure module); the
+    // next noteInput re-evaluates to active, same as last notified: silence.
     tick(ACTIVITY_WINDOW_MS + 1)
-    p.noteInput()          // inactive -> active (timer-based inactivity is observed lazily here)
-    expect(seen).toEqual([false, true, true])
+    p.noteInput()
+    expect(seen).toEqual([false, true])
   })
 })
 ```
-
-Note on the last case: `setVisible(true)` after `tick` is not called, so the sequence is: hide → `false`; hide again → nothing; show → `true`; the window passes silently (no timer in the pure module); `noteInput` re-evaluates and, because the last *notified* state was `true`, emits nothing — so the expected array is `[false, true]`. Use `expect(seen).toEqual([false, true])` and drop the misleading comment. (Written out so the implementer does not "fix" the module to emit spurious events.)
 
 - [ ] **Step 2: Run it, expect failure**
 
