@@ -1064,6 +1064,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Modify: `packages/client/src/App.vue`
 - Modify: `packages/client/src/components/GameOverOverlay.vue`
+- Modify: `packages/client/src/components/LobbyOverlay.vue`
 
 **Interfaces:**
 - Consumes: `CROP_THEME` (Task 6), `paintColors(geo, isBottom?, accent?)` (Task 7), `createStormSystem(scene, baseTint?)` and its `setBaseColor()` (Task 8), `resolveMusicId`/character-aware `enterLobby`/`enterMatch`/`enterFinished` (Task 9), `game.selectedCharacter` (existing, `useGameState.ts:33`).
@@ -1132,6 +1133,22 @@ The storm system is created once at mount (Step 3) and the flat lobby terrain is
 ```
 
 `watch` is called synchronously inside `onMounted`, so Vue binds it to the component instance and stops it on unmount. Confirm `watch` is among `App.vue`'s existing imports from `'vue'` and add it if not.
+
+The watcher only helps if the lobby pick actually reaches `game.selectedCharacter`. Today `LobbyOverlay.vue`'s `selectChar()` (`LobbyOverlay.vue:88`) updates only the overlay's local `selected` ref, and `App.vue` writes `game.selectedCharacter` in `onPlay`/`onHowToPlay`/`onInvite` alone — so a click would retint nothing and persist nothing until Play. Propagate the pick on click:
+
+- `LobbyOverlay.vue`: add `select: [character: CharacterType]` to `defineEmits`, and in `selectChar()` emit it right after `selected.value = id` (the `characterLocked` early return stays, so a locked lobby emits nothing).
+- `App.vue`: bind `@select="onSelectCharacter"` on the `<LobbyOverlay>` usage and add, beside `onPlay`:
+
+```ts
+// The arena watcher and the persisted preference both key off
+// game.selectedCharacter, so the lobby pick has to reach it on click,
+// not only on Play.
+function onSelectCharacter(character: CharacterType) {
+  game.selectedCharacter.value = character
+}
+```
+
+This also persists the pick through `useGameState`'s `watch(selectedCharacter, saveCharacterPreference)` — intended: the last crop picked in the lobby is the preference a returning player gets back.
 
 - [ ] **Step 5: Pass the character into every audio scene-transition call**
 
@@ -1257,7 +1274,7 @@ Run the app locally against a dev server. For each of the three crops (pick each
 - [ ] **Step 12: Commit**
 
 ```bash
-git add packages/client/src/App.vue packages/client/src/components/GameOverOverlay.vue
+git add packages/client/src/App.vue packages/client/src/components/GameOverOverlay.vue packages/client/src/components/LobbyOverlay.vue
 git commit -m "Wire per-crop theme into the arena, audio, and result screen
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
