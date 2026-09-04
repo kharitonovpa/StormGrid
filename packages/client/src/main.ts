@@ -2,7 +2,7 @@ import { createApp } from 'vue'
 import './style.css'
 import { initPlatform } from './lib/platform'
 import { initAnalytics } from './lib/analytics'
-import { setLanguage } from './lib/i18n'
+import { setLanguage, t } from './lib/i18n'
 import App from './App.vue'
 
 initPlatform()
@@ -13,8 +13,26 @@ initPlatform()
   })
   .catch((err) => {
     console.error('[init] Platform initialization failed:', err)
-    document.getElementById('app')!.innerHTML =
+    // The adapter never came up, so its language is unknowable — fall back to
+    // the browser's. i18n has no platform dependency, so it still works here.
+    setLanguage(navigator.language.slice(0, 2))
+
+    const root = document.getElementById('app')!
+    root.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#fff;font-family:sans-serif;text-align:center;padding:24px">' +
-      '<div><p style="font-size:18px;margin-bottom:12px">Failed to load</p>' +
-      '<button onclick="location.reload()" style="padding:10px 24px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:14px;cursor:pointer">Reload</button></div></div>'
+      '<div>' +
+      '<p style="font-size:18px;margin:0 0 8px"></p>' +
+      '<p style="font-size:13px;opacity:.6;margin:0 0 18px"></p>' +
+      '<button style="padding:10px 24px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:14px;cursor:pointer"></button>' +
+      '</div></div>'
+
+    // Text goes in through textContent, not the markup string: translated copy
+    // must never be parsed as HTML. The reload handler is attached rather than
+    // written as an inline onclick, which a strict CSP is entitled to refuse.
+    const [title, hint] = root.querySelectorAll('p')
+    title!.textContent = t('boot.failed')
+    hint!.textContent = t('boot.failedHint')
+    const button = root.querySelector('button')!
+    button.textContent = t('boot.reload')
+    button.addEventListener('click', () => location.reload())
   })
