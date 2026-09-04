@@ -2,6 +2,12 @@ import * as THREE from 'three'
 import { CELLS, HALF, CELL_SIZE, HEIGHT_SCALE, THICKNESS } from './constants'
 import { GLASS_ORDER } from './glass'
 import type { TerrainState, FloodBody } from './terrain'
+import { LOOK, srgbHexToLinear } from './look'
+
+// Surface takes the lighter rim colour, walls the deep body (lib/look.ts);
+// vertex colours are linear, hence the conversion.
+const WATER_RIM = srgbHexToLinear(LOOK.water.rim)
+const WATER_DEEP = srgbHexToLinear(LOOK.water.deep)
 
 /** Seconds the decisive hollow takes to brim over. */
 const FILL_DURATION = 1.6
@@ -61,7 +67,7 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
   const waterMat = new THREE.MeshPhysicalMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.55,
+    opacity: LOOK.water.opacity,
     roughness: 0.1,
     metalness: 0.05,
     side: THREE.DoubleSide,
@@ -96,8 +102,8 @@ export function createWaterSystem(scene: THREE.Scene, terrain: TerrainState) {
     out.length = 0
     cfg.computeFloodFn()
 
-    const TR = 0.12, TG = 0.52, TB = 0.78
-    const BR = 0.04, BG = 0.18, BB = 0.38
+    const [TR, TG, TB] = WATER_RIM
+    const [BR, BG, BB] = WATER_DEEP
 
     for (const body of cfg.bodies()) {
       const { cells, minH } = body
