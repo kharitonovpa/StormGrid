@@ -3,6 +3,7 @@ import './style.css'
 import { initPlatform } from './lib/platform'
 import { initAnalytics } from './lib/analytics'
 import { setLanguage, t } from './lib/i18n'
+import { fetchCharacterSuggestion } from './lib/characterSuggestion'
 import App from './App.vue'
 
 /**
@@ -50,8 +51,14 @@ function showBootFailure(hintKey: string) {
 // `.then(...).catch(...)` reintroduces a mislabeled "check your internet"
 // message for what is often a graphics or crypto-API failure, and dropping
 // the inner try/catch brings back the silent blank page it replaced.
-initPlatform().then(
-  (platform) => {
+// useGameState() reads getSuggestedCharacter() synchronously during App's
+// setup(), so the suggestion fetch must resolve before mount — the same
+// constraint initPlatform() already satisfies for storage.ts. It runs
+// alongside initPlatform() rather than after it, and never rejects (see
+// characterSuggestion.ts), so a rejection below is still always the
+// platform adapter's.
+Promise.all([initPlatform(), fetchCharacterSuggestion()]).then(
+  ([platform]) => {
     let languageResolved = false
     try {
       setLanguage(platform.getLanguage())

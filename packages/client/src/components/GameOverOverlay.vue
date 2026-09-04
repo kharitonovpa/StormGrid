@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, inject } from 'vue'
-import type { DeathCause, PlayerId } from '@wheee/shared'
+import type { DeathCause, PlayerId, CharacterType } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
 import RetryNotice from './RetryNotice.vue'
+import { CROP_THEME } from '../lib/cropTheme'
 import { t } from '../lib/i18n'
 
 function dirLabel(d: string): string {
@@ -16,6 +17,7 @@ const props = defineProps<{
   roomId: string | null
   /** The replay the player just clicked could not be fetched. */
   replayFailed: boolean
+  character: CharacterType
   deathCauses?: Partial<Record<PlayerId, DeathCause>> | null
   /** Player the wind released because the other one left the board first. */
   windSpared?: PlayerId | null
@@ -139,6 +141,8 @@ const resultClass = computed(() => {
   return 'lose'
 })
 
+const cropAccent = computed(() => CROP_THEME[props.character].resultAccent)
+
 function onRescueClick() {
   if (props.rescueBusy) return
   audio?.play('ui-click')
@@ -198,7 +202,7 @@ onUnmounted(() => {
 
 <template>
   <div class="gameover">
-    <div class="gameover-card" :class="resultClass">
+    <div class="gameover-card" :class="resultClass" :style="{ '--crop-accent': cropAccent }">
       <!-- Glow ring behind title for win -->
       <div v-if="isWin" class="win-glow" />
 
@@ -341,6 +345,17 @@ onUnmounted(() => {
 .gameover-card.spectator {
   border-color: rgba(160, 140, 220, 0.12);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.gameover-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--crop-accent, transparent);
+  pointer-events: none;
 }
 
 /* ── Win glow ── */

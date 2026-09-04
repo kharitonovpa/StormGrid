@@ -9,8 +9,8 @@ describe('character preference persistence', () => {
     await hydrateStorage({ load: async () => ({}), set: () => {} })
   })
 
-  it('defaults to wheat when nothing has been saved', () => {
-    expect(loadCharacterPreference()).toBe('wheat')
+  it('returns null when nothing has been saved', () => {
+    expect(loadCharacterPreference()).toBeNull()
   })
 
   it('round-trips a saved character', () => {
@@ -18,8 +18,8 @@ describe('character preference persistence', () => {
     expect(loadCharacterPreference()).toBe('rice')
   })
 
-  it('falls back to wheat for a corrupted/unknown value', async () => {
+  it('returns null for a corrupted/unknown value', async () => {
     await hydrateStorage({ load: async () => ({ 'wheee:character-v1': 'not-a-crop' }), set: () => {} })
-    expect(loadCharacterPreference()).toBe('wheat')
+    expect(loadCharacterPreference()).toBeNull()
   })
 })

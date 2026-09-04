@@ -1,5 +1,6 @@
 import { ref, shallowRef, computed, watch, onScopeDispose } from 'vue'
 import { loadCharacterPreference, saveCharacterPreference } from '../lib/characterPreference'
+import { getSuggestedCharacter } from '../lib/characterSuggestion'
 import type {
   DeathCause,
   GameState,
@@ -31,8 +32,17 @@ export function useGameState() {
   const weatherResult = ref<WeatherResult | null>(null)
   const winner = ref<PlayerId | 'draw' | null>(null)
   const deathCauses = ref<Partial<Record<PlayerId, DeathCause>> | null>(null)
-  const selectedCharacter = ref<CharacterType>(loadCharacterPreference())
+  const selectedCharacter = ref<CharacterType>(loadCharacterPreference() ?? getSuggestedCharacter() ?? 'wheat')
   watch(selectedCharacter, saveCharacterPreference)
+  /**
+   * Explicit save on top of the watch above: assigning a value Vue already
+   * holds (e.g. accepting the pre-selected suggested crop) is a no-op for
+   * `watch`, which would otherwise silently skip persisting it.
+   */
+  function commitCharacter(character: CharacterType) {
+    selectedCharacter.value = character
+    saveCharacterPreference(character)
+  }
   const tickDeadline = ref(0)
   const forecastDeadline = ref(0)
   const currentTick = ref(0)
@@ -317,6 +327,7 @@ export function useGameState() {
     winner,
     deathCauses,
     selectedCharacter,
+    commitCharacter,
     tickDeadline,
     forecastDeadline,
     currentTick,

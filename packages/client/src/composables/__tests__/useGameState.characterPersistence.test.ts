@@ -1,24 +1,83 @@
-import { describe, it, expect, beforeEach } from 'bun:test'
-import { nextTick } from 'vue'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
+import { nextTick, effectScope } from 'vue'
 import { useGameState } from '../useGameState.js'
 import { hydrateStorage } from '../../lib/storage.js'
 import { loadCharacterPreference } from '../../lib/characterPreference.js'
+import { fetchCharacterSuggestion } from '../../lib/characterSuggestion.js'
+
+const originalFetch = globalThis.fetch
+
+function mockSuggestion(character: string) {
+  globalThis.fetch = (() => Promise.resolve(
+    new Response(JSON.stringify({ character }), { status: 200 }),
+  )) as unknown as typeof fetch
+}
 
 describe('useGameState character persistence', () => {
+  // useGameState() calls onScopeDispose(), which warns when run outside an
+  // active effect scope. Running it inside one here (and stopping the scope
+  // after each test) keeps test output free of that Vue warning.
+  let scope: ReturnType<typeof effectScope>
+
   beforeEach(async () => {
     await hydrateStorage({ load: async () => ({}), set: () => {} })
+    scope = effectScope()
+  })
+
+  afterEach(async () => {
+    // The suggestion lives in a module-level singleton that outlives this file's
+    // tests under bun's test runner — reset it here so whatever the last test set
+    // never leaks into a later test file's run.
+    globalThis.fetch = (() => Promise.reject(new Error('reset'))) as unknown as typeof fetch
+    await fetchCharacterSuggestion()
+    globalThis.fetch = originalFetch
+    scope.stop()
   })
 
   it('initializes selectedCharacter from the saved preference', async () => {
     await hydrateStorage({ load: async () => ({ 'wheee:character-v1': 'corn' }), set: () => {} })
-    const game = useGameState()
+    const game = scope.run(() => useGameState())!
     expect(game.selectedCharacter.value).toBe('corn')
   })
 
   it('persists a change to selectedCharacter', async () => {
-    const game = useGameState()
+    const game = scope.run(() => useGameState())!
     game.selectedCharacter.value = 'rice'
     await nextTick()
     expect(loadCharacterPreference()).toBe('rice')
+  })
+
+  it('applies a geo suggestion when no preference is saved', async () => {
+    mockSuggestion('rice')
+    await fetchCharacterSuggestion()
+    const game = scope.run(() => useGameState())!
+    expect(game.selectedCharacter.value).toBe('rice')
+  })
+
+  it('ignores the suggestion when a preference is already saved', async () => {
+    await hydrateStorage({ load: async () => ({ 'wheee:character-v1': 'wheat' }), set: () => {} })
+    mockSuggestion('corn')
+    await fetchCharacterSuggestion()
+    const game = scope.run(() => useGameState())!
+    expect(game.selectedCharacter.value).toBe('wheat')
+  })
+
+  it('persists a committed character even when it equals the current selection', async () => {
+    mockSuggestion('rice')
+    await fetchCharacterSuggestion()
+    const game = scope.run(() => useGameState())!
+    expect(game.selectedCharacter.value).toBe('rice')
+    // Same value as the current selection: watch(selectedCharacter, ...) sees no
+    // change and would never fire, so commitCharacter must save unconditionally.
+    game.commitCharacter('rice')
+    expect(loadCharacterPreference()).toBe('rice')
+  })
+
+  it('falls back to wheat with no preference and no suggestion', async () => {
+    // Safe only because the afterEach above resets the suggestion singleton —
+    // otherwise a leaked 'rice'/'corn' from an earlier test (this file or
+    // characterSuggestion.test.ts) could make this flake depending on run order.
+    const game = scope.run(() => useGameState())!
+    expect(game.selectedCharacter.value).toBe('wheat')
   })
 })

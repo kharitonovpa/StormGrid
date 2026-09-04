@@ -1,6 +1,7 @@
 import { Howl, Howler } from 'howler'
 import { storageGet, storageSet } from './storage'
 import { usePlatform } from './platform'
+import type { CharacterType } from '@wheee/shared'
 
 // ---------------------------------------------------------------------------
 // Sound IDs
@@ -76,6 +77,19 @@ function saveSettings(s: AudioSettings) {
 // ---------------------------------------------------------------------------
 // Per-sound config
 // ---------------------------------------------------------------------------
+
+/**
+ * Per-crop overrides for the two music loops. Empty today — no regional
+ * tracks exist yet — so resolveMusicId always falls back to the shared
+ * track below. Populating an entry here (plus adding its file under
+ * public/sounds and its SoundId case in def()) is the whole integration
+ * point for a future crop-specific track.
+ */
+const MUSIC_TRACKS: Partial<Record<CharacterType, Partial<Record<'lobby-music' | 'match-music', LoopId>>>> = {}
+
+export function resolveMusicId(base: 'lobby-music' | 'match-music', character?: CharacterType): LoopId {
+  return (character && MUSIC_TRACKS[character]?.[base]) || base
+}
 
 interface SoundDef {
   src: string
@@ -280,32 +294,32 @@ export function createAudioSystem() {
 
   // ------ Scene transitions ------
 
-  function enterLobby() {
+  function enterLobby(character?: CharacterType) {
     cancelSceneTimers()
     stopWeather()
     fadeOutLayer('ambient', 1000)
     fadeOutLayer('music', 1000)
     sceneTimers.push(safeTimeout(() => {
       fadeIn('lobby-pad', 1200)
-      fadeIn('lobby-music', 1500)
+      fadeIn(resolveMusicId('lobby-music', character), 1500)
     }, 400))
   }
 
-  function enterMatch() {
+  function enterMatch(character?: CharacterType) {
     cancelSceneTimers()
     stopWeather()
     fadeOut('lobby-pad', 1000)
-    fadeOut('lobby-music', 1000)
+    fadeOutLayer('music', 1000)
     sceneTimers.push(safeTimeout(() => {
       fadeIn('game-drone', 1200)
-      fadeIn('match-music', 1500)
+      fadeIn(resolveMusicId('match-music', character), 1500)
     }, 600))
   }
 
   function enterFinished() {
     stopWeather()
     fadeOut('game-drone', 800)
-    fadeOut('match-music', 800)
+    fadeOutLayer('music', 800)
   }
 
   // ------ Weather ------
@@ -355,10 +369,20 @@ export function createAudioSystem() {
 
   // ------ Storm effects (hush, duck, ambience, crackle) ------
 
+  /** The fixed, non-crop-dependent loops plus whichever music-layer loop is
+   *  currently active — the same layer-based lookup fadeOutLayer/duckMusic
+   *  use, so this keeps working once a track resolves to a crop-specific id
+   *  instead of the literal 'match-music'. */
+  function hushIds(): SoundId[] {
+    const ids: SoundId[] = ['wind-loop', 'game-drone']
+    for (const id of activeLoops) if (defs.get(id)!.layer === 'music') ids.push(id)
+    return ids
+  }
+
   /** The hush before the strike: wind and music sink almost to silence. */
   function beginHush() {
     if (disposed) return
-    for (const id of ['wind-loop', 'match-music', 'game-drone'] as SoundId[]) {
+    for (const id of hushIds()) {
       const h = howls.get(id)!
       if (activeLoops.has(id)) h.fade(h.volume() as number, resolveVolume(id) * 0.05, 200)
     }
@@ -366,7 +390,7 @@ export function createAudioSystem() {
 
   function endHush() {
     if (disposed) return
-    for (const id of ['wind-loop', 'match-music', 'game-drone'] as SoundId[]) {
+    for (const id of hushIds()) {
       const h = howls.get(id)!
       if (activeLoops.has(id)) h.fade(h.volume() as number, resolveVolume(id), 400)
     }

@@ -48,6 +48,7 @@ const props = defineProps<{
 const SHOW_ARCHITECT = false
 
 const emit = defineEmits<{
+  select: [character: CharacterType]
   play: [character: CharacterType]
   howToPlay: [character: CharacterType]
   watch: []
@@ -112,6 +113,7 @@ async function retryReplays() {
 function selectChar(id: CharacterType) {
   if (props.characterLocked) return
   selected.value = id
+  emit('select', id)
   audio?.play('ui-click')
 }
 
