@@ -342,7 +342,6 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
       const bob = Math.sin(time * BOB_HZ * Math.PI * 2) * BOB_AMP
       cluster.position.y = bob
       const pulse = Math.sin(time * PULSE_HZ * Math.PI * 2)
-      // Tuned for AgX tone mapping (lib/look.ts), which compresses highlights.
       shardMat.emissiveIntensity = (mine ? 1.0 : 0.26) + pulse * (mine ? 0.4 : 0.08)
       haloMat.opacity = 0.34 + pulse * 0.14
       const hs = CELL_SIZE * (0.58 + pulse * 0.06)

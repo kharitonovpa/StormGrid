@@ -52,7 +52,6 @@ const CLOSE_SPEED = 1.5
  * for a fifth of a second, and never darkens past its resting state.
  */
 const PULSE_COLOR = 0x63c79b
-// Tuned for AgX tone mapping (lib/look.ts), which compresses highlights.
 const PULSE_GAIN = 0.42
 const PULSE_SECONDS = 0.18
 
