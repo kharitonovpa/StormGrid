@@ -19,6 +19,7 @@
 - **No component-test infrastructure is added.** This repo's suite is plain TS under `bun:test`; `@vue/test-utils` and a DOM shim are not installed, and installing them is a larger change than this fix. `.vue` edits are covered by `vue-tsc` typecheck in `bun run build` plus the manual pass in Task 8. Tasks 1, 3 and 4 carry real unit tests.
 - Every test that imports anything reaching `src/lib/config.ts` must install a `globalThis.location` stub **before** the import, or module evaluation throws `ReferenceError: location is not defined`. Use a dynamic `await import()` inside the test body, not a top-level `import`.
 - Run tests from `packages/client` with `bun test`. Run the typecheck with `bun run build` from the same directory.
+- **Line numbers in this plan are from the pre-change files.** Earlier steps insert lines above later targets, so by the time you reach a step its quoted `file.vue:NNN` will have drifted — often by ten or twenty lines. Always locate the target by the quoted code, and treat the line number as a hint about roughly where to look. `App.vue`, `LobbyOverlay.vue` and `LeaderboardPanel.vue` are each edited by more than one task.
 
 ---
 
