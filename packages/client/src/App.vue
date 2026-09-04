@@ -7,6 +7,7 @@ import type { Action, CharacterType, GameState, MoveDir } from '@wheee/shared'
 import { badgeFor, hasWind, hasRain, hasLightning, TICKS_PER_ROUND } from '@wheee/shared'
 import { SIZE, HALF, CELL_SIZE, CELLS, SEGMENTS } from './lib/constants'
 import { terrainState } from './lib/terrain'
+import { CROP_THEME } from './lib/cropTheme'
 import { createWaterSystem, WATER_FILL_MS } from './lib/water'
 import { createWindSystem } from './lib/wind'
 import { createRainSystem } from './lib/rain'
@@ -317,7 +318,7 @@ unsubMessage1 = socket.onMessage((msg) => {
     lastRoomId = msg.roomId
     socket.setReconnectToken(msg.reconnectToken)
     platform.gameplayStart()
-    audio.enterMatch()
+    audio.enterMatch(game.selectedCharacter.value)
     audio.play('match-found')
     // The window belonged to the match that just finished, whether this new one
     // came out of it or out of the queue.
@@ -371,7 +372,7 @@ unsubMessage1 = socket.onMessage((msg) => {
     stormSystem?.discharge('exhale')
     stormSystem?.setTremor(false)
     nameplateSystem?.setVisible(false)
-    audio.enterFinished()
+    audio.enterFinished(game.selectedCharacter.value)
     const w = (msg as { winner: 'A' | 'B' | 'draw' }).winner
     const myId = game.myPlayerId.value
     if (w === 'draw') audio.play('draw-end')
@@ -591,7 +592,7 @@ function doPlayAgain(instant = false) {
   const lastCharacter = game.selectedCharacter.value ?? 'wheat'
   game.reset()
   game.selectedCharacter.value = lastCharacter
-  audio.enterLobby()
+  audio.enterLobby(game.selectedCharacter.value)
   ensureConnected(() => {
     if (instant) { socket.startInstant(lastCharacter, streak.value); return }
     if (socket.joinQueue(lastCharacter, streak.value)) game.queueJoinPending.value = true
@@ -664,7 +665,7 @@ async function onBackToLobby() {
     controls.autoRotate = true
     controls.autoRotateSpeed = 0.4
   }
-  audio.enterLobby()
+  audio.enterLobby(game.selectedCharacter.value)
 }
 
 /** Where the gem was standing, kept so the pickup burst starts from it. */
@@ -880,7 +881,7 @@ function exitReplay() {
   terrainState.resetFlat()
   resetVisuals()
   switchToOrbit()
-  audio.enterLobby()
+  audio.enterLobby(game.selectedCharacter.value)
 }
 
 function onPredictWinner(playerId: 'A' | 'B') {
@@ -1457,7 +1458,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       switchToOrbit()
       startAnimating()
       platform.gameplayStart()
-      audio.enterMatch()
+      audio.enterMatch(game.selectedCharacter.value)
       break
     }
     case 'reconnect:fail': {
@@ -1467,7 +1468,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       terrainState.resetFlat()
       resetVisuals()
       startAnimating()
-      audio.enterLobby()
+      audio.enterLobby(game.selectedCharacter.value)
       break
     }
     case 'watch:assigned': {
@@ -1489,7 +1490,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       applyGameState(msg.state)
       startAnimating()
       platform.gameplayStart()
-      audio.enterMatch()
+      audio.enterMatch(game.selectedCharacter.value)
       audio.play('match-found')
       break
     }
@@ -1512,7 +1513,7 @@ unsubMessage2 = socket.onMessage((msg) => {
       applyGameState(msg.state)
       startAnimating()
       platform.gameplayStart()
-      audio.enterMatch()
+      audio.enterMatch(game.selectedCharacter.value)
       audio.play('match-found')
       break
     }
@@ -1599,7 +1600,7 @@ unsubMessage2 = socket.onMessage((msg) => {
           // screen now belongs to someone else's round.
           if (gen === liveStormGeneration) stormSystem?.discharge('exhale')
           nameplateSystem?.setVisible(false)
-          audio.enterFinished()
+          audio.enterFinished(game.selectedCharacter.value)
           const w = pendingGameEnd.winner
           const myId = game.myPlayerId.value
           if (w === 'draw') audio.play('draw-end')
@@ -1887,7 +1888,7 @@ onMounted(() => {
   rainSystem = rain
   const lightning = createLightningSystem(scene, camera)
   lightningSystem = lightning
-  const storm = createStormSystem(scene)
+  const storm = createStormSystem(scene, new THREE.Color(CROP_THEME[game.selectedCharacter.value].skyTint))
   stormSystem = storm
   const compass = createCompassSystem(scene)
   const preview = createPreviewSystem(scene, terrainState)
@@ -2076,6 +2077,16 @@ onMounted(() => {
     else if (action === 'lower') preview.showLower(cx, cz)
   }
 
+  // The terrain palette carries the current crop's decorative accent
+  // (lib/cropTheme.ts); every repaint goes through here so the accent can't
+  // drift between the initial paint, the animation loop, and a lobby change.
+  const repaintTerrain = () => {
+    const accent = CROP_THEME[game.selectedCharacter.value].paletteAccent
+    terrainState.paintColors(geo, false, accent)
+    terrainState.paintColors(bottomGeo, true, accent)
+    terrainState.paintColors(skirtGeo, false, accent)
+  }
+
   // Start flat
   terrainState.resetFlat()
 
@@ -2084,13 +2095,16 @@ onMounted(() => {
   geo.computeVertexNormals()
   bottomGeo.computeVertexNormals()
   skirtGeo.computeVertexNormals()
-  terrainState.paintColors(geo)
-  terrainState.paintColors(bottomGeo, true)
-  terrainState.paintColors(skirtGeo)
+  repaintTerrain()
   rebuildGrid()
 
+  watch(() => game.selectedCharacter.value, (character) => {
+    storm.setBaseColor(new THREE.Color(CROP_THEME[character].skyTint))
+    repaintTerrain()
+  })
+
   sceneReady = true
-  audio.enterLobby()
+  audio.enterLobby(game.selectedCharacter.value)
 
   document.addEventListener('contextmenu', preventContextMenu)
   window.addEventListener('beforeunload', handleBeforeUnload)
@@ -2182,9 +2196,7 @@ onMounted(() => {
       geo.computeVertexNormals()
       bottomGeo.computeVertexNormals()
       skirtGeo.computeVertexNormals()
-      terrainState.paintColors(geo)
-      terrainState.paintColors(bottomGeo, true)
-      terrainState.paintColors(skirtGeo)
+      repaintTerrain()
       rebuildGrid()
       if (done) {
         animating = false
@@ -2473,6 +2485,7 @@ onUnmounted(() => {
     :winner="game.winner.value"
     :my-player-id="game.myPlayerId.value"
     :room-id="lastRoomId"
+    :character="game.selectedCharacter.value"
     :death-causes="game.deathCauses.value"
     :wind-spared="game.windSpared.value"
     :rain-spared="game.rainSpared.value"
