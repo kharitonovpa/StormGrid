@@ -128,7 +128,7 @@ export function rebuildMesh(
 }
 
 // --- Vertex coloring ---
-export function paintColors(geo: THREE.BufferGeometry, isBottom = false) {
+export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?: readonly [number, number, number]) {
   const p = geo.attributes.position as THREE.BufferAttribute
   const nm = geo.attributes.normal as THREE.BufferAttribute
   if (!nm) return
@@ -186,6 +186,15 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false) {
     r += checker * checkerAmp * 0.7
     g += checker * checkerAmp * 1.3
     b += checker * checkerAmp * 0.4
+
+    // A crop's decorative palette accent (see lib/cropTheme.ts), blended in
+    // last so it rides on top of height/slope/checkerboard shading rather
+    // than fighting it.
+    if (accent) {
+      r += accent[0]
+      g += accent[1]
+      b += accent[2]
+    }
 
     col.setXYZ(i, clamp(r, 0, 1), clamp(g, 0, 1), clamp(b, 0, 1))
   }
@@ -356,7 +365,7 @@ export interface TerrainState {
     bottomPos: THREE.BufferAttribute | null,
     skirtPos: THREE.BufferAttribute | null,
   ): void
-  paintColors(geo: THREE.BufferGeometry, isBottom?: boolean): void
+  paintColors(geo: THREE.BufferGeometry, isBottom?: boolean, accent?: readonly [number, number, number]): void
   stepAnimation(dt: number): boolean
   readonly version: number
   PERIMETER: number[]
