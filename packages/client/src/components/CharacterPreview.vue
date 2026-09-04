@@ -72,9 +72,10 @@ onMounted(() => {
   // argues with the scene behind it; the sun is eased back because the card
   // has no terrain bounce to soften it.
   const [sunX, sunY, sunZ] = LOOK.sun.direction
-  // The arena's sun sits behind the board relative to the default camera; the
-  // card's camera looks down −z, so keep the sun on its side (|z|) or the
-  // model would be backlit into a silhouette.
+  // The arena's sun has a −z component (it sits at screen-right of the arena
+  // camera, which looks in from +x, +z); the card's camera looks down −z from
+  // +z, so mirror z (|z|) to keep the sun on the camera's side, or the model
+  // would be backlit into a silhouette.
   const sun = new THREE.DirectionalLight(LOOK.sun.color, LOOK.sun.intensity * 0.6)
   sun.position.set(sunX * 5, sunY * 5, Math.abs(sunZ) * 5)
   scene.add(sun)

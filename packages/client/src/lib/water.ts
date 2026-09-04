@@ -4,8 +4,9 @@ import { GLASS_ORDER } from './glass'
 import type { TerrainState, FloodBody } from './terrain'
 import { LOOK, srgbHexToLinear } from './look'
 
-// Surface takes the lighter rim colour, walls the deep body (lib/look.ts);
-// vertex colours are linear, hence the conversion.
+// The surface takes the lighter rim colour; the walls fade from the rim colour
+// at the surface to the deep body at the floor (lib/look.ts). Vertex colours
+// are linear, hence the conversion.
 const WATER_RIM = srgbHexToLinear(LOOK.water.rim)
 const WATER_DEEP = srgbHexToLinear(LOOK.water.deep)
 

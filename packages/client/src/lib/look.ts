@@ -25,10 +25,10 @@ export const LOOK = {
   sun: {
     color: 0xffc98a,
     intensity: 3.8,
-    /** Unit vector toward the sun: low (elevation ≈ 28°), from the right of the
-     *  default camera and a little behind the board, so the tops and right
-     *  walls are lit, the walls facing the camera sit in cool half-shade, and
-     *  the long shadows fall toward the viewer. */
+    /** Unit vector toward the sun: low (elevation ≈ 28°), at screen-right of the
+     *  default camera (rest azimuth 45°, lib/cameraRest.ts), so the tops and the
+     *  right-facing walls are lit, the walls facing the camera sit in cool
+     *  half-shade, and the long shadows fall to screen-left across the board. */
     direction: [0.6, 0.47, -0.648] as Vec3,
   },
   /** Flat ambient fill, blue-grey: the sum the old up/down hemisphere pair
@@ -43,7 +43,10 @@ export const LOOK = {
     checkerAmp: 0.12,       // ± relative lightness of alternate grass cells
     aoStrength: 0.5,        // darkening at a block's foot
     shadowStrength: 0.6,    // darkening inside the sun's shadow
-    shadowTint: [0.75, 0.88, 1.4] as Vec3,  // at full shadow: sky-lit, so cooler, not just darker
+    // Multiplies the albedo at full shadow. The sun still lights the vertex (no
+    // shadow maps), so the baked shadow darkens far more than it cools; this
+    // only nudges its hue toward sky-lit.
+    shadowTint: [0.75, 0.88, 1.4] as Vec3,
   },
   water: { deep: 0x1e5d6e, rim: 0x3d9aa8, opacity: 0.6 },
   grid: { color: 0xc8c4ff, opacity: 0.28 },
@@ -64,7 +67,8 @@ export function srgbHexToLinear(hex: number): Vec3 {
   ]
 }
 
-/** CIE L* (0..100) of an sRGB hex — perceptual lightness, for legibility checks. */
+/** CIE L* (0..100) of an sRGB hex — perceptual lightness. Exists for the token
+ *  tests' legibility guard (storm mass against the horizon band). */
 export function cieLightness(hex: number): number {
   const [r, g, b] = srgbHexToLinear(hex)
   const y = 0.2126 * r + 0.7152 * g + 0.0722 * b

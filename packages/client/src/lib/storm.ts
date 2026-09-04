@@ -233,8 +233,8 @@ export function createStormSystem(scene: THREE.Scene, tint: Vec3 = [1, 1, 1]) {
         // Colour management: THREE.Color holds linear-sRGB, and three.js appends the
         // output transform only to its own materials — a ShaderMaterial that writes
         // gl_FragColor has to ask for it. Without this line every colour above is
-        // written raw into an sRGB framebuffer and the whole sky lands ~9x too dark,
-        // both washed out and darker than the scene background it replaces.
+        // written raw into an sRGB framebuffer and the whole sky lands ~9x too dark —
+        // far too dark and barely visible, darker than the scene background it replaces.
         //
         // The renderer tone-maps its own materials; a ShaderMaterial has to ask.
         #include <tonemapping_fragment>
