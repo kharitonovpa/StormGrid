@@ -142,6 +142,9 @@ export type ReplaySummary = {
   charB: CharacterType
   winner: PlayerId | 'draw' | null
   frameCount: number
+  /** Display names as shown on the nameplates; absent on replays saved before they were stored. */
+  nameA?: string
+  nameB?: string
 }
 
 export type ReplayData = ReplaySummary & { frames: ReplayFrame[] }

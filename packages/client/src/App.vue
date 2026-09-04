@@ -603,6 +603,9 @@ function doPlayAgain(instant = false) {
   // be sent away by hand or it hangs over the board while the player waits.
   bonusSystem?.clear()
   lastCrateCell = null
+  // Same for the storm itself: the game-over card kept it blowing as a backdrop,
+  // the queue should not.
+  stopStormVisuals()
   const lastCharacter = game.selectedCharacter.value ?? 'wheat'
   game.reset()
   game.selectedCharacter.value = lastCharacter
@@ -1323,16 +1326,10 @@ function applyGameState(state: GameState) {
   }
 }
 
-function resetVisuals() {
-  // Invalidates any in-flight weather:result chain: a watcher:redirect,
-  // reconnect, fresh round:start, or exit that lands here mid-storm must not
-  // let that stale chain's wind/rain visuals or old position data through.
-  liveStormGeneration++
-  clearTimeout(cratePopupTimer)
-  cratePopup.value = null
+/** The storm is over for this screen: wind, rain, the dome and its sound bed go. */
+function stopStormVisuals() {
   windSystem?.setVisible(false)
   rainSystem?.setVisible(false)
-  glassSystem?.close()
   // The sky over this round is done rumbling, whatever the last forecast promised.
   audio.setStormAmbience(false)
   audio.stopCrackle()
@@ -1341,6 +1338,17 @@ function resetVisuals() {
   stormSystem?.discharge('fast')
   audio.setStormBed(0)
   stormSystem?.setTremor(false)
+}
+
+function resetVisuals() {
+  // Invalidates any in-flight weather:result chain: a watcher:redirect,
+  // reconnect, fresh round:start, or exit that lands here mid-storm must not
+  // let that stale chain's wind/rain visuals or old position data through.
+  liveStormGeneration++
+  clearTimeout(cratePopupTimer)
+  cratePopup.value = null
+  stopStormVisuals()
+  glassSystem?.close()
   waterSystem?.clear()
   pendingWaterVolume = null
   // Never leave the storm waiting on water that will not come.

@@ -98,6 +98,8 @@ export const replays = sqliteTable('replays', {
   charA: text('char_a').notNull(),
   charB: text('char_b').notNull(),
   winner: text('winner'),
+  nameA: text('name_a'),
+  nameB: text('name_b'),
   frameCount: integer('frame_count').notNull(),
   frames: text('frames').notNull(), // JSON-serialized ReplayFrame[]
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),

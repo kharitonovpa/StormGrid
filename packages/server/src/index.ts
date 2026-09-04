@@ -11,7 +11,7 @@ import { ConnectionLimiter } from './ratelimit.js'
 import { runMigrations } from './db/migrate.js'
 import { authRoutes } from './auth/oauth.js'
 import { verifyJwt, parseCookieToken, extractToken } from './auth/jwt.js'
-import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard } from './db/matchStore.js'
+import { saveMatch, listReplays, getReplay, getUserMatches, updatePlayerStats, updateWatcherStats, getPlayerLeaderboard, getWatcherLeaderboard, setExcludedLeaderboardUsers } from './db/matchStore.js'
 import { insertEvents, getDailySummary, getEventCounts, getPlatformSummary, getPropsAudit, setExcludedDevices } from './db/eventStore.js'
 import { replyForUpdate, type TgUpdate } from './tgBot.js'
 import { createQueueAlert } from './queueAlert.js'
@@ -58,6 +58,8 @@ const gracePeriodMs = _rawGrace !== undefined && Number.isFinite(_rawGrace) && _
 const replayStore = new ReplayStore()
 // Our own browsers, kept out of every aggregate — see setExcludedDevices.
 setExcludedDevices((process.env.STATS_EXCLUDE_DEVICES ?? '').split(','))
+// Same idea for the public boards — the owner's own accounts sit them out.
+setExcludedLeaderboardUsers((process.env.LEADERBOARD_EXCLUDE_USERS ?? '').split(','))
 
 const roomManager = new RoomManager({
   gracePeriodMs,

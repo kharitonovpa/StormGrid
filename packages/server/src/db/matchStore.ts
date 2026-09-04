@@ -37,6 +37,8 @@ export function saveMatch(record: MatchRecord, replay: ReplayData): void {
       matchId,
       charA: replay.charA,
       charB: replay.charB,
+      nameA: replay.nameA ?? null,
+      nameB: replay.nameB ?? null,
       winner: replay.winner,
       frameCount: replay.frames.length,
       frames: JSON.stringify(replay.frames),
@@ -62,6 +64,8 @@ export function listReplays(limit = 20): ReplaySummary[] {
     charA: schema.replays.charA,
     charB: schema.replays.charB,
     winner: schema.replays.winner,
+    nameA: schema.replays.nameA,
+    nameB: schema.replays.nameB,
     frameCount: schema.replays.frameCount,
   })
     .from(schema.replays)
@@ -75,6 +79,8 @@ export function listReplays(limit = 20): ReplaySummary[] {
     charB: r.charB as ReplaySummary['charB'],
     winner: r.winner as ReplaySummary['winner'],
     frameCount: r.frameCount,
+    nameA: r.nameA ?? undefined,
+    nameB: r.nameB ?? undefined,
   }))
 }
 
@@ -93,6 +99,8 @@ export function getReplay(id: string): ReplayData | null {
     winner: row.winner as ReplayData['winner'],
     frameCount: frames.length,
     frames,
+    nameA: row.nameA ?? undefined,
+    nameB: row.nameB ?? undefined,
   }
 }
 
@@ -177,6 +185,18 @@ export function updateWatcherStats(entries: WatcherScoreEntry[]): void {
 
 /* ── Leaderboard ── */
 
+// The owner's own accounts, kept off the public boards (stats still accrue).
+let excludedUsers: string[] = []
+export function setExcludedLeaderboardUsers(ids: string[]): void {
+  excludedUsers = ids.map((s) => s.trim()).filter((s) => s.length > 0)
+}
+
+/** An `AND`-able fragment — a true constant while nothing is excluded. */
+function userAllowed() {
+  if (excludedUsers.length === 0) return sql`1 = 1`
+  return sql`${schema.userStats.userId} NOT IN (${sql.join(excludedUsers.map((id) => sql`${id}`), sql.raw(', '))})`
+}
+
 export function getPlayerLeaderboard(limit = 20, offset = 0): Paginated<PlayerLeaderboardEntry> {
   const items = db.select({
     userId: schema.userStats.userId,
@@ -189,7 +209,7 @@ export function getPlayerLeaderboard(limit = 20, offset = 0): Paginated<PlayerLe
   })
     .from(schema.userStats)
     .innerJoin(schema.users, eq(schema.userStats.userId, schema.users.id))
-    .where(sql`${schema.userStats.gamesPlayed} > 0`)
+    .where(sql`${schema.userStats.gamesPlayed} > 0 AND ${userAllowed()}`)
     .orderBy(desc(schema.userStats.wins), desc(schema.userStats.gamesPlayed), asc(schema.userStats.userId))
     .limit(limit)
     .offset(offset)
@@ -197,7 +217,7 @@ export function getPlayerLeaderboard(limit = 20, offset = 0): Paginated<PlayerLe
 
   const { total } = db.select({ total: sql<number>`count(*)` })
     .from(schema.userStats)
-    .where(sql`${schema.userStats.gamesPlayed} > 0`)
+    .where(sql`${schema.userStats.gamesPlayed} > 0 AND ${userAllowed()}`)
     .get()!
 
   return { items, total }
@@ -212,7 +232,7 @@ export function getWatcherLeaderboard(limit = 20, offset = 0): Paginated<Watcher
   })
     .from(schema.userStats)
     .innerJoin(schema.users, eq(schema.userStats.userId, schema.users.id))
-    .where(sql`${schema.userStats.watcherScore} > 0`)
+    .where(sql`${schema.userStats.watcherScore} > 0 AND ${userAllowed()}`)
     .orderBy(desc(schema.userStats.watcherScore), asc(schema.userStats.userId))
     .limit(limit)
     .offset(offset)
@@ -220,7 +240,7 @@ export function getWatcherLeaderboard(limit = 20, offset = 0): Paginated<Watcher
 
   const { total } = db.select({ total: sql<number>`count(*)` })
     .from(schema.userStats)
-    .where(sql`${schema.userStats.watcherScore} > 0`)
+    .where(sql`${schema.userStats.watcherScore} > 0 AND ${userAllowed()}`)
     .get()!
 
   return { items, total }

@@ -953,6 +953,9 @@ export class Room {
       winner,
       frameCount: this.replayFrames.length,
       frames: this.replayFrames,
+      // The lobby's "Recent" reads better as two people than two crops.
+      nameA: this.playerInfoCache.A.displayName || undefined,
+      nameB: this.playerInfoCache.B.displayName || undefined,
     }
 
     this.callbacks.replayStore?.save(replay)

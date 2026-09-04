@@ -10,6 +10,7 @@ import CharacterPreview from './CharacterPreview.vue'
 import LeaderboardPanel from './LeaderboardPanel.vue'
 import UserAvatar from './UserAvatar.vue'
 import { t, TAGLINES } from '../lib/i18n'
+import { recentRowLabels } from '../lib/recentRow'
 
 const props = defineProps<{
   phase: string
@@ -329,8 +330,8 @@ onUnmounted(() => {
         class="replay-item"
         @click="audio?.play('ui-click'); emit('watchReplay', r.id)"
       >
-        <span class="ri-chars">{{ charLabel[r.charA] ?? r.charA }} {{ t('lobby.vs') }} {{ charLabel[r.charB] ?? r.charB }}</span>
-        <span class="ri-result">{{ r.winner === 'draw' ? t('lobby.draw') : t('lobby.won', r.winner ?? '') }}</span>
+        <span class="ri-chars">{{ recentRowLabels(r, charLabel, t).title }}</span>
+        <span class="ri-result">{{ recentRowLabels(r, charLabel, t).result }}</span>
       </button>
     </div>
   </div>
@@ -613,6 +614,7 @@ onUnmounted(() => {
 }
 
 .btn-signin {
+  white-space: nowrap;
   padding: 12px 24px;
   border-radius: 10px;
   border: 1.5px solid rgba(255, 255, 255, 0.1);
@@ -810,6 +812,10 @@ onUnmounted(() => {
 
 .ri-chars {
   font-weight: 600;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ri-result {

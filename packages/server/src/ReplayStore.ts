@@ -24,7 +24,7 @@ export class ReplayStore {
     const out: ReplaySummary[] = []
     for (let i = this.order.length - 1; i >= 0; i--) {
       const r = this.data.get(this.order[i])!
-      out.push({ id: r.id, charA: r.charA, charB: r.charB, winner: r.winner, frameCount: r.frames.length })
+      out.push({ id: r.id, charA: r.charA, charB: r.charB, winner: r.winner, frameCount: r.frames.length, nameA: r.nameA, nameB: r.nameB })
     }
     return out
   }
