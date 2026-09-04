@@ -41,7 +41,7 @@ function platformHtmlPlugin(): Plugin {
       }
 
       if (platform === 'gamepush') {
-        const gpScript = `<script async src="https://gamepush.com/sdk/game-score.js?projectId=${GP_PROJECT_ID}&publicToken=${GP_PUBLIC_TOKEN}&callback=onGPInit"></script>`
+        const gpScript = `<script async src="https://gs.eponesh.com/sdk/game-score.js?projectId=${GP_PROJECT_ID}&publicToken=${GP_PUBLIC_TOKEN}&callback=onGPInit"></script>`
         html = html.replace(
           '</head>',
           `    ${gpScript}\n  </head>`,

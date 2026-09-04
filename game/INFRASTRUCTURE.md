@@ -197,7 +197,7 @@ This:
 1. Sets `VITE_PLATFORM=gamepush`, `VITE_API_URL=https://api.wheee.io`,
    `VITE_GP_PROJECT_ID`, `VITE_GP_PUBLIC_TOKEN`
 2. Runs `vite build` with `base: './'`, which:
-   - Injects `<script async src="https://gamepush.com/sdk/game-score.js?..."></script>`
+   - Injects `<script async src="https://gs.eponesh.com/sdk/game-score.js?..."></script>`
    - Strips Google Fonts, hreflang links, Telegram SDK inline script
 3. Runs `strip-store-assets.sh` (see **Store artwork** below)
 4. Creates `wheee-gamepush.zip` from `dist/`
@@ -542,7 +542,7 @@ When `VITE_PLATFORM` is `yandex` or `gamepush`, the Vite build transforms `index
 
 Additionally:
 - **Yandex**: injects `<script src="/sdk.js"></script>` (absolute from Yandex CDN root)
-- **GamePush**: injects `<script async src="https://gamepush.com/sdk/game-score.js?projectId=...&publicToken=...&callback=onGPInit"></script>`
+- **GamePush**: injects `<script async src="https://gs.eponesh.com/sdk/game-score.js?projectId=...&publicToken=...&callback=onGPInit"></script>`
 
 If `VITE_PLATFORM=gamepush` but `VITE_GP_PROJECT_ID` or `VITE_GP_PUBLIC_TOKEN` are
 not set, the build fails with a clear error message.
