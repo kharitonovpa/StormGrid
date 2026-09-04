@@ -372,7 +372,7 @@ unsubMessage1 = socket.onMessage((msg) => {
     stormSystem?.discharge('exhale')
     stormSystem?.setTremor(false)
     nameplateSystem?.setVisible(false)
-    audio.enterFinished(game.selectedCharacter.value)
+    audio.enterFinished()
     const w = (msg as { winner: 'A' | 'B' | 'draw' }).winner
     const myId = game.myPlayerId.value
     if (w === 'draw') audio.play('draw-end')
@@ -1608,7 +1608,7 @@ unsubMessage2 = socket.onMessage((msg) => {
           // screen now belongs to someone else's round.
           if (gen === liveStormGeneration) stormSystem?.discharge('exhale')
           nameplateSystem?.setVisible(false)
-          audio.enterFinished(game.selectedCharacter.value)
+          audio.enterFinished()
           const w = pendingGameEnd.winner
           const myId = game.myPlayerId.value
           if (w === 'draw') audio.play('draw-end')
