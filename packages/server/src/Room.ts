@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun'
-import type { Action, BonusType, CharacterType, DeathCause, PlayerId, PlayerInfo, WeatherType, WindDir, WatcherState, WatcherPrediction, WatcherScoreEntry, ReplayFrame, ReplayData } from '@wheee/shared'
+import type { Action, BonusType, CharacterType, DeathCause, PlayerId, PlayerInfo, WeatherType, WindDir, WatcherState, WatcherPrediction, WatcherScoreEntry, ReplayFrame, ReplayData, PointsAward } from '@wheee/shared'
 import { TICK_DURATION_MS, RECONNECT_GRACE_MS, WAR_AND_PEACE_SURNAMES, BOARD_SIZE } from '@wheee/shared'
 import { GameEngine } from './engine/GameEngine.js'
 import { stateForPlayer, resultForPlayer, cloneState } from './engine/board.js'
@@ -98,6 +98,8 @@ export type MatchEndData = {
   deathCauses: Partial<Record<PlayerId, DeathCause>>
   /** Each slot's analytics identity, or null for a bot. Survives slot removal. */
   analytics: Record<PlayerId, AnalyticsIdentity | null>
+  /** Slots that picked up the crate this match. */
+  crateTaken: Partial<Record<PlayerId, true>>
 }
 
 /**
@@ -146,7 +148,8 @@ export type RoomCallbacks = {
   unregisterToken?: (token: string) => void
   gracePeriodMs?: number
   replayStore?: ReplayStore
-  onMatchEnd?: (data: MatchEndData, replay: ReplayData) => void
+  /** Returns each human's points award, which rides in that player's game:end. */
+  onMatchEnd?: (data: MatchEndData, replay: ReplayData) => Partial<Record<PlayerId, PointsAward>> | void
 }
 
 export type RoomOpts = {
@@ -230,6 +233,7 @@ export class Room {
    * identity is only here.
    */
   private playerAnalytics: Record<PlayerId, AnalyticsIdentity | null> = { A: null, B: null }
+  private crateTaken: Partial<Record<PlayerId, true>> = {}
   private playerInfoCache: Record<PlayerId, PlayerInfo> = {
     A: { displayName: '', flag: '', streak: 0 },
     B: { displayName: '', flag: '', streak: 0 },
@@ -528,10 +532,10 @@ export class Room {
 
     const opponent: PlayerId = pid === 'A' ? 'B' : 'A'
     const dcCauses: Partial<Record<PlayerId, DeathCause>> = { [pid]: { type: 'disconnect' as const } }
-    this.saveReplay(opponent, dcCauses)
+    const awards = this.saveReplay(opponent, dcCauses)
     const oppSlot = this.players[opponent]
     if (oppSlot?.ws) {
-      send(oppSlot.ws, { type: 'game:end', winner: opponent, deathCauses: dcCauses })
+      send(oppSlot.ws, { type: 'game:end', winner: opponent, deathCauses: dcCauses, ...(awards[opponent] ? { points: awards[opponent] } : {}) })
       oppSlot.ws.data.roomId = null
       oppSlot.ws.data.playerId = null
       oppSlot.ws.data.role = null
@@ -882,6 +886,7 @@ export class Room {
       this.replayFrames.push({ state: cloneState(result.state) })
       // The server seeds its own copy from the same fact the client will use.
       if (result.activatedBonus) {
+        this.crateTaken[result.activatedBonus.player] = true
         const taker = this.playerAnalytics[result.activatedBonus.player]
         if (taker) this.callbacks.onStreakChange?.(taker, { kind: 'seed' })
       }
@@ -921,7 +926,7 @@ export class Room {
     this.resolveWinnerPredictions()
 
     if (result.state.winner !== null) {
-      this.saveReplay(result.state.winner, result.deathCauses)
+      const awards = this.saveReplay(result.state.winner, result.deathCauses)
       // Read before the slots are released, so the pair is still nameable —
       // and told in game:end itself, so the card never draws without its button.
       const pair = this.humanPair
@@ -931,7 +936,8 @@ export class Room {
         deathCauses: result.deathCauses,
         ...(pair ? { rematchOffered: true } : {}),
       }
-      this.broadcast(endMsg)
+      // Each player's points are their own; spectators get the bare ending.
+      this.sendEach((pid) => ({ ...endMsg, ...(awards[pid] ? { points: awards[pid] } : {}) }))
       this.broadcastSpectators(endMsg)
       this.releasePlayerSlots()
       if (pair) this.callbacks.onRematchReady?.(this.id, pair[0], pair[1], this.lightningEnabled)
@@ -941,8 +947,8 @@ export class Room {
     }
   }
 
-  private saveReplay(winner: PlayerId | 'draw', deathCauses: Partial<Record<PlayerId, DeathCause>>): void {
-    if (this.practice) return // tutorial matches don't count: no replay, no stats
+  private saveReplay(winner: PlayerId | 'draw', deathCauses: Partial<Record<PlayerId, DeathCause>>): Partial<Record<PlayerId, PointsAward>> {
+    if (this.practice) return {} // tutorial matches don't count: no replay, no stats, no points
 
     const charA = this.players.A?.character ?? this.engine.getState().players.A.character
     const charB = this.players.B?.character ?? this.engine.getState().players.B.character
@@ -973,7 +979,7 @@ export class Room {
       watcherScores.push({ userId, score })
     }
 
-    this.callbacks.onMatchEnd?.({
+    return this.callbacks.onMatchEnd?.({
       roomId: this.id,
       playerAUserId: this.playerUserIds.A,
       playerBUserId: this.playerUserIds.B,
@@ -986,7 +992,8 @@ export class Room {
       watcherScores,
       deathCauses,
       analytics: { A: this.playerAnalytics.A, B: this.playerAnalytics.B },
-    }, replay)
+      crateTaken: { ...this.crateTaken },
+    }, replay) ?? {}
   }
 
   /* ── Prediction resolution ── */
