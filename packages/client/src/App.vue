@@ -1010,9 +1010,12 @@ function isLobbyPhase(p: ClientPhase) {
 }
 
 function applyLobbyViewOffset(cam: THREE.PerspectiveCamera, inLobby: boolean) {
-  const el = renderer?.domElement
-  if (!el) return
-  const w = el.clientWidth, h = el.clientHeight
+  if (!renderer) return
+  // The renderer's own size, not the canvas's: at first call the canvas is
+  // not in the DOM yet and measures 0×0.
+  const size = renderer.getSize(new THREE.Vector2())
+  const w = size.x, h = size.y
+  if (w === 0 || h === 0) return
   if (inLobby && isPortrait(w / h)) cam.setViewOffset(w, h, 0, LOBBY_PORTRAIT_OFFSET * h, w, h)
   else cam.clearViewOffset()
 }

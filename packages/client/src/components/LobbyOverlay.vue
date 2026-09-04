@@ -812,13 +812,14 @@ onUnmounted(() => {
 
 .ri-chars {
   font-weight: 600;
-  max-width: 150px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ri-result {
+  white-space: nowrap;
   font-size: 10px;
   color: rgba(139, 180, 255, 0.6);
 }
