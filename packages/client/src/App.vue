@@ -2437,9 +2437,12 @@ onUnmounted(() => {
 
   <!-- A queued lobby action waiting on a socket that has not come up. This
        card only reports the wait: `pendingAction` stays armed, so a late
-       connect still starts the match and dismisses this on its own. -->
+       connect still starts the match and dismisses this on its own. Gated off
+       `showReconnecting` too: that overlay already owns the screen (and its
+       own retry/give-up buttons) during a boot restore or a mid-match
+       reconnect, and this card must not paint over it. -->
   <Transition name="rc">
-    <div v-if="connectFailed" class="reconnect-overlay">
+    <div v-if="connectFailed && !showReconnecting" class="reconnect-overlay">
       <div class="reconnect-card">
         <div class="reconnect-text">{{ t('net.connectFailed') }}</div>
         <div class="reconnect-actions">

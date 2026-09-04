@@ -268,7 +268,7 @@ onUnmounted(() => {
                 class="btn-play"
                 :class="{ 'btn-play-hot': props.inQueue > 0 }"
                 :disabled="connecting"
-                :aria-label="props.inQueue > 0 ? t('lobby.play.instant') : t('lobby.play')"
+                :aria-label="connecting ? t('lobby.connecting') : (props.inQueue > 0 ? t('lobby.play.instant') : t('lobby.play'))"
                 @click="emit('play', selected)"
               >
                 <span class="btn-play-text">{{ connecting ? t('lobby.connecting') : (hasIncomingInvite ? t('lobby.playFriend') : t('lobby.play')) }}</span>
