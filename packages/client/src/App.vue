@@ -8,6 +8,7 @@ import { badgeFor, hasWind, hasRain, hasLightning, TICKS_PER_ROUND } from '@whee
 import { SIZE, HALF, CELL_SIZE, CELLS, SEGMENTS } from './lib/constants'
 import { terrainState } from './lib/terrain'
 import { CROP_THEME } from './lib/cropTheme'
+import { LOOK } from './lib/look'
 import { createWaterSystem, WATER_FILL_MS } from './lib/water'
 import { createWindSystem } from './lib/wind'
 import { createRainSystem } from './lib/rain'
@@ -1887,7 +1888,7 @@ onMounted(() => {
   const h = el.clientHeight
 
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x0a0e14)
+  scene.background = new THREE.Color(LOOK.sky.zenith)   // only visible if the dome is ever clipped
 
   const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 500)
   camera.position.set(30, 25, 30)
@@ -1898,6 +1899,10 @@ onMounted(() => {
 
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+  // AgX keeps the dusk palette's saturated colours from skewing hue as they
+  // brighten; exposure lives in lib/look.ts with the rest of the look.
+  renderer.toneMapping = THREE.AgXToneMapping
+  renderer.toneMappingExposure = LOOK.tone.exposure
   renderer.setSize(w, h)
   applyLobbyViewOffset(camera, isLobbyPhase(game.phase.value))
   el.appendChild(renderer.domElement)
@@ -1907,15 +1912,21 @@ onMounted(() => {
   controls.dampingFactor = 0.08
   controls.maxPolarAngle = Math.PI * 0.85
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5))
-
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2)
-  dirLight.position.set(10, 20, 15)
-  scene.add(dirLight)
-
-  const dirLightBottom = new THREE.DirectionalLight(0xffffff, 1.0)
-  dirLightBottom.position.set(-10, -20, -15)
-  scene.add(dirLightBottom)
+  // Light rig (lib/look.ts): a low warm sun against a cool sky fill, both
+  // mirrored for the slab's underside so the two faces are lit the same way.
+  const [sunX, sunY, sunZ] = LOOK.sun.direction
+  const sun = new THREE.DirectionalLight(LOOK.sun.color, LOOK.sun.intensity)
+  sun.position.set(sunX, sunY, sunZ)
+  scene.add(sun)
+  const sunBottom = new THREE.DirectionalLight(LOOK.sun.color, LOOK.sun.intensity)
+  sunBottom.position.set(sunX, -sunY, sunZ)
+  scene.add(sunBottom)
+  const fill = new THREE.HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity)
+  fill.position.set(0, 1, 0)
+  scene.add(fill)
+  const fillBottom = new THREE.HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity)
+  fillBottom.position.set(0, -1, 0)
+  scene.add(fillBottom)
 
   const players = createPlayerSystem(scene, terrainState)
   playersSystem = players
@@ -1969,9 +1980,9 @@ onMounted(() => {
   const gridGeo = new THREE.BufferGeometry()
   const gridPos = new THREE.BufferAttribute(gridPts, 3)
   gridGeo.setAttribute('position', gridPos)
-  // Bright enough to read cell borders at a glance — the old 0.35 swamp-green
-  // vanished into the grass (UX review §3).
-  const gridLineMat = new THREE.LineBasicMaterial({ color: 0x69b869, transparent: true, opacity: 0.6 })
+  // Pale lavender at low opacity reads as etched cell borders on the dusk
+  // palette, where the old green line looked like paint (lib/look.ts).
+  const gridLineMat = new THREE.LineBasicMaterial({ color: LOOK.grid.color, transparent: true, opacity: LOOK.grid.opacity })
   const gridLines = new THREE.LineSegments(gridGeo, gridLineMat)
   scene.add(gridLines)
 
