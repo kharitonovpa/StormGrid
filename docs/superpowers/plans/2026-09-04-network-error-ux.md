@@ -19,6 +19,7 @@
 - **No component-test infrastructure is added.** This repo's suite is plain TS under `bun:test`; `@vue/test-utils` and a DOM shim are not installed, and installing them is a larger change than this fix. `.vue` edits are covered by `vue-tsc` typecheck in `bun run build` plus the manual pass in Task 8. Tasks 1, 3 and 4 carry real unit tests.
 - Every test that imports anything reaching `src/lib/config.ts` must install a `globalThis.location` stub **before** the import, or module evaluation throws `ReferenceError: location is not defined`. Use a dynamic `await import()` inside the test body, not a top-level `import`.
 - Run tests from `packages/client` with `bun test`. Run the typecheck with `bun run build` from the same directory.
+- **`vue-tsc -b` typechecks test files too, and this repo sets `"erasableSyntaxOnly": true` (`tsconfig.app.json:11`).** So test helpers must avoid TypeScript parameter properties (`constructor(public url: string)`), `enum`, and namespaces — declare the field explicitly and assign it in the constructor body instead. `bun test` does not typecheck, so a violation here passes the suite and only fails the build.
 - **Line numbers in this plan are from the pre-change files.** Earlier steps insert lines above later targets, so by the time you reach a step its quoted `file.vue:NNN` will have drifted — often by ten or twenty lines. Always locate the target by the quoted code, and treat the line number as a hint about roughly where to look. `App.vue`, `LobbyOverlay.vue` and `LeaderboardPanel.vue` are each edited by more than one task.
 
 ---
@@ -1257,7 +1258,9 @@ initPlatform()
     console.error('[init] Platform initialization failed:', err)
     // The adapter never came up, so its language is unknowable — fall back to
     // the browser's. i18n has no platform dependency, so it still works here.
-    setLanguage(navigator.language.slice(0, 2))
+    // Guarded like `web.ts`'s getLanguage: this runs before anything is
+    // rendered, so a throw here would cost the player the whole message.
+    setLanguage(navigator.language ? navigator.language.slice(0, 2) : 'en')
 
     const root = document.getElementById('app')!
     root.innerHTML =
@@ -1368,3 +1371,65 @@ git commit -m "Record the blocked-domain verification pass"
 - The single behavioural risk in this change is Task 5's timeout. It reports; it does not cancel. If a reviewer sees `pendingAction = null` anywhere other than the `connected` watch and `onCancelConnect`, that is the bug.
 - `useGameSocket.ts` should show additions only. `git diff` on that file must not touch `scheduleReconnect`, `retryConnection`, `refreshConnection`'s body, or `onclose`.
 - Neither the CSP block itself nor the GamePush anonymous-auth fallback is in scope; see the spec's non-goals.
+
+---
+
+## Verified 2026-09-04
+
+No human/DevTools was available for this pass, so the blocked-domain condition
+was reproduced by simply not starting the backend (dev client always points
+at `:3001`) — the same observable state as a CSP block: every `fetch` rejects,
+the WebSocket never opens. Driven with a small dependency-free Bun+CDP script
+against headless Chrome (no Playwright/Puppeteer added). Full method,
+screenshots, and every string read is in
+`.superpowers/sdd/2026-09-04-network-error-ux/task-8-report.md`.
+
+- `bun run build` (typecheck + vite build): clean.
+- `bun test`: **42 pass, 0 fail**, 90 `expect()` calls across 10 files.
+- Steps confirmed, each with a screenshot plus the actual DOM text read via
+  `Runtime.evaluate` (not inferred from the screenshot):
+  1. Lobby renders with the backend down; amber "No connection to the server"
+     row present above Play.
+  2. Leaderboard shows "Could not load the leaderboard" with a retry — and
+     specifically *not* the empty-state string (the real string is
+     "No ranked players yet", not "Пока нет игроков"'s literal English
+     paraphrase "No players yet" — neither appears).
+  3. Recent matches shows "Could not load recent matches" with a retry.
+  4. Play → disabled "Connecting…" → after ~8s the full-screen card
+     ("Could not reach the server. Check your internet connection.",
+     "Try again" / "Cancel") → Cancel closes it and re-enables Play.
+  5. **Late-connect, confirmed conclusively**: with the card showing (no
+     Cancel this time), starting the backend made the queued action fire on
+     its own — no click on "Try again". Resolution was fast enough (bot
+     opponent) that a live match ("Round 1", then "Round 2") was already
+     running by the first poll a couple of seconds later — stronger evidence
+     than "matchmaking started". `pendingAction` behaves exactly as designed.
+  6. Russian: offline row reads exactly "Нет связи с сервером"; leaderboard
+     and recent-matches notices are correctly localized too. Chrome's
+     `--lang` flag did **not** actually change `navigator.language` on the
+     host used for this run (it stayed at the OS locale regardless); what
+     worked was overriding `navigator.language`/`navigator.languages` via
+     `Page.addScriptToEvaluateOnNewDocument` before navigation — worth
+     knowing for any future headless run of this app.
+- All processes started for this pass (headless Chrome, `dev:client`,
+  `dev:server`) were killed; `lsof -i :3001 -i :5173` was empty afterward.
+
+Two things behaved unexpectedly, both traced to the headless test harness,
+**not** to this plan's code, and left for a human's awareness rather than
+fixed here (Task 8 is verification-only):
+- `--disable-gpu` on headless Chrome breaks WebGL, which crashed
+  `CharacterPreview.vue`'s Three.js renderer during mount; that unhandled
+  error was caught by `main.ts`'s `initPlatform().catch()` (which wraps the
+  whole initial `app.mount()`, not just platform init) and showed the
+  generic "Failed to load the game" boot screen instead of the lobby. Fixed
+  in the harness by dropping the flag. Worth a follow-up ticket to narrow
+  that catch so an unrelated mount-time exception doesn't get mislabeled as
+  a network failure — out of this plan's scope.
+- In this headless setup, `requestAnimationFrame` was serviced sparsely
+  (a direct probe waited 20+s without a single tick), so the full-screen
+  card's CSS leave-transition (`<Transition name="rc">`) sometimes lingered
+  in the DOM well after the underlying `connectFailed`/`connecting` state
+  had already flipped correctly (proven instantly via the Play button each
+  time). Not a functional bug — recommend a human eyeball the ~250ms fade in
+  a real browser as a final sanity check, since headless frame starvation is
+  the kind of thing that can hide a real problem as easily as fake one.
