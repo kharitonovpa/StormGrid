@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as THREE from 'three'
 import type { CharacterType } from '@wheee/shared'
 import { getModel, whenModelsReady } from '../lib/models'
+import { LOOK } from '../lib/look'
 
 const props = defineProps<{
   character: CharacterType
@@ -58,6 +59,8 @@ onMounted(() => {
   renderer.setPixelRatio(dpr)
   renderer.setSize(size, size, false)
   renderer.setClearColor(0x000000, 0)
+  renderer.toneMapping = THREE.AgXToneMapping
+  renderer.toneMappingExposure = LOOK.tone.exposure
 
   scene = new THREE.Scene()
 
@@ -65,13 +68,14 @@ onMounted(() => {
   camera.position.set(0, 1.2, 3.5)
   camera.lookAt(0, 0.3, 0)
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.7))
-  const dir = new THREE.DirectionalLight(0xffffff, 1.0)
-  dir.position.set(3, 5, 4)
-  scene.add(dir)
-  const fill = new THREE.DirectionalLight(0x8899bb, 0.4)
-  fill.position.set(-3, 2, -2)
-  scene.add(fill)
+  // Same sun and sky fill as the arena (lib/look.ts), so a card never argues
+  // with the scene behind it; the sun is eased back because the card has no
+  // terrain bounce to soften it.
+  const [sunX, sunY, sunZ] = LOOK.sun.direction
+  const sun = new THREE.DirectionalLight(LOOK.sun.color, LOOK.sun.intensity * 0.6)
+  sun.position.set(sunX * 5, sunY * 5, sunZ * 5)
+  scene.add(sun)
+  scene.add(new THREE.HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity))
 
   loadModel()
 
