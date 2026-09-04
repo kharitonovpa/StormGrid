@@ -61,7 +61,7 @@ const emit = defineEmits<{
 }>()
 
 const audio = inject<AudioSystem>('audio')
-const { user, login, logout, fetchMe, platformType, authError } = useAuth()
+const { user, login, logout, fetchMe, platformType, authError, clearAuthError } = useAuth()
 const showAuthMenu = ref(false)
 /** Which provider the retry should try again. */
 const lastProvider = ref<'google' | 'github'>('google')
@@ -177,6 +177,7 @@ function onClickOutside(e: MouseEvent) {
 onMounted(async () => {
   selected.value = props.committedCharacter
   document.addEventListener('click', onClickOutside, true)
+  clearAuthError()
   fetchMe()
   loadReplays()
 })
@@ -297,7 +298,7 @@ onUnmounted(() => {
                     {{ t('lobby.signIn') }}
                   </button>
                   <RetryNotice
-                    v-if="authError"
+                    v-if="authError && !showAuthMenu"
                     class="signin-error"
                     :message="t('net.loginFailed')"
                     @retry="handleLogin(lastProvider)"

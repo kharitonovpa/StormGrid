@@ -46,9 +46,12 @@ export default class WebAdapter implements PlatformAdapter {
     const top = window.screenY + (window.innerHeight - h) / 2
     const popup = window.open(url, 'wheee-auth', `width=${w},height=${h},left=${left},top=${top}`)
 
-    return new Promise<UserInfo | null>((resolve) => {
+    return new Promise<UserInfo | null>((resolve, reject) => {
       const site = location.hostname.split('.').slice(-2).join('.')
       let settled = false
+      let poll: ReturnType<typeof setInterval> | undefined
+      let timeout: ReturnType<typeof setTimeout> | undefined
+
       const finish = (u: UserInfo | null) => {
         if (settled) return
         settled = true
@@ -57,6 +60,18 @@ export default class WebAdapter implements PlatformAdapter {
         window.removeEventListener('message', onMessage)
         popup?.close()
         resolve(u)
+      }
+
+      // Settle-once failure path, mirroring `finish`'s cleanup — used only for
+      // the two cases below that are genuine failures, never for a cancel.
+      const fail = (err: unknown) => {
+        if (settled) return
+        settled = true
+        clearInterval(poll)
+        clearTimeout(timeout)
+        window.removeEventListener('message', onMessage)
+        popup?.close()
+        reject(err)
       }
 
       const onMessage = (e: MessageEvent) => {
@@ -68,8 +83,15 @@ export default class WebAdapter implements PlatformAdapter {
       }
       window.addEventListener('message', onMessage)
 
-      const poll = setInterval(async () => {
-        if (!popup || popup.closed) {
+      if (!popup) {
+        // window.open was refused outright (popup blocker) — the player never
+        // got a chance to attempt sign-in. A failure, not a cancel.
+        fail(new Error('Sign-in popup was blocked'))
+        return
+      }
+
+      poll = setInterval(async () => {
+        if (popup.closed) {
           if (!user) {
             try {
               const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
@@ -80,13 +102,22 @@ export default class WebAdapter implements PlatformAdapter {
                   for (const cb of authCallbacks) cb()
                 }
               }
-            } catch { /* ignore */ }
+              // A non-ok status here is not a failure: /api/auth/me always
+              // answers 200 with { user: null } for a missing/invalid session,
+              // which is the normal reply for a player who cancelled.
+            } catch (err) {
+              // The popup closed, but we couldn't even ask our own server
+              // whether sign-in succeeded (network/CSP failure) — distinct
+              // from a cancel, where the server is reachable and just says no.
+              fail(err)
+              return
+            }
           }
           finish(user)
         }
       }, 500)
 
-      const timeout = setTimeout(() => finish(user), 5 * 60_000)
+      timeout = setTimeout(() => finish(user), 5 * 60_000)
     })
   }
 

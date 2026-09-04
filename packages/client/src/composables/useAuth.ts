@@ -33,6 +33,11 @@ export function useAuth() {
     return () => authCallbacks.delete(cb)
   }
 
+  /** Drop a stale failure from a previous visit — called on every lobby mount. */
+  function clearAuthError() {
+    authError.value = false
+  }
+
   async function login(provider?: string) {
     loading.value = true
     authError.value = false
@@ -66,6 +71,7 @@ export function useAuth() {
     platformType: platform.type,
     fetchMe,
     login,
+    clearAuthError,
     logout,
     onAuthChange,
   }
