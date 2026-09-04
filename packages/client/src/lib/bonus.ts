@@ -140,7 +140,8 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
     // plastic. The stone should be shaped by the light in the scene, not by its
     // own light.
     emissive: RUBY.glow,
-    emissiveIntensity: 0.18,
+    // Tuned for AgX tone mapping (lib/look.ts), which compresses highlights.
+    emissiveIntensity: 0.3,
     metalness: 0,
     roughness: 0.05,
     clearcoat: 1,
@@ -341,7 +342,8 @@ export function createBonusSystem(scene: THREE.Scene, terrain: TerrainState) {
       const bob = Math.sin(time * BOB_HZ * Math.PI * 2) * BOB_AMP
       cluster.position.y = bob
       const pulse = Math.sin(time * PULSE_HZ * Math.PI * 2)
-      shardMat.emissiveIntensity = (mine ? 0.62 : 0.16) + pulse * (mine ? 0.24 : 0.05)
+      // Tuned for AgX tone mapping (lib/look.ts), which compresses highlights.
+      shardMat.emissiveIntensity = (mine ? 1.0 : 0.26) + pulse * (mine ? 0.4 : 0.08)
       haloMat.opacity = 0.34 + pulse * 0.14
       const hs = CELL_SIZE * (0.58 + pulse * 0.06)
       haloTop.scale.setScalar(hs)

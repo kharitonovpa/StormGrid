@@ -38,7 +38,8 @@ const GLASS_ROUGHNESS = 0.25
  * inner glow a thick pane has.
  */
 const GLASS_GLOW = 0x2f6b52
-const GLASS_GLOW_GAIN = 0.42
+// Tuned for AgX tone mapping (lib/look.ts), which compresses highlights.
+const GLASS_GLOW_GAIN = 0.65
 /** The wind starts carrying bodies at once, so the slab has to be clear by then. */
 const OPEN_SPEED = 6
 const CLOSE_SPEED = 1.5
@@ -51,7 +52,8 @@ const CLOSE_SPEED = 1.5
  * for a fifth of a second, and never darkens past its resting state.
  */
 const PULSE_COLOR = 0x63c79b
-const PULSE_GAIN = 0.27
+// Tuned for AgX tone mapping (lib/look.ts), which compresses highlights.
+const PULSE_GAIN = 0.42
 const PULSE_SECONDS = 0.18
 
 /** Patches the terrain material — every face of the slab turns at once. */
