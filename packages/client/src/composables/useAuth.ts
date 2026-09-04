@@ -4,6 +4,7 @@ import { usePlatform } from '../lib/platform'
 
 const user = ref<UserInfo | null>(null)
 const loading = ref(false)
+const authError = ref(false)
 const authCallbacks = new Set<() => void>()
 
 let fetchMePromise: Promise<void> | null = null
@@ -34,12 +35,18 @@ export function useAuth() {
 
   async function login(provider?: string) {
     loading.value = true
+    authError.value = false
     try {
       const u = await platform.login(provider)
       if (u) {
         user.value = u
         for (const cb of authCallbacks) cb()
       }
+    } catch {
+      // No caller awaits login(), so without this the failure is an unhandled
+      // rejection and the Sign In button simply looks dead. A null return above
+      // is a closed popup, not a failure — it deliberately does not land here.
+      authError.value = true
     } finally {
       loading.value = false
     }
@@ -55,6 +62,7 @@ export function useAuth() {
   return {
     user: readonly(user),
     loading: readonly(loading),
+    authError: readonly(authError),
     platformType: platform.type,
     fetchMe,
     login,
