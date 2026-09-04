@@ -67,8 +67,8 @@ and unit tests consume it without a renderer):
 export const LOOK = {
   sky:     { zenith: 0x10163a, mid: 0x2b2350, horizon: 0x8a4a52, rim: 0xc9754e,
              storm: 0x2a1636, dim: 0x0b0d22 },
-  sun:     { color: 0xffc98a, intensity: 2.2, direction: [-0.55, 0.47, 0.69] },  // unit vector towards the sun; elevation ≈ 28°
-  hemi:    { sky: 0x5a6cc8, ground: 0x2b2333, intensity: 0.8 },
+  sun:     { color: 0xffc98a, intensity: 3.8, direction: [0.6, 0.47, -0.648] },  // unit vector towards the sun; elevation ≈ 28°, screen-right at the default camera
+  fill:    { color: 0x6e729f, intensity: 0.85 },   // flat blue-grey ambient (see Light rig)
   terrain: { grass: 0x3f7a3a, rock: 0xb9aa9e, mud: 0x8a4b2a, snow: 0xf2ead8,
              checkerAmp: 0.08, aoStrength: 0.35, shadowStrength: 0.45,
              shadowTint: [0.85, 0.95, 1.25] },   // multiplier at full shadow: sky-lit, so cooler
@@ -84,9 +84,9 @@ because `MeshStandardMaterial({ vertexColors: true })` treats vertex colours as
 linear and `paintColors` writes raw floats. `THREE.Color(hex)` performs the same
 conversion for lights and materials, so both paths end up in linear space.
 
-The exact numbers are starting values; they are tuned against the acceptance
-metrics on the frozen-frame harness (see Testing) and may move within the stated
-targets. The token *structure* is the contract.
+The exact numbers are starting values; they were tuned against the acceptance
+metrics on the frozen-frame harness (see Testing and Outcome). `look.ts` holds
+the authoritative values. The token *structure* is the contract.
 
 ### Light rig and renderer (`App.vue`, scene setup around lines 1889–1918)
 
@@ -96,10 +96,14 @@ targets. The token *structure* is the contract.
 - Sun: `DirectionalLight(LOOK.sun.color, LOOK.sun.intensity)` positioned along
   `LOOK.sun.direction`; a mirrored sun (direction with `y` negated) lights the
   slab's underside, replacing today's `dirLightBottom`.
-- Fill: two `HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity)`,
-  one with its up vector `+Y`, one with `−Y`, so each face of the slab gets cool
-  sky fill from "its" sky; the dark plum ground colour keeps the wrong-side
-  contribution small.
+- Fill: one `AmbientLight(LOOK.fill.color, LOOK.fill.intensity)` — a flat blue-grey
+  fill. (The design first used a ±Y pair of `HemisphereLight`s; hemisphere
+  irradiance is linear in the normal, so the pair sums to exactly this ambient for
+  every normal — a scene-global *directional* fill cannot serve both faces of a
+  shared slab. A wall facing the sun takes both mirrored suns.)
+- Unlit signal and UI materials (wind lines, rain, lightning sparks, nameplates,
+  compass, player rings, bonus sprites) set `toneMapped: false`, so the scene's tone
+  mapping never re-colours them; their colour values are untouched.
 - `scene.background = LOOK.sky.zenith` (only visible if the dome is ever clipped).
 - Grid lines: `LineBasicMaterial` colour/opacity from `LOOK.grid` (lavender at 0.28
   reads as etched cell borders rather than green paint; the underside grid shares it).
@@ -118,7 +122,7 @@ checkerboard, crop accent, clamp). Changes:
   `checkerAmp` from `LOOK` (≈ ±6% lightness on grass instead of ±2%).
 - Two new multiplicative terms, computed by pure functions in
   `packages/client/src/lib/terrainShade.ts` over the **cell** heightmap
-  (`terrain.current`, 8×8, O(1) lookups, no noise — always fresh during animation,
+  (`terrain.current`, CELLS×CELLS (7×7 today), O(1) lookups, no noise — always fresh during animation,
   unlike the fine height cache), applied after the checkerboard and before the
   crop accent and the clamp:
 
@@ -142,18 +146,28 @@ checkerboard, crop accent, clamp). Changes:
     multiplier, because an additive cool shift would zero the grass's small
     linear red channel). At 28° a one-level block casts a ≈1.25-cell shadow
     (5 world units / tan 28° ≈ 9.4 units, cell = 7.5).
-  - The underside (`isBottom`) uses the same functions with the mirrored sun and
-    `h = −wy` exactly as the existing code already mirrors heights.
+  - The underside (`isBottom`) is the *negated* world — the bottom surface is
+    `top − THICKNESS`, so a top hill is an underside pit. The shading terms read
+    `−current` and the vertex level `−(wy + THICKNESS) / HEIGHT_SCALE`, with their
+    own shadow field; the skirt shares the top's field. The palette's existing
+    `h = −wy` is untouched. The sun's horizontal direction is the same for both
+    faces (only `y` is mirrored), which matches the bottom camera.
   - Grid coordinates: `gx = (wx + HALF) / CELL_SIZE`, `gz` likewise.
   - `paintColors` reads the shadow term from a lattice built once per call
     (`buildShadowField`, 4 samples per cell, one bilinear read per vertex) instead
     of marching per vertex; the per-vertex `sunOcclusion` stays as the reference
     and the two agree on lattice points.
 
-- Cost: ~20 O(1) lookups per vertex × ~29k vertices (top, bottom, skirt) ≈ 1–2 ms
-  per repaint on a laptop; repaints happen only when the terrain animates or the
-  crop changes, as today. Budget: ≤ 3 ms per full repaint on a laptop, asserted by
-  a timing test with a generous ceiling.
+- Cost: the shadow field is built once per face per repaint (cached on a snapshot
+  of the cell heights), a per-cell rise mask skips contact occlusion where no
+  neighbour rises and the walk visits only the neighbours that do, and the
+  per-vertex work is a handful of O(1) lookups. Repaints happen only when the
+  terrain animates or the crop changes, as today. Budget: no slower than `main` —
+  the target was ≤ 1.10 × the baseline repaint measured the same way (bun, 7×7
+  board, top + bottom + skirt, best of 7); the result is 1.17 × (4.20 ms vs
+  3.58 ms), accepted after two exact optimisation passes. The pre-branch painter
+  already took ≈ 3.6 ms on a laptop, so the earlier "≤ 3 ms" figure was not
+  attainable without restructuring the existing painter.
 
 ### Sky dome (`storm.ts`)
 
@@ -223,7 +237,8 @@ still retints instantly.
 
 - Emissive glows dim under tone mapping → retune task (see Water and the rest).
 - Storm legibility on a gradient → ΔL* guard in `look.test.ts`; tuned on captures.
-- Repaint cost grows → cell-level lookups only, timing test, ≤ 3 ms budget.
+- Repaint cost grows → per-face field cache, rise-mask early-out, benchmark against
+  `main` (≤ 1.10 ×).
 - Colour-space mistakes (sRGB hex used as linear) → single conversion helper with
   its own test; `paintColors` never sees hex.
 
@@ -239,3 +254,19 @@ still retints instantly.
 - `packages/client/src/components/CharacterPreview.vue` — tone mapping and lights from tokens.
 - `packages/client/src/lib/bonus.ts`, `glass.ts` — emissive retune only.
 - Tests alongside each of the above.
+
+## Outcome (2026-09-05)
+
+Measured on the frozen lobby frame, scene region, sky masked (before → after):
+saturation 0.293 → 0.345 (target 0.33–0.42); dark 2.0% → 19.2% (≥ 12); mid
+91.4% → 69.0% (≤ 70); cool hues 0.4% → 18.8% (≥ 12); light 6.5% → 11.8% (target
+≥ 15 — **accepted as composition-limited**: from the default camera only the sun-lit
+rock and the snow tops exceed L 0.65, and pushing grass past it lowers saturation
+below its own target). Sun, sky, fill and terrain tokens in `look.ts` are the tuned
+values; the sun sits screen-right at the default camera and its shadows fall to
+screen-left across the board.
+
+Corrections found by the whole-branch review and applied: the underside shading
+reads negated heights (it was inverted); unlit signal/UI materials opt out of tone
+mapping; the hemisphere pair became one ambient light of the same irradiance; the
+repaint was optimised and benchmarked against `main`; the board is 7×7, not 8×8.
