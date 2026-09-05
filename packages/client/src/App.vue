@@ -21,6 +21,7 @@ import { createNameplateSystem } from './lib/nameplate'
 import { createPreviewSystem } from './lib/preview'
 import { createInsectSystem } from './lib/insects'
 import { createGlassSystem, GLASS_ORDER } from './lib/glass'
+import { createFootShadows } from './lib/footShadow'
 import { createBonusSystem } from './lib/bonus'
 import { streak, canRescue, seedStreak, winStreak, breakStreak, restoreStreak } from './lib/streak'
 import { presence, installPresence } from './lib/presence'
@@ -1954,10 +1955,11 @@ onMounted(() => {
 
   const nameplates = createNameplateSystem(scene, terrainState)
   nameplateSystem = nameplates
-  nameplates.setPlayerRefs(
-    { get state() { return players.playerA.state }, get mesh() { return players.playerA.mesh }, get surface() { return players.playerA.surface } },
-    { get state() { return players.playerB.state }, get mesh() { return players.playerB.mesh }, get surface() { return players.playerB.surface } },
-  )
+  const playerRefA = { get state() { return players.playerA.state }, get mesh() { return players.playerA.mesh }, get surface() { return players.playerA.surface } }
+  const playerRefB = { get state() { return players.playerB.state }, get mesh() { return players.playerB.mesh }, get surface() { return players.playerB.surface } }
+  nameplates.setPlayerRefs(playerRefA, playerRefB)
+  const foot = createFootShadows(scene, terrainState)
+  foot.setPlayerRefs(playerRefA, playerRefB)
 
   // --- Terrain meshes ---
   const terrainMat = new THREE.MeshStandardMaterial({
@@ -2385,6 +2387,7 @@ onMounted(() => {
     lightning.update(dt)
     storm.update(dt)
     players.update(dt)
+    foot.update(dt)
     nameplates.update(dt)
     interaction.update(dt)
     preview.update(dt)
@@ -2462,6 +2465,7 @@ onMounted(() => {
     storm.dispose()
     compass.dispose()
     players.dispose()
+    foot.dispose()
     nameplates.dispose()
     interaction.dispose()
     preview.dispose()
