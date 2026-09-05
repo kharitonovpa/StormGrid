@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { LOOK, srgbToLinear, srgbHexToLinear, cieLightness } from '../look.js'
-import { MARCH_MAX } from '../terrainShade.js'
+import { MARCH_MAX, DEAD_ZONE } from '../terrainShade.js'
 import { CELL_SIZE, HEIGHT_SCALE } from '../constants.js'
 
 const isHex = (v: number) => Number.isInteger(v) && v >= 0 && v <= 0xffffff
@@ -52,6 +52,37 @@ describe('LOOK tokens', () => {
 
   it('keeps the storm mass legible against the horizon band (ΔL* ≥ 12)', () => {
     expect(cieLightness(LOOK.sky.horizon) - cieLightness(LOOK.sky.storm)).toBeGreaterThanOrEqual(12)
+  })
+
+  it('holds the meadow, sheen and foot tokens in range', () => {
+    const { swell, groove, sheen, grain } = LOOK.terrain
+    for (const c of [swell.crest, swell.trough, sheen.color, LOOK.foot.color]) expect(isHex(c)).toBe(true)
+    expect(swell.amp).toBeGreaterThan(0)
+    expect(swell.wavelength).toBeGreaterThan(0.5)
+    expect(swell.tint).toBeGreaterThanOrEqual(0)
+    expect(swell.tint).toBeLessThanOrEqual(1)
+    expect(groove.depth).toBeGreaterThan(0)
+    expect(groove.halfWidth).toBeGreaterThanOrEqual(1)
+    expect(grain).toBeGreaterThanOrEqual(0)
+    expect(grain).toBeLessThanOrEqual(0.2)
+    expect(sheen.strength).toBeGreaterThan(0)
+    expect(sheen.strength).toBeLessThanOrEqual(1)
+    expect(sheen.width).toBeGreaterThan(0)
+    expect(sheen.tail).toBeGreaterThan(0)
+    expect(sheen.speed).toBeGreaterThan(0)
+    expect(LOOK.foot.opacity).toBeGreaterThan(0)
+    expect(LOOK.foot.opacity).toBeLessThanOrEqual(1)
+    for (const v of [LOOK.foot.across, LOOK.foot.along, LOOK.foot.offset]) {
+      expect(v).toBeGreaterThanOrEqual(0)
+      expect(v).toBeLessThan(1)
+    }
+  })
+
+  it('keeps the meadow decoration under the baked-shading dead zone and the palette lift/sink thresholds', () => {
+    // DEAD_ZONE is in levels; the palette's lift starts at +0.2 and sink ends at −0.2 world units.
+    const decoration = LOOK.terrain.swell.amp + LOOK.terrain.groove.depth
+    expect(decoration).toBeLessThanOrEqual(0.2)
+    expect(decoration).toBeLessThan(DEAD_ZONE * HEIGHT_SCALE)
   })
 })
 

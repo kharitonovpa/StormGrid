@@ -47,9 +47,29 @@ export const LOOK = {
     // shadow maps), so the baked shadow darkens far more than it cools; this
     // only nudges its hue toward sky-lit.
     shadowTint: [0.75, 0.88, 1.4] as Vec3,
+    /** Fine per-vertex grass grain (± relative lightness). */
+    grain: 0.05,
+    /** The meadow swell on a flat cell (lib/meadow.ts): a tiny baked undulation
+     *  the low sun lights, and the colour field it drives. amp is world units
+     *  (a level is HEIGHT_SCALE = 5); wavelength is in cells. */
+    swell: {
+      amp: 0.08,
+      wavelength: 1.2,
+      crest: 0x9cb857,      // sunlit straw-green the crests lean toward
+      trough: 0x2f6e4a,     // cool blue-green the hollows lean toward
+      tint: 0.35,           // 0..1 blend toward crest/trough at full swell
+    },
+    /** V-groove at every cell border: depth in world units, half-width in mesh segments. */
+    groove: { depth: 0.12, halfWidth: 1 },
+    /** A gust's highlight on the grass (lib/sheen.ts). width/tail/speed in world units (/s). */
+    sheen: { color: 0xf0d890, strength: 0.35, width: 12, tail: 6, speed: 22 },
   },
   water: { deep: 0x1e5d6e, rim: 0x3d9aa8, opacity: 0.6 },
-  grid: { color: 0xc8c4ff, opacity: 0.28 },
+  // Quieter than before (0.28): the groove now carries the seam itself.
+  grid: { color: 0xc8c4ff, opacity: 0.18 },
+  /** The characters' contact shadow (lib/footShadow.ts): radii and centre
+   *  offset in cells, along the sun's horizontal shadow axis. */
+  foot: { color: 0x14122e, opacity: 0.45, across: 0.32, along: 0.55, offset: 0.15 },
   tone: { mode: 'agx' as const, exposure: 1.35 },
 } as const
 
