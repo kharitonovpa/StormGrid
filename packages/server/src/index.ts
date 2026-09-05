@@ -71,7 +71,9 @@ const roomManager = new RoomManager({
   onRoomsChanged() { broadcastLobbyStatus() },
   /** Nameplate points — the same total the leaderboard orders by. */
   pointsFor(ws) {
-    return getPoints(ws.data.analytics?.deviceId ?? null, ws.data.userId)
+    try {
+      return getPoints(ws.data.analytics?.deviceId ?? null, ws.data.userId)
+    } catch (e) { console.error('[db] getPoints failed:', e); return undefined }
   },
   /** A finished PvP pair, offered another match while both are still here. */
   onRematchReady(roomId, a, b, lightningEnabled) {
