@@ -63,8 +63,13 @@ for (const baseId of Object.keys(BASES) as BaseId[]) {
     const id = `${baseId}-${crop}`
     if (ONLY && ONLY !== id) continue
     const layer = renderLayer(baseId, crop, loopSamples, beatSeconds, SEED)
+    if (layer[0].length !== loopSamples) throw new Error(`${id}: layer length ${layer[0].length} !== ${loopSamples}`)
+    const layerRms = rms(mid(layer[0], layer[1]))
+    // A silent layer would otherwise pass every assertion below (Δ 0, peak = the
+    // base's peak) and ship four files identical to the base.
+    if (layerRms <= 1e-6) throw new Error(`${id}: rendered layer is silent (rms ${layerRms})`)
     // Level the layer (tails included) 14 dB under the base, on its mid signal.
-    const layerGain = (baseRms * Math.pow(10, LAYER_DB / 20)) / Math.max(rms(mid(layer[0], layer[1])), 1e-9)
+    const layerGain = (baseRms * Math.pow(10, LAYER_DB / 20)) / layerRms
     const outL = new Float32Array(loopSamples), outR = new Float32Array(loopSamples)
     for (let i = 0; i < loopSamples; i++) {
       outL[i] = left[i] + layer[0][i] * layerGain

@@ -1,7 +1,7 @@
 /**
- * Instruments for the crop music layers. All exact-pitch (the fundamental is
- * generated at its equal-tempered frequency, never a rounded delay line),
- * peak-normalised to 0.9, mono; space and width come from fx.ts.
+ * Instruments for the crop music layers. All fundamentals within 0.35 cents of
+ * equal temperament (the k = 1 stiffness term of the modal string); no rounded
+ * delay lines. Peak-normalised to 0.9, mono; space and width come from fx.ts.
  */
 import { SR, envelope, normalize } from './synth.ts'
 import { onePoleLowpass, biquadBandpass } from './fx.ts'
@@ -81,12 +81,13 @@ export function breathTone(freq: number, seconds: number, rand: () => number): F
   return normalize(out, 0.9)
 }
 
-/** Distant muted trumpet: band-limited pulse through two formants and a 4 kHz roof, slow late vibrato. */
+/** Distant muted trumpet: band-limited pulse through two formants and two one-pole
+ *  low-passes at 4 kHz (12 dB/oct roof), slow late vibrato. */
 export function mutedTrumpet(freq: number, seconds: number): Float32Array {
   const n = Math.round(seconds * SR)
   const raw = new Float32Array(n)
   const env = envelope(n, 0.12, 0.6)
-  const harmonics = Math.floor(4000 / freq)
+  const harmonics = Math.max(1, Math.floor(4000 / freq))
   const vibratoStart = 0.5 * SR
   const vibratoDepth = Math.pow(2, 10 / 1200) - 1
   let phase = 0

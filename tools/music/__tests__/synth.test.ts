@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import {
-  SR, seedRandom, midiToFreq, envelope, mixInto, rms, scaleTo, normalize, renderScore,
+  SR, seedRandom, midiToFreq, envelope, mixInto, rms, scaleTo, normalize,
 } from '../synth.ts'
 
 const dB = (ratio: number) => 20 * Math.log10(ratio)
@@ -58,23 +58,5 @@ describe('rms, scaleTo, normalize', () => {
     const buf = Float32Array.from([0.2, -0.5, 0.1])
     expect(Math.max(...Array.from(normalize(buf, 0.9), Math.abs))).toBeCloseTo(0.9, 6)
     expect(Array.from(normalize(new Float32Array(3), 0.9))).toEqual([0, 0, 0])
-  })
-})
-
-describe('renderScore', () => {
-  it('has exactly the loop length and wraps a note that crosses the loop end', () => {
-    const loopSamples = SR // a 1 s loop of 4 beats
-    const voice = (_freq: number, seconds: number) => new Float32Array(Math.round(seconds * SR)).fill(0.25)
-    const out = renderScore([{ beat: 3.5, midi: 60, dur: 1 }], 0.25, loopSamples, voice)
-    expect(out.length).toBe(loopSamples)
-    expect(out[Math.floor(SR * 0.875) + 10]).toBeCloseTo(0.25, 6) // note start at beat 3.5
-    expect(out[10]).toBeCloseTo(0.25, 6) // wrapped tail
-    expect(out[Math.floor(SR * 0.5)]).toBe(0) // silence between
-  })
-
-  it('applies per-note gain', () => {
-    const voice = (_f: number, seconds: number) => new Float32Array(Math.round(seconds * SR)).fill(1)
-    const out = renderScore([{ beat: 0, midi: 60, dur: 0.5, gain: 0.3 }], 0.25, SR, voice)
-    expect(out[100]).toBeCloseTo(0.3, 6)
   })
 })

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { SR, seedRandom, rms } from '../synth.ts'
-import { spectralPeak } from './spectrum.ts'
+import { goertzelPower, spectralPeak } from './spectrum.ts'
 import { modalString, KOTO, NYLON, breathTone, mutedTrumpet } from '../voices.ts'
 
 const cents = (measured: number, target: number) => 1200 * Math.log2(measured / target)
@@ -33,8 +33,8 @@ describe('modalString', () => {
   it('nylon is darker than koto (less energy above 2 kHz)', () => {
     const highRatio = (buf: Float32Array) => {
       let hi = 0, all = 0
-      for (let f = 2200; f <= 6000; f += 200) hi += spectralPeakPower(buf, f)
-      for (let f = 200; f <= 6000; f += 200) all += spectralPeakPower(buf, f)
+      for (let f = 2200; f <= 6000; f += 200) hi += goertzelPower(buf, f)
+      for (let f = 200; f <= 6000; f += 200) all += goertzelPower(buf, f)
       return hi / all
     }
     const k = modalString(330, 1, KOTO, seedRandom(4)), ny = modalString(330, 1, NYLON, seedRandom(4))
@@ -57,17 +57,13 @@ describe('breathTone and mutedTrumpet', () => {
 
   it('mutedTrumpet has no energy above 6 kHz worth hearing', () => {
     const tone = mutedTrumpet(440, 1)
-    const p6k = spectralPeakPower(tone, 6600)
-    const pf = spectralPeakPower(tone, 440)
+    const p6k = goertzelPower(tone, 6600)
+    const pf = goertzelPower(tone, 440)
     expect(10 * Math.log10(p6k / pf)).toBeLessThan(-30)
   })
-})
 
-// Local helper: Goertzel power at one frequency (spectrum.ts exposes the peak finder).
-function spectralPeakPower(buf: Float32Array, freq: number): number {
-  const w = (2 * Math.PI * freq) / SR
-  const coeff = 2 * Math.cos(w)
-  let s0 = 0, s1 = 0, s2 = 0
-  for (let i = 0; i < buf.length; i++) { s0 = buf[i] + coeff * s1 - s2; s2 = s1; s1 = s0 }
-  return s1 * s1 + s2 * s2 - coeff * s1 * s2
-}
+  it('mutedTrumpet is not silent above 4 kHz (harmonics floor of 1)', () => {
+    const tone = mutedTrumpet(4100, 0.5)
+    expect(peakOf(tone)).toBeCloseTo(0.9, 2)
+  })
+})

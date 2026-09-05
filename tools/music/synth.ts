@@ -1,9 +1,9 @@
 /**
  * Core helpers for the crop music layers: sample rate, seeded PRNG, envelope,
- * mixing, loudness and score rendering (instruments live in voices.ts,
- * effects in fx.ts). No I/O here — the build script (build-variants.ts) owns
- * ffmpeg. Everything runs at SR and returns Float32Array mono buffers in
- * [-1, 1] unless stated otherwise.
+ * mixing and loudness (instruments live in voices.ts, effects in fx.ts,
+ * layer rendering in render.ts). No I/O here — the build script
+ * (build-variants.ts) owns ffmpeg. Everything runs at SR and returns
+ * Float32Array mono buffers in [-1, 1] unless stated otherwise.
  */
 
 export const SR = 44100
@@ -76,16 +76,4 @@ export interface Note {
   /** Nominal length in beats — voices may ring past it; tails wrap. */
   dur: number
   gain?: number
-}
-
-export type Voice = (freq: number, seconds: number) => Float32Array
-
-/** Render notes onto a loop-length buffer; anything past the loop end wraps to its start. */
-export function renderScore(notes: Note[], beatSeconds: number, loopSamples: number, voice: Voice): Float32Array {
-  const out = new Float32Array(loopSamples)
-  for (const note of notes) {
-    const tone = voice(midiToFreq(note.midi), note.dur * beatSeconds)
-    mixInto(out, tone, note.beat * beatSeconds * SR, note.gain ?? 1)
-  }
-  return out
 }
