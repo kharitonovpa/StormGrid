@@ -57,7 +57,9 @@ describe('masses — what the sky shows, for the grass', () => {
   }
 
   it('reports two zero-weight slots while asleep', () => {
-    const m = createStormSystem(new THREE.Scene()).masses()
+    const storm = createStormSystem(new THREE.Scene())
+    storm.update(0.05)
+    const m = storm.masses()
     expect(m).toHaveLength(2)
     expect(m[0].weight).toBe(0)
     expect(m[1].weight).toBe(0)
@@ -94,6 +96,24 @@ describe('masses — what the sky shows, for the grass', () => {
       settle(storm)
       for (const x of storm.masses()) expect(x.weight).toBeLessThan(0.05)
     }
+  })
+
+  it('gates the weight while the zenith mass is still draining after a candidate appears', () => {
+    // Calm + stormy: the darkness pools overhead (uZenith → 1), no wind.
+    const storm = createStormSystem(new THREE.Scene())
+    storm.setForecast([], false, true, false)
+    storm.setProgress(1)
+    settle(storm)
+    // A candidate arrives while the sky is fully built: slotFade ramps up over
+    // ~0.4 s but uZenith eases down more slowly, so the first frame's weight
+    // must stay near zero — without the gate it would already be ≈ 0.125.
+    storm.setForecast(['N'], false, true, false)
+    storm.update(0.05)
+    expect(storm.masses()[0].weight).toBeLessThan(0.05)
+    // Once the zenith mass has drained the gate opens and the mass carries full weight.
+    settle(storm)
+    expect(storm.masses()[0].weight).toBeGreaterThan(0.9)
+    expect(storm.masses()[0].azimuth).toBeCloseTo(DIR_AZIMUTH.N, 6)
   })
 
   it('does not allocate: the same array comes back each call', () => {
