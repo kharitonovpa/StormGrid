@@ -70,8 +70,10 @@ export function createGustScheduler(opts: SchedulerOptions) {
       if (reduced) return
       live.length = 0
       const width = T.width * 2
-      // its own crossing — birth to retirement, both widened with it — in the front's own time
-      const crossing = retireEdge(width, T.tail) - spawnEdge(width)
+      // sweepMs is the time the storm front takes to cross the BOARD, so that is
+      // the distance to time against: the board's full diagonal. The wider gust's
+      // birth position (3σ further upwind) only delays its arrival by ~0.4 s.
+      const crossing = 2 * Math.SQRT2 * HALF
       spawn(DIR_AZIMUTH[dir], 1, width, crossing / (sweepMs / 1000))
       nextIn = interval(1)
     },

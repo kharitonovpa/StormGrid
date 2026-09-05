@@ -146,8 +146,8 @@ describe('gust scheduler', () => {
     expect(gs[0].strength).toBe(1)
     const W = LOOK.terrain.sheen.width * 2
     expect(gs[0].width).toBe(W)
-    // its own crossing — birth to retirement, both scaled by its double width — over the sweep's seconds
-    expect(gs[0].speed).toBeCloseTo((2 * Math.SQRT2 * HALF + 6 * W + LOOK.terrain.sheen.tail) / 2, 6)
+    // the board's own crossing — what SWEEP_MS times — over the sweep's seconds
+    expect(gs[0].speed).toBeCloseTo((2 * Math.SQRT2 * HALF) / 2, 6)
   })
 
   it('does not bank the spawn timer while it sits at the cap', () => {
