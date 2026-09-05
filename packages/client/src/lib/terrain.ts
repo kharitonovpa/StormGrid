@@ -110,8 +110,15 @@ export function rebuildMesh(
     const baseZ = -HALF + iz * (SIZE / SEGMENTS)
     const y = getHeightRaw(baseX, baseZ)
 
+    const gx = (baseX + HALF) / CELL_SIZE
+    const gz = (baseZ + HALF) / CELL_SIZE
+    const cx = clamp(Math.floor(gx), 0, CELLS - 1) | 0
+    const cz = clamp(Math.floor(gz), 0, CELLS - 1) | 0
+    const level = current[cz][cx]
+
     let dx = 0, dz = 0
-    if (Math.abs(y) > 0.01) {
+    // Hills only: the flat meadow (swell + groove) must not jitter sideways.
+    if (Math.abs(level) > 0.001) {
       dx = fbm(baseX * 0.15 + 100, baseZ * 0.15 + y * 1.2) * 0.8 * Math.abs(y) / HEIGHT_SCALE
       dz = fbm(baseX * 0.15 + y * 1.2, baseZ * 0.15 + 100) * 0.8 * Math.abs(y) / HEIGHT_SCALE
     }

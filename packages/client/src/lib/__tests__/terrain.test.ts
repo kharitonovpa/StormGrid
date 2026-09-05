@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import * as THREE from 'three'
-import { paintColors, current, getHeightRaw } from '../terrain.js'
+import { paintColors, current, getHeightRaw, rebuildMesh } from '../terrain.js'
 import { SIZE, SEGMENTS, HALF, CELL_SIZE, THICKNESS, HEIGHT_SCALE, NOISE_AMP, NOISE_FREQ } from '../constants.js'
 import { LOOK } from '../look.js'
 import { swell, groove, SWELL_AMP, GROOVE_DEPTH } from '../meadow.js'
@@ -146,5 +146,43 @@ describe('the meadow on a flat board', () => {
     const [cr, , cb] = colourOf(crest)
     const [tr, , tb] = colourOf(trough)
     expect(cr / cb).toBeGreaterThan((tr / tb) * 1.05)
+  })
+
+  it('keeps flat vertices on their grid: no sideways displacement on the meadow', () => {
+    const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
+    geo.rotateX(-Math.PI / 2)
+    const pos = geo.attributes.position as THREE.BufferAttribute
+    rebuildMesh(pos, null, null)
+    const stride = SEGMENTS + 1
+    for (let i = 0; i < pos.count; i++) {
+      const ix = i % stride
+      const iz = Math.floor(i / stride)
+      // Float32-backed BufferAttribute: allow for the position's own storage
+      // rounding (not a meadow displacement), well under a visible jitter.
+      expect(pos.getX(i)).toBeCloseTo(-HALF + ix * (SIZE / SEGMENTS), 4)
+      expect(pos.getZ(i)).toBeCloseTo(-HALF + iz * (SIZE / SEGMENTS), 4)
+    }
+  })
+
+  it('still displaces hill vertices sideways', () => {
+    current[3][3] = 1
+    const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
+    geo.rotateX(-Math.PI / 2)
+    const pos = geo.attributes.position as THREE.BufferAttribute
+    rebuildMesh(pos, null, null)
+    const stride = SEGMENTS + 1
+    let found = false
+    for (let i = 0; i < pos.count; i++) {
+      const ix = i % stride
+      const iz = Math.floor(i / stride)
+      const baseX = -HALF + ix * (SIZE / SEGMENTS)
+      const baseZ = -HALF + iz * (SIZE / SEGMENTS)
+      const gx = (baseX + HALF) / CELL_SIZE
+      const gz = (baseZ + HALF) / CELL_SIZE
+      if (gx > 3 && gx < 4 && gz > 3 && gz < 4) {
+        if (Math.abs(pos.getX(i) - baseX) > 1e-4) found = true
+      }
+    }
+    expect(found).toBe(true)
   })
 })
