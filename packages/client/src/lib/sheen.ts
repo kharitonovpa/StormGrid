@@ -69,7 +69,8 @@ export function createGustScheduler(opts: SchedulerOptions) {
       for (let i = live.length - 1; i >= 0; i--) {
         const g = live[i]
         g.pos += g.speed * dt
-        if (g.pos > -SPAWN_EDGE + g.width + g.tail) live.splice(i, 1)
+        // 3σ past the far corner: the Gaussian has to be invisible before the gust is dropped
+        if (g.pos > -SPAWN_EDGE + 3 * g.width + g.tail) live.splice(i, 1)
       }
       if (reduced) return
       // pick the live masses (in slot order, so two candidates alternate)
@@ -93,10 +94,12 @@ export function createGustScheduler(opts: SchedulerOptions) {
 
 export interface SheenHandle { follow(masses: ReadonlyArray<Mass>): void }
 
+// MAX_GUSTS is interpolated into both chunks so the GLSL array bounds and the
+// loop can never drift from the uniform arrays createSheenSystem allocates.
 const GLSL_DECL = /* glsl */ `
-uniform vec4 uGust[3];        // dirX, dirZ, pos, strength
-uniform float uGustWidth[3];  // per-gust width (world units)
-uniform float uGustTail[3];   // per-gust tail (world units)
+uniform vec4 uGust[${MAX_GUSTS}];        // dirX, dirZ, pos, strength
+uniform float uGustWidth[${MAX_GUSTS}];  // per-gust width (world units)
+uniform float uGustTail[${MAX_GUSTS}];   // per-gust tail (world units)
 uniform vec3 uSheenColor;
 varying vec2 vWorldXZ;
 `
@@ -105,7 +108,7 @@ varying vec2 vWorldXZ;
 // Leading highlight around the head, a shorter shade behind it (grass laid
 // over, away from the sun); a cheap sine along the band breaks the ruler line.
 const GLSL_BAND = /* glsl */ `
-for (int i = 0; i < 3; i++) {
+for (int i = 0; i < ${MAX_GUSTS}; i++) {
   vec4 g = uGust[i];
   if (g.w <= 0.0) continue;
   vec2 dir = g.xy;

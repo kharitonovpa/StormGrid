@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import * as THREE from 'three'
+import type { Gust } from '../sheen.js'
 import { createGustScheduler, createSheenSystem, MAX_GUSTS, SPAWN_EDGE } from '../sheen.js'
 import { DIR_AZIMUTH, gustDirection } from '../bearing.js'
 import { LOOK } from '../look.js'
@@ -9,6 +10,20 @@ const mk = (extra: Partial<Parameters<typeof createGustScheduler>[0]> = {}) =>
   createGustScheduler({ sweepMs: 1400, random: () => 0.5, ...extra })
 const run = (s: ReturnType<typeof createGustScheduler>, seconds: number, dt = 0.05) => {
   for (let t = 0; t < seconds; t += dt) s.update(dt)
+}
+/**
+ * Every gust born during the run, in birth order. Counted by object identity:
+ * once the live list sits at MAX_GUSTS a spawn and a retirement land in the
+ * same tick, so "the array got longer" would miss it.
+ */
+const spawns = (s: ReturnType<typeof createGustScheduler>, seconds: number, dt = 0.05): Gust[] => {
+  const seen = new Set<Gust>()
+  const born: Gust[] = []
+  for (let t = 0; t < seconds; t += dt) {
+    s.update(dt)
+    for (const g of s.gusts()) if (!seen.has(g)) { seen.add(g); born.push(g) }
+  }
+  return born
 }
 
 describe('gust scheduler', () => {
@@ -51,14 +66,7 @@ describe('gust scheduler', () => {
   it('alternates between two masses and never picks another bearing', () => {
     const s = mk()
     s.follow([{ azimuth: DIR_AZIMUTH.N, weight: 1 }, { azimuth: DIR_AZIMUTH.S, weight: 1 }])
-    const seen: string[] = []
-    let last = 0
-    for (let t = 0; t < 40; t += 0.05) {
-      s.update(0.05)
-      const gs = s.gusts()
-      if (gs.length > last) seen.push(`${gs[gs.length - 1].dirX.toFixed(2)},${gs[gs.length - 1].dirZ.toFixed(2)}`)
-      last = gs.length
-    }
+    const seen = spawns(s, 40).map(g => `${g.dirX.toFixed(2)},${g.dirZ.toFixed(2)}`)
     expect(seen.length).toBeGreaterThanOrEqual(4)
     const n = `${gustDirection(DIR_AZIMUTH.N)[0].toFixed(2)},${gustDirection(DIR_AZIMUTH.N)[1].toFixed(2)}`
     const so = `${gustDirection(DIR_AZIMUTH.S)[0].toFixed(2)},${gustDirection(DIR_AZIMUTH.S)[1].toFixed(2)}`
@@ -72,16 +80,26 @@ describe('gust scheduler', () => {
     const count = (w: number) => {
       const s = mk()
       s.follow([{ azimuth: 0, weight: w }])
-      let spawned = 0, last = 0
+      let spawned = 0
+      const seen = new Set<Gust>()
       for (let t = 0; t < 20; t += 0.05) {
         s.update(0.05)
-        if (s.gusts().length > last) spawned++
-        last = s.gusts().length
+        for (const g of s.gusts()) if (!seen.has(g)) { seen.add(g); spawned++ }
         expect(s.gusts().length).toBeLessThanOrEqual(MAX_GUSTS)
       }
       return spawned
     }
     expect(count(1)).toBeGreaterThan(count(0.1))
+  })
+
+  it('keeps a gust alive one width past the far corner — the Gaussian still shows there', () => {
+    const s = mk()
+    const T = LOOK.terrain.sheen
+    s.follow([{ azimuth: 0, weight: 1 }])
+    s.update(0.01)
+    s.follow([])                      // no more spawns
+    run(s, (2 * 1.4 * HALF + T.width + T.tail) / T.speed + 0.3)
+    expect(s.gusts()).toHaveLength(1)
   })
 
   it('retires a gust once it has crossed the board', () => {
@@ -122,24 +140,38 @@ describe('sheen system (material patch)', () => {
     const sys = createSheenSystem(mat, mk())
     return { mat, sys }
   }
+  // The payloads the patch injects at each anchor. Asserting on these, not on
+  // the prepended declarations, is what makes a renamed three chunk fail here:
+  // a .replace() that finds no anchor is a silent no-op.
+  const VERT_PAYLOAD = 'vWorldXZ = (modelMatrix'
+  const FRAG_PAYLOAD = 'diffuseColor.rgb *='
+  const stub = (vertexShader: string, fragmentShader: string) => ({
+    uniforms: {} as Record<string, unknown>,
+    vertexShader,
+    fragmentShader,
+  })
 
   it('installs the patch once and marks the program', () => {
     const { mat } = make()
-    expect(typeof mat.onBeforeCompile).toBe('function')
+    expect(mat.onBeforeCompile).not.toBe(THREE.Material.prototype.onBeforeCompile)
     expect(mat.customProgramCacheKey()).toContain('sheen')
   })
 
   it('injects the band into a standard shader', () => {
     const { mat } = make()
-    const shader = {
-      uniforms: {} as Record<string, unknown>,
-      vertexShader: '#include <begin_vertex>\n',
-      fragmentShader: '#include <color_fragment>\n',
-    }
+    const shader = stub('#include <begin_vertex>\n', '#include <color_fragment>\n')
     mat.onBeforeCompile(shader as never, {} as never)
-    expect(shader.vertexShader).toContain('vWorldXZ')
-    expect(shader.fragmentShader).toContain('uGust')
+    expect(shader.vertexShader).toContain(VERT_PAYLOAD)
+    expect(shader.fragmentShader).toContain(FRAG_PAYLOAD)
     expect(shader.uniforms.uGust).toBeDefined()
+  })
+
+  it('leaves a shader without the anchors untouched', () => {
+    const { mat } = make()
+    const shader = stub('void main() {}\n', 'void main() {}\n')
+    mat.onBeforeCompile(shader as never, {} as never)
+    expect(shader.vertexShader).not.toContain(VERT_PAYLOAD)
+    expect(shader.fragmentShader).not.toContain(FRAG_PAYLOAD)
   })
 
   it('copies live gusts into the uniform array and zeroes the rest', () => {
@@ -156,10 +188,16 @@ describe('sheen system (material patch)', () => {
     expect(u[1]).toBeCloseTo(dz, 5)
   })
 
-  it('leaves every strength at zero with no masses', () => {
+  it('clears every slot once the last gust has retired', () => {
     const { sys } = make()
+    sys.follow([{ azimuth: 0, weight: 1 }])
+    sys.update(0.02)
+    expect(sys.uniforms.uGust.value[3]).toBeGreaterThan(0)   // a gust really was there
     sys.follow([])
-    sys.update(1)
+    sys.update(20)                                           // well past retirement
     for (const i of [3, 7, 11]) expect(sys.uniforms.uGust.value[i]).toBe(0)
+    // Idle slots keep a width and tail of 1: the shader divides by both.
+    for (const w of sys.uniforms.uGustWidth.value) expect(w).toBe(1)
+    for (const t of sys.uniforms.uGustTail.value) expect(t).toBe(1)
   })
 })
