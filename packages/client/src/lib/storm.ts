@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { HALF } from './constants'
 import type { WindDir } from '@wheee/shared'
 import { LOOK, srgbHexToLinear, type Vec3 } from './look'
+import { DIR_AZIMUTH } from './bearing'
 
 /* ── Constants ──────────────────────────────────────────── */
 
@@ -48,7 +49,7 @@ export function skyGradient(y: number, sky: typeof LOOK.sky = LOOK.sky): Vec3 {
 // upwind/source bearing, which is the opposite of the travel bearing. Do not
 // "fix" this back to the travel bearing: that is the inversion this comment
 // exists to prevent. N travels toward -z, so its source is +z: atan2(0,+1) = 0.
-const DIR_AZIMUTH: Record<WindDir, number> = { N: 0, E: -Math.PI / 2, S: Math.PI, W: Math.PI / 2 }
+// (The convention itself, and DIR_AZIMUTH, now live in lib/bearing.ts.)
 
 // The dial needle's spring feel (ForecastPanel), slowed for a sky-sized mass.
 // It is what carries a mass to a NEW bearing (a broken vane's roaming, a
@@ -89,7 +90,7 @@ const FRONT_SIZE_MAX = 5.5
 const FRONT_LATERAL = HALF * 1.3      // half-width of the wall, wider than the board so it reads as a front, not a smear
 const FRONT_DEPTH = HALF * 0.4        // total depth span of the wall, leading edge through trailing haze
 const FRONT_JITTER = HALF * 0.15      // per-particle jitter amplitude, along the wind axis — big enough that no depth band can appear
-const SWEEP_MS = 1200
+export const SWEEP_MS = 1200
 const SWEEP_TARGET = -HALF * 1.2      // across and past the board
 const SWEEP_AZ_TAU = 0.25             // seconds; how fast the mass commits to the true bearing mid-sweep
 const HOLD_RELEASE = 0.02             // intensity at which a swept front may leave its parking spot
@@ -358,6 +359,12 @@ export function createStormSystem(scene: THREE.Scene, tint: Vec3 = [1, 1, 1]) {
   const slotVel = [0, 0]
   const slotFade = [0, 0]           // 0..1 presence of each mass
   const slotDist = [FRONT_FAR, FRONT_FAR]   // each wall's centre distance, frozen while halted
+  /** What the sky shows, for the grass (lib/sheen.ts): one entry per slot,
+   *  filled in update(), returned as-is — update() and its readers never allocate. */
+  const massesOut: { azimuth: number; weight: number }[] = [
+    { azimuth: 0, weight: 0 },
+    { azimuth: 0, weight: 0 },
+  ]
   const slotReentry = [false, false]
   // Per-slot wall basis, recomputed at the top of every active frame (see
   // update()) and then read 3000 times in the placement loop.
@@ -548,6 +555,7 @@ export function createStormSystem(scene: THREE.Scene, tint: Vec3 = [1, 1, 1]) {
     discharge: dischargeImpl,
     setTremor(active: boolean) { tremorActive = active },
     getCameraOffset() { return tremorOffset },
+    masses(): ReadonlyArray<{ azimuth: number; weight: number }> { return massesOut },
     sweep(dir: WindDir): Promise<void> {
       if (REDUCED || halted) {
         // reduced motion (or an already-halted front): cross-fade out instead of marching
@@ -719,6 +727,14 @@ export function createStormSystem(scene: THREE.Scene, tint: Vec3 = [1, 1, 1]) {
       u.uSpread.value = spread
       u.uZenith.value += (zenithTarget - u.uZenith.value) * Math.min(1, dt * 2)
       u.uCalmClean.value += (calmCleanTarget - u.uCalmClean.value) * Math.min(1, dt * 2)
+
+      // The grass reads these instead of the forecast, so it can never point
+      // at a bearing the sky does not — zenith and calm-clean carry no wind.
+      const windGate = (1 - u.uZenith.value) * (1 - u.uCalmClean.value)
+      massesOut[0].azimuth = angle0
+      massesOut[0].weight = slotFade[0] * intensity * windGate
+      massesOut[1].azimuth = angle1
+      massesOut[1].weight = slotFade[1] * intensity * windGate
 
       // A swept-through front waits past the board until it is too faint to be
       // caught returning: the ordinary, invisible end of a crossing.
