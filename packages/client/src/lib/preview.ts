@@ -286,12 +286,16 @@ export function createPreviewSystem(scene: THREE.Scene, terrain: TerrainState) {
   }
 
   /* ═══════════════════════════════════════════════════════════════
-     Move arc arrow (gradient ribbon with fade-in)  — unchanged
+     Move arc arrow (gradient ribbon with fade-in)
      ═══════════════════════════════════════════════════════════════ */
 
   const ARC_SEGS = 24
   const MOVE_RIBBON_W = CELL_SIZE * 0.35
-  const MOVE_RIBBON_COLOR = new THREE.Color(0xffcc55)
+  // Default when the caller doesn't know a crop identity to use (a watcher's
+  // prediction of someone else's move); the local player's own move passes
+  // their crop's identity colour instead (see App.vue's showMove call).
+  const DEFAULT_MOVE_RIBBON_COLOR = 0xffcc55
+  const moveRibbonColor = new THREE.Color()
 
   const moveArcMat = new THREE.ShaderMaterial({
     transparent: true,
@@ -319,12 +323,12 @@ export function createPreviewSystem(scene: THREE.Scene, terrain: TerrainState) {
   const spinePool = Array.from({ length: ARC_SEGS + 1 }, () => new THREE.Vector3())
   let arcActive = false
 
-  function buildMoveRibbonGeo(spine: THREE.Vector3[], perpX: number, perpZ: number) {
+  function buildMoveRibbonGeo(spine: THREE.Vector3[], perpX: number, perpZ: number, color: THREE.Color) {
     const verts = (ARC_SEGS + 1) * 2
     const positions = new Float32Array(verts * 3)
     const colors = new Float32Array(verts * 4)
     const indices: number[] = []
-    const cr = MOVE_RIBBON_COLOR.r, cg = MOVE_RIBBON_COLOR.g, cb = MOVE_RIBBON_COLOR.b
+    const cr = color.r, cg = color.g, cb = color.b
 
     for (let i = 0; i <= ARC_SEGS; i++) {
       const t = i / ARC_SEGS
@@ -358,7 +362,7 @@ export function createPreviewSystem(scene: THREE.Scene, terrain: TerrainState) {
     return geo
   }
 
-  function showMove(fromCx: number, fromCz: number, toCx: number, toCz: number, yOffset = 0) {
+  function showMove(fromCx: number, fromCz: number, toCx: number, toCz: number, yOffset = 0, color = DEFAULT_MOVE_RIBBON_COLOR) {
     hideAll()
     activeYOffset = yOffset
     const from = cellCenter(fromCx, fromCz)
@@ -383,7 +387,8 @@ export function createPreviewSystem(scene: THREE.Scene, terrain: TerrainState) {
     const perpX = -dz / len2d
     const perpZ = dx / len2d
 
-    const geo = buildMoveRibbonGeo(spinePool, perpX, perpZ)
+    moveRibbonColor.setHex(color)
+    const geo = buildMoveRibbonGeo(spinePool, perpX, perpZ, moveRibbonColor)
     moveRibbonMesh = new THREE.Mesh(geo, moveArcMat)
     moveRibbonMesh.renderOrder = 998
     scene.add(moveRibbonMesh)

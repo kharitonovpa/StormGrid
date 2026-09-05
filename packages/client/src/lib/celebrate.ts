@@ -26,6 +26,8 @@ interface Burst {
   ty: number
   t0: number
   points: number
+  /** The hue passed to `celebrate`, or 42 (gold) when none was given. */
+  hue: number
   onArrive?: () => void
 }
 
@@ -103,8 +105,8 @@ function tick(now: number) {
       const glow = 1 - (flyPhase - 0.85) / 0.15
       ctx.save()
       ctx.globalAlpha = glow * 0.4
-      ctx.fillStyle = 'hsl(42, 90%, 65%)'
-      ctx.shadowColor = 'hsla(42, 90%, 60%, 0.5)'
+      ctx.fillStyle = `hsl(${b.hue}, 90%, 65%)`
+      ctx.shadowColor = `hsla(${b.hue}, 90%, 60%, 0.5)`
       ctx.shadowBlur = 20 * dpr
       ctx.beginPath()
       ctx.arc(b.tx * dpr, b.ty * dpr, 12 * dpr * glow, 0, Math.PI * 2)
@@ -156,6 +158,7 @@ export function celebrate(
     particles, sx, sy, tx, ty,
     t0: performance.now(),
     points,
+    hue: hue ?? 42,
     onArrive,
   })
 

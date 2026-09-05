@@ -2158,7 +2158,7 @@ onMounted(() => {
             myActionLabel.value = t('action.move')
             audio.play('action-submit')
             const s2 = game.myPlayerId.value === 'A' ? players.playerA.state : players.playerB.state
-            preview.showMove(s2.cx, s2.cz, e.cx, e.cz)
+            preview.showMove(s2.cx, s2.cz, e.cx, e.cz, 0, CROP_THEME[game.selectedCharacter.value].identity)
           }
         }
         players.hideMoveOptions()

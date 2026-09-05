@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'bun:test'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { resolveMusicId, LOOP_IDS } from '../audio.js'
 
 describe('resolveMusicId', () => {
@@ -24,6 +26,15 @@ describe('resolveMusicId', () => {
       for (const crop of ['wheat', 'rice', 'corn'] as const) {
         expect(LOOP_IDS).toContain(resolveMusicId(base, crop))
       }
+    }
+  })
+})
+
+describe('music assets', () => {
+  it('ships an mp3 for every loop id', () => {
+    for (const id of LOOP_IDS) {
+      const file = resolve(import.meta.dir, '../../../public/sounds/' + id + '.mp3')
+      expect(existsSync(file)).toBe(true)
     }
   })
 })
