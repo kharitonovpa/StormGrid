@@ -260,6 +260,16 @@ export function createAudioSystem() {
     const d = defs.get(id)!
     const target = d.baseVolume * layerGain(d.layer)
 
+    // A fade-in on the music layer supersedes any pending crossfade — including
+    // one to this same id — whose deferred start() would otherwise run once its
+    // file lands: activeLoops.has(id) is satisfied by this very fadeIn re-adding
+    // it below, so only the token can tell that start() is now stale. Without
+    // this, that stale start calls h.play() on a Howl that is already playing;
+    // real Howler only reuses an existing sound when exactly one is paused and
+    // not ended, which a looping sound never is, so it allocates a second,
+    // independent Sound of the same loop — two phased copies of the same track.
+    if (d.layer === 'music') musicSwitchSeq++
+
     if (h.state() === 'unloaded') h.load()
     // A restart must never land under a stop scheduled by an earlier fadeOut —
     // that stop is id-less and would silence this fresh instance right along

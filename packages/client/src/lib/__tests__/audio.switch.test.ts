@@ -7,18 +7,32 @@ import { describe, it, expect, mock, beforeEach } from 'bun:test'
  * and reports playing() === false until the queued play runs — the fade-out
  * must still cancel that queued play, or the first variant starts later, on its
  * own, on top of the second one.
+ *
+ * FakeHowl also models Howler's real *per-Howl sound pool*, not just a single
+ * boolean: an id-less play() reuses an existing sound only when exactly one
+ * exists and it is paused (see FakeHowl.play), otherwise it allocates a new
+ * one. That distinction is what a stale, superseded play() call turns into in
+ * production — a second, independent, phased copy of the same loop — so a
+ * model that only tracked "is *something* playing" could not have caught it.
  */
 
 type Queued = () => void
+
+/** One playable instance under a Howl — the minimal shape Howler tracks per Sound. */
+interface FakeSound {
+  id: number
+  paused: boolean
+  pos: number
+}
 
 class FakeHowl {
   static bySrc = new Map<string, FakeHowl>()
   readonly src: string
   private state_: 'unloaded' | 'loading' | 'loaded' = 'unloaded'
   private queue: Queued[] = []
-  private paused = true
+  private sounds: FakeSound[] = []
+  private nextSoundId = 1
   private vol = 0
-  private pos = 0
   private loadListeners: Array<() => void> = []
   playCalls = 0
   stopCalls = 0
@@ -41,18 +55,31 @@ class FakeHowl {
     this.loadListeners = []
     for (const cb of ls) cb()
   }
-  play(id?: number) {
+  /**
+   * Mirrors Howler's real `_inactiveSound()`: an id-less play() reuses an
+   * existing sound only when exactly one exists and it is paused (a looping
+   * Web Audio sound never reaches Howler's "ended" state, so that half of the
+   * real guard never matters here) — otherwise it allocates a brand new one.
+   * Two id-less play() calls on an already-playing loop therefore produce two
+   * independent, phased copies of the same track, exactly as real Howler does.
+   */
+  play(): number {
     this.playCalls++
-    if (this.state_ !== 'loaded') { this.queue.push(() => this.play(id)); return 1 }
-    this.paused = false
-    return 1
+    if (this.state_ !== 'loaded') { this.queue.push(() => { this.play() }); return -1 }
+    const single = this.sounds.length === 1 ? this.sounds[0] : null
+    if (single && single.paused) { single.paused = false; return single.id }
+    const sound: FakeSound = { id: this.nextSoundId++, paused: false, pos: 0 }
+    this.sounds.push(sound)
+    return sound.id
   }
+  /** Id-less stop(): pauses every sound under this Howl — real Howler's behaviour. */
   stop() {
     this.stopCalls++
     if (this.state_ !== 'loaded') { this.queue.push(() => this.stop()); return this }
-    this.paused = true
+    for (const s of this.sounds) s.paused = true
     return this
   }
+  /** Id-less fade(): retargets the Howl's one volume, shared by every sound under it. */
   fade(_from: number, to: number) {
     if (this.state_ !== 'loaded') { this.queue.push(() => this.fade(_from, to)); return this }
     this.vol = to
@@ -60,15 +87,26 @@ class FakeHowl {
   }
   volume(v?: number) { if (v !== undefined) { this.vol = v; return this } return this.vol }
   seek(v?: number) {
-    if (v === undefined) return this.pos
+    const current = () => this.sounds.find((s) => !s.paused) ?? this.sounds[0]
+    if (v === undefined) { const s = current(); return s ? s.pos : 0 }
     if (this.state_ !== 'loaded') { this.queue.push(() => this.seek(v)); return this }
-    this.pos = v
+    const s = current()
+    if (s) s.pos = v
+    // No sound exists yet: stash the position as a paused placeholder so the
+    // next play() picks it up as its starting position — same as seeking a
+    // real Howl ahead of its first play.
+    else this.sounds.push({ id: this.nextSoundId++, paused: true, pos: v })
     return this
   }
-  playing() { return !this.paused }
-  unload() { this.paused = true; this.state_ = 'unloaded'; this.queue = [] }
+  playing() { return this.sounds.some((s) => !s.paused) }
+  unload() { this.sounds = []; this.state_ = 'unloaded'; this.queue = [] }
   on() { return this }
   once(event: string, cb: () => void) { if (event === 'load') this.loadListeners.push(cb); return this }
+
+  /** Total sounds ever allocated under this Howl (paused or not). */
+  get soundCount() { return this.sounds.length }
+  /** Sounds currently unpaused — more than one means a doubled, phased loop. */
+  get liveSounds() { return this.sounds.filter((s) => !s.paused).length }
 }
 
 mock.module('howler', () => ({
@@ -250,19 +288,25 @@ describe('switchMusic drops a target superseded before its file lands', () => {
     await sleep(450)
     const playCallsBeforeLoad = corn.playCalls
 
-    // corn finally finishes: this replays fadeIn's own queued play() *and* fires
-    // the original switchMusic's once('load', start) listener, which is still
-    // attached (fadeIn re-adds the same id to activeLoops, so neither the seq
-    // check nor the activeLoops-membership check can tell this start is stale —
-    // that residual is real, and Howler's own semantics keep it harmless: play()
-    // resumes the one paused sound rather than cloning it, and seek() computed
-    // from a no-longer-playing rice lands on the same 0 fadeIn would have used).
+    // corn finally finishes: this replays fadeIn's own queued play(). It also
+    // fires the original switchMusic's once('load', start) listener, which is
+    // still attached — fadeIn re-adds the same id to activeLoops, so the
+    // membership check alone can't tell this start is stale. But fadeIn also
+    // bumps musicSwitchSeq for every music-layer id it starts (not just this
+    // one — the match-music fadeIn at the top of this test already did, and
+    // this corn fadeIn does again), so the stale start's captured seq is long
+    // out of date by the time it runs: the token guard blocks it before it can
+    // call play()/seek() at all. Before that fix, this stale start *did* run —
+    // reusing the model's old single-boolean FakeHowl couldn't show it, but a
+    // real Howl only recycles a sound when exactly one is paused, and a
+    // playing loop never is, so the stale start's own play() would have
+    // allocated a second, independent, phased copy of the same loop.
     corn.finishLoad()
     expect(corn.playing()).toBe(true)
-    expect(corn.seek()).toBe(0) // no jump to a stale rice position — landed like a fresh start
-    // Exactly the queued play's replay (+1) plus the harmless stale start's own
-    // play() (+1) — never a third, which would mean something is re-triggering.
-    expect(corn.playCalls).toBe(playCallsBeforeLoad + 2)
+    expect(corn.seek()).toBe(0) // the legitimate fadeIn start — never seeks — landed at 0
+    expect(corn.playCalls).toBe(playCallsBeforeLoad + 1) // only the queued play's replay
+    expect(corn.liveSounds).toBe(1) // exactly one live sound — the stale start allocated nothing
+    expect(corn.soundCount).toBe(1) // not even a second, still-paused sound was left behind
     audio.dispose()
   })
 })
