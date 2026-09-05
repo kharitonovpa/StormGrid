@@ -282,7 +282,18 @@ export function createAudioSystem() {
 
   function fadeOut(id: SoundId, duration = 600) {
     const h = howls.get(id)
-    if (!h || !h.playing()) {
+    if (!h) return
+    if (h.state() !== 'loaded') {
+      // Still downloading (the regional music variants load on first play):
+      // playing() is false, but a fadeIn may have queued a play() that Howler
+      // will run the moment the file lands. Queue the stop behind it, or the
+      // loop starts later, untracked, under whatever replaced it.
+      h.stop()
+      activeLoops.delete(id)
+      cancelPendingStop(id)
+      return
+    }
+    if (!h.playing()) {
       activeLoops.delete(id)
       cancelPendingStop(id)
       return
