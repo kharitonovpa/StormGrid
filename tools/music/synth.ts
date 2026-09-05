@@ -1,7 +1,9 @@
 /**
- * Pure-function DSP for the crop music layers. No I/O here — the build script
- * (build-variants.ts) owns ffmpeg. Everything runs at SR and returns
- * Float32Array mono buffers in [-1, 1] unless stated otherwise.
+ * Core helpers for the crop music layers: sample rate, seeded PRNG, envelope,
+ * mixing, loudness and score rendering (instruments live in voices.ts,
+ * effects in fx.ts). No I/O here — the build script (build-variants.ts) owns
+ * ffmpeg. Everything runs at SR and returns Float32Array mono buffers in
+ * [-1, 1] unless stated otherwise.
  */
 
 export const SR = 44100
@@ -35,100 +37,6 @@ export function envelope(n: number, attackSeconds: number, releaseSeconds: numbe
   return env
 }
 
-export interface PluckOpts {
-  /** 1 = raw white-noise excitation (koto); lower values pre-smooth it (nylon guitar). */
-  brightness: number
-  /** Seconds for the string to fall 60 dB. */
-  decay: number
-  rand?: () => number
-}
-
-/** Karplus–Strong plucked string: a noise burst circulating through a two-point average. */
-export function pluck(freq: number, seconds: number, opts: PluckOpts): Float32Array {
-  const rand = opts.rand ?? Math.random
-  const n = Math.round(seconds * SR)
-  const period = Math.max(2, Math.round(SR / freq))
-  const line = new Float32Array(period)
-  let prev = 0
-  for (let i = 0; i < period; i++) {
-    const white = rand() * 2 - 1
-    line[i] = white * opts.brightness + prev * (1 - opts.brightness)
-    prev = line[i]
-  }
-  // Each delay-line slot is refreshed once per period, i.e. decay·freq times
-  // in `decay` seconds; g is the per-refresh gain that reaches −60 dB by then.
-  const g = Math.pow(0.001, 1 / (opts.decay * freq))
-  const out = new Float32Array(n)
-  let j = 0
-  for (let i = 0; i < n; i++) {
-    const cur = line[j]
-    const next = line[(j + 1) % period]
-    out[i] = cur
-    line[j] = (cur + next) * 0.5 * g
-    j = (j + 1) % period
-  }
-  return out
-}
-
-export interface SawOpts {
-  vibratoHz: number
-  vibratoCents: number
-  /** Number of harmonics summed (1/k amplitudes) — keeps the top band-limited. */
-  harmonics: number
-  attack: number
-  release: number
-}
-
-/** Additive saw with vibrato and an envelope — the "trumpet" third. Peak 0.9. */
-export function sawVoice(freq: number, seconds: number, opts: SawOpts): Float32Array {
-  const n = Math.round(seconds * SR)
-  const out = new Float32Array(n)
-  const env = envelope(n, opts.attack, opts.release)
-  const depth = Math.pow(2, opts.vibratoCents / 1200) - 1
-  let phase = 0
-  for (let i = 0; i < n; i++) {
-    const t = i / SR
-    const f = freq * (1 + depth * Math.sin(2 * Math.PI * opts.vibratoHz * t))
-    phase += (2 * Math.PI * f) / SR
-    let s = 0
-    for (let k = 1; k <= opts.harmonics; k++) s += Math.sin(k * phase) / k
-    out[i] = s * env[i]
-  }
-  return normalize(out, 0.9)
-}
-
-export interface BreathOpts {
-  /** Share of resonant noise mixed with the sine, 0..1. */
-  noise: number
-  attack: number
-  release: number
-  rand?: () => number
-}
-
-/** A sine with a whisper of noise resonating at the same pitch — the long rice tone. Peak 0.9. */
-export function breathVoice(freq: number, seconds: number, opts: BreathOpts): Float32Array {
-  const rand = opts.rand ?? Math.random
-  const n = Math.round(seconds * SR)
-  const out = new Float32Array(n)
-  const env = envelope(n, opts.attack, opts.release)
-  // Two-pole resonator (constant-peak-gain band-pass) tuned to freq, Q ≈ 40.
-  const q = 40
-  const w0 = (2 * Math.PI * freq) / SR
-  const alpha = Math.sin(w0) / (2 * q)
-  const b0 = alpha, b2 = -alpha
-  const a0 = 1 + alpha, a1 = -2 * Math.cos(w0), a2 = 1 - alpha
-  let x1 = 0, x2 = 0, y1 = 0, y2 = 0
-  let phase = 0
-  for (let i = 0; i < n; i++) {
-    const x0 = rand() * 2 - 1
-    const y0 = (b0 * x0 + b2 * x2 - a1 * y1 - a2 * y2) / a0
-    x2 = x1; x1 = x0; y2 = y1; y1 = y0
-    phase += w0
-    out[i] = (Math.sin(phase) * (1 - opts.noise) + y0 * opts.noise * 4) * env[i]
-  }
-  return normalize(out, 0.9)
-}
-
 /** Add `src · gain` into `dest` starting at `offset`; samples past the end wrap to the start. */
 export function mixInto(dest: Float32Array, src: Float32Array, offset: number, gain: number): void {
   const len = dest.length
@@ -138,10 +46,6 @@ export function mixInto(dest: Float32Array, src: Float32Array, offset: number, g
     j++
     if (j === len) j = 0
   }
-}
-
-export function softLimit(x: number): number {
-  return Math.tanh(x)
 }
 
 export function rms(buf: Float32Array): number {
