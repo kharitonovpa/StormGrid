@@ -2264,6 +2264,9 @@ onMounted(() => {
   watch(() => game.selectedCharacter.value, (character) => {
     storm.setTint(CROP_THEME[character].skyTint)
     repaintTerrain()
+    // The lobby music is per crop too; a pick made while browsing the lobby
+    // has to switch it, not only the pick that was current at load.
+    if (game.phase.value === 'lobby') audio.enterLobby(character)
   })
 
   sceneReady = true
