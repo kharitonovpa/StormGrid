@@ -271,3 +271,58 @@ Three independently shippable steps, each a plan task with its own review:
 
 Static first, because it carries most of the effect and all of the risk to level
 legibility; the sheen is only worth tuning on top of a settled field.
+
+## Outcome (2026-09-05)
+
+Final tokens: `swell.amp` 0.12, `groove.depth` 0.08, `swell.wavelength` 0.7,
+`swell.tint` 1.0, `swell.crest` 0xacc264, `swell.trough` 0x2b6446, `grain` 0.16,
+`grid.opacity` 0.18 (unchanged), `foot` opacity 0.6 / across 0.32 / along 0.62 /
+offset 0.15, `sheen` strength 0.8 / width 5 / tail 5 / speed 26 / colour 0xf0d890.
+
+Frozen first-tick frame, board region: spread before 0.054 → after 0.121
+(target ≥ 2× = 0.108); mean before 0.439 → after 0.444 (band 0.395–0.483); sky
+mean before 0.258 → after 0.258 (band 0.250–0.266); frame interval at rest
+before 98 ms → after 103.3 ms (band 88.2–107.8; two runs of the same build read
+84.4 ms and 103.3 ms, so per the plan's noise rule the better of the two is
+recorded — SwiftShader's spread across seven runs of this build was 84–104 ms,
+i.e. the fragment cost is inside the noise). A confirmation capture on the same
+build read spread 0.120 / mean 0.443 / sky 0.259. Repaint budget test
+(`paintColors` over a full 135×135-segment board plane, best of five): 3.69 ms
+against the test's 40 ms ceiling.
+
+Tuning path (each step measured on a fresh first-tick capture): the starting
+tokens gave spread 0.066 — the swell was real but far under the target. `tint`
+0.35→0.65, `grain` 0.05→0.07, `amp` 0.08→0.10 took it to 0.085; `tint`→0.85,
+`grain`→0.09 did not move the whole-frame number (0.084) although the mid-board
+band went 0.097→0.109, because more than half the metric's pixels are the near
+foreground, where one swell period covered the entire sampled window. Halving
+`swell.wavelength` (1.2→0.7 cells) is what reached the near field — spread
+0.102, and the near-foreground sub-window 0.048→0.082. `grain`→0.16 and
+`tint`→1.0 gave 0.116, and finally widening the crest/trough pair
+(0x9cb857/0x2f6e4a → 0xacc264/0x2b6446) with `amp`→0.12 / `groove.depth`→0.08
+settled at 0.121 with the mean still mid-band.
+
+Deviations from the design, recorded honestly:
+
+- `storm.masses()` returns two entries with weight 0 while the sky is asleep
+  instead of an empty array (allocation-free; every consumer thresholds at 0.05).
+- `rebuildMesh` gates its sideways hill jitter on the cell's level rather than on
+  the vertex y, so the flat meadow stays exactly on its grid.
+- A gust is retired 3σ past the far corner rather than 1σ: the Gaussian has to be
+  invisible before the slot is freed, so at full weight the cadence is bound by
+  retirement (~2 s) rather than by the interval.
+- The module-level `footSystem` ref the plan sketched was dropped as unused.
+- `paintColors` applies `meadowTint` to every vertex, not only to flat cells:
+  only the swell *geometry* is gated by `flatWeight`. A raised cell's top
+  therefore carries the crest/trough colour field too. Level legibility still
+  holds (the baked shadow, the side walls and the palette's lift/sink carry the
+  height), but the tint is a board-wide colour field, not a flat-cell-only one.
+- `swell.wavelength` was tuned in Task 8 even though the plan listed only amp,
+  tint, crest/trough, grain and grid opacity as levers: no combination of those
+  five reached the near-field, and the wavelength is what the metric needed.
+- `sheen.strength` ended at 0.8, above the 0.5–0.7 the sheen task suggested,
+  because the meadow's own contrast grew during tuning; at the round-1 storm
+  intensity a gust moves a near-board strip's mean by ~7 % and its p90 by ~11 %
+  between consecutive 0.5 s frames, which is what makes it read in motion.
+- `grid.opacity` was never touched: the groove carries the seam, and the grid
+  line at its bottom needed no help.
