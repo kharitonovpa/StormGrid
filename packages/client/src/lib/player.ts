@@ -3,6 +3,7 @@ import { CELLS, HALF, CELL_SIZE, SEGMENTS, THICKNESS } from './constants'
 import { getModel, modelsLoaded } from './models'
 import type { CharacterType } from '@wheee/shared'
 import type { TerrainState } from './terrain'
+import { CROP_THEME, lightenHex } from './cropTheme'
 
 export interface PlayerState {
   id: 'A' | 'B'
@@ -49,7 +50,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const hlMat = new THREE.MeshBasicMaterial({
-    color: 0xffcc66,
+    color: CROP_THEME.wheat.identity,
     transparent: true,
     opacity: 0.15,
     side: THREE.DoubleSide,
@@ -121,7 +122,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const ringMat = new THREE.MeshBasicMaterial({
-    color: 0x66ddff,
+    color: CROP_THEME.wheat.identity,
     transparent: true,
     opacity: 0,
     side: THREE.DoubleSide,
@@ -192,7 +193,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
 
   // UI colour: opt out of the scene's tone mapping so it renders exactly as authored.
   const arrowMat = new THREE.MeshBasicMaterial({
-    color: 0xffcc55,
+    color: CROP_THEME.wheat.identity,
     transparent: true,
     opacity: 0.45,
     side: THREE.DoubleSide,
@@ -291,6 +292,10 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     const state: PlayerState = { id, cx: startCx, cz: startCz }
     let surface: 'top' | 'bottom' = 'top'
     let currentCharacter: CharacterType | null = null
+
+    // What the caller asked for, independent of whether the model has loaded yet
+    // (currentCharacter stays null until it has) — the marker colour must not wait.
+    let requestedCharacter: CharacterType = 'wheat'
     const baseScale = 1.0
 
     let facingY = 0
@@ -378,6 +383,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
       state,
       get mesh() { return mesh },
       get surface() { return surface },
+      get character() { return requestedCharacter },
       setSurface: applySurface,
       get isJumping() { return jumping },
       get isWindSliding() { return windSliding },
@@ -386,6 +392,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         targetFacingY = angleTo(state.cx, state.cz, cx, cz)
       },
       setCharacter(type: CharacterType) {
+        requestedCharacter = type
         if (currentCharacter === type && modelsLoaded()) return
         const pos = mesh.position.clone()
         const rot = mesh.rotation.y
@@ -612,6 +619,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   ) {
     if (a.character) playerA.setCharacter(a.character)
     if (b.character) playerB.setCharacter(b.character)
+    refreshIdentity()
 
     if (a.alive && (a.x !== playerA.state.cx || a.y !== playerA.state.cz)) {
       playerA.moveTo(a.x, a.y)
@@ -624,6 +632,19 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
     playerB.mesh.visible = b.alive || submerged.includes('B')
   }
 
+  // The local player's crop colours their own markers — ring, arrow and cell
+  // highlight — so "mine" reads by colour as well as by shape. Watchers and
+  // replays have no local player; their ring is hidden already (rest = 0).
+  let identity = CROP_THEME.wheat.identity
+  let identityMove = lightenHex(identity, 0.4)
+  function refreshIdentity() {
+    const me = activePlayerId === 'A' ? playerA : playerB
+    identity = CROP_THEME[me.character].identity
+    identityMove = lightenHex(identity, 0.4)
+    hlMat.color.setHex(identity)
+    arrowMat.color.setHex(identity)
+  }
+
   function setActivePlayer(id: 'A' | 'B' | null) {
     activePlayerId = id ?? 'A'
     hasLocalPlayer = id !== null
@@ -634,6 +655,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
       playerA.setSurface('top')
       playerB.setSurface('bottom')
     }
+    refreshIdentity()
   }
 
   function animateWindPaths(
@@ -657,6 +679,7 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
   ) {
     if (a.character) playerA.setCharacter(a.character)
     if (b.character) playerB.setCharacter(b.character)
+    refreshIdentity()
     playerA.resetAppearance()
     playerB.resetAppearance()
     playerA.teleportTo(a.x, a.y)
@@ -721,15 +744,15 @@ export function createPlayerSystem(scene: THREE.Scene, terrain: TerrainState) {
         ringPulseTime += dt
         const target = 0.3 + 0.15 * Math.sin(ringPulseTime * 3.5)
         ringOpacity += (target - ringOpacity) * Math.min(dt * 12, 1)
-        ringMat.color.setHex(0xffcc44)
+        ringMat.color.setHex(identityMove)
       } else if (isPlayerHovered) {
         ringOpacity += (RING_HOVER - ringOpacity) * Math.min(dt * 10, 1)
-        ringMat.color.setHex(0x66ddff)
+        ringMat.color.setHex(identity)
         ringPulseTime = 0
       } else {
         const rest = hasLocalPlayer ? RING_REST : 0
         ringOpacity += (rest - ringOpacity) * Math.min(dt * 10, 1)
-        ringMat.color.setHex(0x66ddff)
+        ringMat.color.setHex(identity)
         ringPulseTime = 0
       }
       ringMat.opacity = ringOpacity
