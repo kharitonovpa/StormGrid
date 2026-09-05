@@ -97,7 +97,7 @@ const MATCH_RICE: Part[] = [
   },
   {
     voice: 'shakuhachi', pan: -0.3, level: 0.6, reverbSend: 0.65, delaySend: 0,
-    notes: [{ beat: 11.3, midi: 76, dur: 2.7, gain: 1 }],
+    notes: [{ beat: 11.4, midi: 76, dur: 2.6, gain: 1 }],
   },
 ]
 
@@ -111,7 +111,7 @@ const MATCH_CORN: Part[] = [
   },
   {
     voice: 'trumpet', pan: 0.4, level: 0.3, reverbSend: 0.65, delaySend: 0.2,
-    notes: [{ beat: 11.3, midi: 72, dur: 1.7, gain: 1 }, { beat: 11.3, midi: 76, dur: 1.7, gain: 0.7 }],
+    notes: [{ beat: 11.4, midi: 72, dur: 1.6, gain: 1 }, { beat: 11.4, midi: 76, dur: 1.6, gain: 0.7 }],
   },
 ]
 

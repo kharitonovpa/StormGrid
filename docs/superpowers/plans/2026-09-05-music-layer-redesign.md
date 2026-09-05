@@ -784,7 +784,7 @@ const MATCH_RICE: Part[] = [
   },
   {
     voice: 'shakuhachi', pan: -0.3, level: 0.6, reverbSend: 0.65, delaySend: 0,
-    notes: [{ beat: 11.3, midi: 76, dur: 2.7, gain: 1 }],
+    notes: [{ beat: 11.4, midi: 76, dur: 2.6, gain: 1 }],
   },
 ]
 
@@ -798,7 +798,7 @@ const MATCH_CORN: Part[] = [
   },
   {
     voice: 'trumpet', pan: 0.4, level: 0.3, reverbSend: 0.65, delaySend: 0.2,
-    notes: [{ beat: 11.3, midi: 72, dur: 1.7, gain: 1 }, { beat: 11.3, midi: 76, dur: 1.7, gain: 0.7 }],
+    notes: [{ beat: 11.4, midi: 72, dur: 1.6, gain: 1 }, { beat: 11.4, midi: 76, dur: 1.6, gain: 0.7 }],
   },
 ]
 
@@ -1265,4 +1265,4 @@ Not a subagent task. After Task 4 the controller sends the demo `lobby-music-ric
 
 - Spec coverage: engine (Tasks 1–2), writing (Task 3), mix and build (Task 4), client crossfade + preload (Task 5), process/acceptance (Task 6). The spec's "layer at −14 dB RMS with tails" → `LAYER_DB = -14` on the layer's mid RMS after rendering (tails included) ✓; "peak < 0.95, clip above 0.85" ✓; "output ±0.5 dB" ✓; "assert before writing" ✓ (`encode` last).
 - Type consistency: `Stereo` from `fx.ts` is used by `render.ts`; `Part`/`PARTS`/`BASES`/`BaseId`/`Crop` from `scores.ts`; `modalString(freq, seconds, preset, rand)`, `breathTone(freq, seconds, rand)`, `mutedTrumpet(freq, seconds)` match between Task 2 and `render.ts`; `renderLayer(baseId, crop, loopSamples, beatSeconds, seed)` matches its test and the build script; `switchMusic(id, duration)` matches the tests.
-- Placement check by hand: lobby onsets 8.5–11 (attacks 6, 12 → ≥ 1), 19.5–22 (17, 24 → ≥ 2), 33.5–35 (30, 36 → 1), 24.4 (24 → 0.4), 12.4/14.4 (12/14 → 0.4); match onsets 5.4–6.9 (5, 8 → 0.4), 11.3 (11 → 0.3 ✓ ≥ 0.25), 18.4–19.6 (18, 20 → 0.4), 20.4/20.9 (20, 22 → 0.4). Scale check: all pitch classes listed in Global Constraints.
+- Placement check by hand: lobby onsets 8.5–11 (attacks 6, 12 → ≥ 1), 19.5–22 (17, 24 → ≥ 2), 33.5–35 (30, 36 → 1), 24.4 (24 → 0.4), 12.4/14.4 (12/14 → 0.4); match onsets 5.4–6.9 (5, 8 → 0.4), 11.4 (11 → 0.4), 18.4–19.6 (18, 20 → 0.4), 20.4/20.9 (20, 22 → 0.4). Scale check: all pitch classes listed in Global Constraints.
