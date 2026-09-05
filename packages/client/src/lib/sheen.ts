@@ -1,4 +1,5 @@
 import type { WindDir } from '@wheee/shared'
+import * as THREE from 'three'
 import { HALF } from './constants'
 import { LOOK } from './look'
 import { DIR_AZIMUTH, gustDirection } from './bearing'
@@ -87,5 +88,89 @@ export function createGustScheduler(opts: SchedulerOptions) {
       nextIn = interval(maxWeight)
     },
     gusts(): ReadonlyArray<Gust> { return live },
+  }
+}
+
+export interface SheenHandle { follow(masses: ReadonlyArray<Mass>): void }
+
+const GLSL_DECL = /* glsl */ `
+uniform vec4 uGust[3];        // dirX, dirZ, pos, strength
+uniform float uGustWidth[3];  // per-gust width (world units)
+uniform float uGustTail[3];   // per-gust tail (world units)
+uniform vec3 uSheenColor;
+varying vec2 vWorldXZ;
+`
+
+// Applied to the diffuse colour BEFORE lighting, so the sun and fill stay honest.
+// Leading highlight around the head, a shorter shade behind it (grass laid
+// over, away from the sun); a cheap sine along the band breaks the ruler line.
+const GLSL_BAND = /* glsl */ `
+for (int i = 0; i < 3; i++) {
+  vec4 g = uGust[i];
+  if (g.w <= 0.0) continue;
+  vec2 dir = g.xy;
+  float p = dot(vWorldXZ, vec2(-dir.y, dir.x));
+  float edge = sin(p * 0.35) * 2.5 + sin(p * 0.9 + 1.7) * 1.2;
+  float d = dot(vWorldXZ, dir) - g.z + edge;
+  float w = uGustWidth[i];
+  float lead = exp(-(d * d) / (w * w));
+  float t = (d + uGustTail[i]) / uGustTail[i];
+  float trail = exp(-t * t);
+  diffuseColor.rgb *= 1.0 + g.w * (lead * uSheenColor - 0.5 * trail);
+}
+`
+
+/**
+ * Patches the shared terrain material (top, underside and skirt) so a gust
+ * from the scheduler is drawn as a moving band in world space. Installed
+ * before the first render — the program compiles once, with every strength
+ * at 0, and never again (customProgramCacheKey pins it; `transparent` is
+ * already flipped on by lib/glass.ts at creation, so no flag changes later).
+ */
+export function createSheenSystem(material: THREE.MeshStandardMaterial, scheduler: ReturnType<typeof createGustScheduler>) {
+  const T = LOOK.terrain.sheen
+  const uniforms = {
+    uGust: { value: new Float32Array(MAX_GUSTS * 4) },
+    uGustWidth: { value: new Float32Array(MAX_GUSTS).fill(1) },   // never 0: an idle slot must not divide by zero
+    uGustTail: { value: new Float32Array(MAX_GUSTS).fill(1) },
+    uSheenColor: { value: new THREE.Color(T.color) },
+  }
+  const previous = material.onBeforeCompile
+  material.onBeforeCompile = (shader, renderer) => {
+    previous?.(shader, renderer)
+    Object.assign(shader.uniforms, uniforms)
+    shader.vertexShader = 'varying vec2 vWorldXZ;\n' + shader.vertexShader
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWorldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;')
+    shader.fragmentShader = GLSL_DECL + shader.fragmentShader
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + GLSL_BAND)
+  }
+  material.customProgramCacheKey = () => 'meadow-sheen'
+  material.needsUpdate = true
+
+  return {
+    uniforms,
+    follow(masses: ReadonlyArray<Mass>) { scheduler.follow(masses) },
+    sweep(dir: WindDir) { scheduler.sweep(dir) },
+    update(dt: number) {
+      scheduler.update(dt)
+      const g = scheduler.gusts()
+      const u = uniforms.uGust.value
+      for (let i = 0; i < MAX_GUSTS; i++) {
+        const o = i * 4
+        if (i < g.length) {
+          u[o] = g[i].dirX; u[o + 1] = g[i].dirZ; u[o + 2] = g[i].pos; u[o + 3] = g[i].strength
+          uniforms.uGustWidth.value[i] = g[i].width
+          uniforms.uGustTail.value[i] = g[i].tail
+        } else {
+          u[o] = 0; u[o + 1] = 0; u[o + 2] = 0; u[o + 3] = 0
+          uniforms.uGustWidth.value[i] = 1
+          uniforms.uGustTail.value[i] = 1
+        }
+      }
+    },
+    dispose() {
+      material.onBeforeCompile = previous ?? (() => {})
+      material.needsUpdate = true
+    },
   }
 }

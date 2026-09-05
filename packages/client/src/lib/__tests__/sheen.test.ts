@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'bun:test'
-import { createGustScheduler, MAX_GUSTS, SPAWN_EDGE } from '../sheen.js'
+import * as THREE from 'three'
+import { createGustScheduler, createSheenSystem, MAX_GUSTS, SPAWN_EDGE } from '../sheen.js'
 import { DIR_AZIMUTH, gustDirection } from '../bearing.js'
 import { LOOK } from '../look.js'
 import { HALF } from '../constants.js'
@@ -112,5 +113,53 @@ describe('gust scheduler', () => {
     run(s, 10)
     s.sweep('N')
     expect(s.gusts()).toHaveLength(0)
+  })
+})
+
+describe('sheen system (material patch)', () => {
+  const make = () => {
+    const mat = new THREE.MeshStandardMaterial()
+    const sys = createSheenSystem(mat, mk())
+    return { mat, sys }
+  }
+
+  it('installs the patch once and marks the program', () => {
+    const { mat } = make()
+    expect(typeof mat.onBeforeCompile).toBe('function')
+    expect(mat.customProgramCacheKey()).toContain('sheen')
+  })
+
+  it('injects the band into a standard shader', () => {
+    const { mat } = make()
+    const shader = {
+      uniforms: {} as Record<string, unknown>,
+      vertexShader: '#include <begin_vertex>\n',
+      fragmentShader: '#include <color_fragment>\n',
+    }
+    mat.onBeforeCompile(shader as never, {} as never)
+    expect(shader.vertexShader).toContain('vWorldXZ')
+    expect(shader.fragmentShader).toContain('uGust')
+    expect(shader.uniforms.uGust).toBeDefined()
+  })
+
+  it('copies live gusts into the uniform array and zeroes the rest', () => {
+    const { sys } = make()
+    sys.follow([{ azimuth: DIR_AZIMUTH.N, weight: 1 }])
+    sys.update(0.02)
+    const u = sys.uniforms.uGust.value
+    expect(u).toHaveLength(12)
+    expect(u[3]).toBeGreaterThan(0)                  // gust 0 strength
+    expect(u[7]).toBe(0)
+    expect(u[11]).toBe(0)
+    const [dx, dz] = gustDirection(DIR_AZIMUTH.N)
+    expect(u[0]).toBeCloseTo(dx, 5)
+    expect(u[1]).toBeCloseTo(dz, 5)
+  })
+
+  it('leaves every strength at zero with no masses', () => {
+    const { sys } = make()
+    sys.follow([])
+    sys.update(1)
+    for (const i of [3, 7, 11]) expect(sys.uniforms.uGust.value[i]).toBe(0)
   })
 })

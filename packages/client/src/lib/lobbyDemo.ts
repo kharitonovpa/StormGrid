@@ -1,6 +1,8 @@
 import type { WindDir } from '@wheee/shared'
 import { BOARD_SIZE } from '@wheee/shared'
 import type { TerrainState } from './terrain'
+import type { SheenHandle } from './sheen'
+import { DIR_AZIMUTH } from './bearing'
 
 type WindSystem = { setDirection(dir: WindDir): void; setVisible(v: boolean): void }
 type RainSystem = { setVisible(v: boolean): void }
@@ -86,6 +88,7 @@ export function createLobbyDemo(
   wind: WindSystem,
   rain: RainSystem,
   water: WaterSystem,
+  sheen: SheenHandle,
   callbacks: DemoCallbacks,
 ): LobbyDemo {
   let running = false
@@ -132,13 +135,16 @@ export function createLobbyDemo(
       name: 'wind',
       duration: 5,
       enter() {
-        wind.setDirection(WIND_CYCLE[windDirIndex % WIND_CYCLE.length])
+        const dir = WIND_CYCLE[windDirIndex % WIND_CYCLE.length]
+        wind.setDirection(dir)
         windDirIndex++
         wind.setVisible(true)
+        sheen.follow([{ azimuth: DIR_AZIMUTH[dir], weight: 0.7 }])
         reposition(2)
       },
       exit() {
         wind.setVisible(false)
+        sheen.follow([])
       },
     },
     {
@@ -171,14 +177,17 @@ export function createLobbyDemo(
       duration: 5,
       enter() {
         rain.setVisible(true)
-        wind.setDirection(WIND_CYCLE[windDirIndex % WIND_CYCLE.length])
+        const dir = WIND_CYCLE[windDirIndex % WIND_CYCLE.length]
+        wind.setDirection(dir)
         windDirIndex++
         wind.setVisible(true)
+        sheen.follow([{ azimuth: DIR_AZIMUTH[dir], weight: 0.7 }])
         reposition(5)
       },
       exit() {
         rain.setVisible(false)
         wind.setVisible(false)
+        sheen.follow([])
       },
     },
     {
@@ -209,6 +218,7 @@ export function createLobbyDemo(
       windDirIndex = 0
       wind.setVisible(false)
       rain.setVisible(false)
+      sheen.follow([])
       terrain.applyBoardState(sculptedBoard())
       callbacks.onTerrainChanged()
       enterPhase(0)
@@ -220,6 +230,7 @@ export function createLobbyDemo(
       phases[phaseIndex].exit()
       wind.setVisible(false)
       rain.setVisible(false)
+      sheen.follow([])
       water.dispose()
       terrain.resetFlat()
       callbacks.onTerrainChanged()

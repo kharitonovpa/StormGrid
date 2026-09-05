@@ -13,7 +13,8 @@ import { createWaterSystem, WATER_FILL_MS } from './lib/water'
 import { createWindSystem } from './lib/wind'
 import { createRainSystem } from './lib/rain'
 import { createLightningSystem } from './lib/lightning'
-import { createStormSystem } from './lib/storm'
+import { createStormSystem, SWEEP_MS } from './lib/storm'
+import { createGustScheduler, createSheenSystem } from './lib/sheen'
 import { createCompassSystem } from './lib/compass'
 import { createInteractionSystem } from './lib/interaction'
 import { createPlayerSystem } from './lib/player'
@@ -1816,6 +1817,7 @@ unsubMessage2 = socket.onMessage((msg) => {
           // nowhere: the curtain starts crossing the board first, and the lines
           // only fade in once it is far enough over to have brought them.
           sweepWait = stormSystem?.sweep(weather.dir) ?? Promise.resolve()
+          sheenSystem?.sweep(weather.dir)
           setTimeout(() => {
             if (gen !== liveStormGeneration) return
             windSystem?.setVisible(true)
@@ -1885,6 +1887,7 @@ let pendingWaterVolume: number | null = null
 let floodResolve: (() => void) | null = null
 let previewSystem: ReturnType<typeof createPreviewSystem> | null = null
 let glassSystem: ReturnType<typeof createGlassSystem> | null = null
+let sheenSystem: ReturnType<typeof createSheenSystem> | null = null
 let pendingGameEnd: { type: 'game:end'; winner: 'A' | 'B' | 'draw' } | null = null
 let lobbyDemo: ReturnType<typeof createLobbyDemo> | null = null
 let lobbyDemoActive = false
@@ -1967,6 +1970,14 @@ onMounted(() => {
     side: THREE.DoubleSide, polygonOffset: true,
     polygonOffsetFactor: 1, polygonOffsetUnits: 1,
   })
+
+  // The grass reads the sky: gusts only from bearings storm.masses() shows.
+  // Patched here, before the first render, so the program compiles once.
+  const sheen = createSheenSystem(terrainMat, createGustScheduler({
+    sweepMs: SWEEP_MS,
+    reduced: typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches,
+  }))
+  sheenSystem = sheen
 
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
   geo.rotateX(-Math.PI / 2)
@@ -2296,7 +2307,7 @@ onMounted(() => {
     ['corn', 'rice'],
   ]
   let demoPairIdx = 0
-  lobbyDemo = createLobbyDemo(terrainState, wind, rain, water, {
+  lobbyDemo = createLobbyDemo(terrainState, wind, rain, water, sheen, {
     onTerrainChanged() { animating = true },
     // The demo has no storm behind it, so let the rain fill every hollow.
     onRequestFlood() { pendingWaterVolume = CELLS * CELLS },
@@ -2386,6 +2397,8 @@ onMounted(() => {
     rain.update(dt)
     lightning.update(dt)
     storm.update(dt)
+    if (!lobbyDemoActive) sheen.follow(storm.masses())
+    sheen.update(dt)
     players.update(dt)
     foot.update(dt)
     nameplates.update(dt)
@@ -2471,12 +2484,14 @@ onMounted(() => {
     preview.dispose()
     insects.dispose()
     glass.dispose()
+    sheen.dispose()
     bonus.dispose()
     handleAction = null
     playersSystem = null
     nameplateSystem = null
     previewSystem = null
     glassSystem = null
+    sheenSystem = null
     bonusSystem = null
     waterSystem = null
     windSystem = null
