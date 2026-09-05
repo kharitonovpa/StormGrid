@@ -1811,7 +1811,9 @@ Final tokens: `swell` amp 0.12 / wavelength 0.7 / crest 0xacc264 / trough 0x2b64
 {"file":"after-lobby.png","board":{"mean":0.354,"p10":0.211,"p90":0.575,"spread":0.365},"sky":{"mean":0.282,"p10":0.268,"p90":0.292,"spread":0.025}}
 ```
 
-Board targets all hold: spread 0.126 ≥ 0.108 (2.33× baseline), mean 0.444 in 0.395–0.483, sky mean 0.258 in 0.250–0.266. A confirmation capture of the same build gave board spread 0.132 / mean 0.442 / sky mean 0.258. `paintColors` over a full board plane: 3.69 ms (test ceiling 40 ms).
+Board targets all hold: spread 0.126 ≥ 0.108 (2.33× baseline), mean 0.444 in 0.395–0.483, sky mean 0.258 in 0.250–0.266. A confirmation capture of the same build gave board spread 0.132 / mean 0.442 / sky mean 0.258. `paintColors` over a full board plane — 105×105 segments (`SEGMENTS = CELLS * 15`, `CELLS` 7), not 135×135: 3.69 ms (test ceiling 40 ms).
+
+Gust cadence, corrected in the final review wave: a gust is born at `spawnEdge(width) = -(√2·HALF + 3·width)` and retired 3σ + tail past the far corner, so it lives `(crossing + 3·width + tail) / speed` = 119.85 / 26 ≈ 4.6 s and one of the three slots frees every ~1.54 s. At full weight the interval draw (1.8 s ±30 % → 1.26–2.34 s) usually binds first; only a draw under 1.54 s is clipped by the cap, and while the pool is capped the ±30 % jitter does not apply — the spawn lands on the retirement.
 
 `frameMs` reads 84.7 and 85.1 ms on two consecutive runs — under the band's 88.2 ms floor, i.e. *faster* than the 98 ms baseline rather than slower. The harness's readings are bimodal on this machine: twelve runs of this code gave 84.4, 84.7, 84.8, 85.1, 86.4, 97.2, 100.9, 101.2, 101.7 and 103.3 ms, at ~85 ms when the machine was otherwise idle and ~102 ms when a second capture was in flight; the baseline's 98 ms belongs to the busy regime. No reading of the tuned build is above the baseline, so the meadow's fragment cost stays inside the noise and the floor is tripped by machine load, not by the change.
 

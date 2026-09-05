@@ -283,8 +283,8 @@ Frozen first-tick frame, board region: spread before 0.054 → after 0.126
 (target ≥ 2× = 0.108); mean before 0.439 → after 0.444 (band 0.395–0.483); sky
 mean before 0.258 → after 0.258 (band 0.250–0.266). A confirmation capture on
 the same build read spread 0.132 / mean 0.442 / sky 0.258. Repaint budget test
-(`paintColors` over a full 135×135-segment board plane, best of five): 3.69 ms
-against the test's 40 ms ceiling.
+(`paintColors` over a full board plane, 105×105 segments — `SEGMENTS = CELLS *
+15` with `CELLS` 7 — best of five): 3.69 ms against the test's 40 ms ceiling.
 
 Frame interval at rest: 98 ms before → 84.7 and 85.1 ms after, against a
 ±10 % band of 88.2–107.8 ms. The tuned build is *faster* than the baseline
@@ -315,8 +315,24 @@ Deviations from the design, recorded honestly:
 - `rebuildMesh` gates its sideways hill jitter on the cell's level rather than on
   the vertex y, so the flat meadow stays exactly on its grid.
 - A gust is retired 3σ past the far corner rather than 1σ: the Gaussian has to be
-  invisible before the slot is freed, so at full weight the cadence is bound by
-  retirement (~2 s) rather than by the interval.
+  invisible before the slot is freed. With the reviewed birth position a gust
+  lives `(crossing + 3·width + tail) / speed` = `(2·√2·HALF + 6·width + tail) /
+  speed` = 119.85 / 26 ≈ **4.6 s**, so with three slots one frees every ~1.54 s.
+  At full weight the interval draw (1.8 s ±30 %, i.e. 1.26–2.34 s) is what
+  usually binds; only a draw under 1.54 s is clipped by the cap, and while the
+  pool is capped the jitter does not apply at all — the spawn lands on the
+  retirement.
+- Found in review: gusts were born at a fixed `-1.4·HALF` = −42, inside the
+  board's own half-diagonal (`√2·HALF` ≈ 42.43) and with nothing allowed for the
+  gust's width, so a wide or diagonal gust's leading Gaussian was already 0.24–1.0
+  on the upwind edge at birth — it popped in instead of arriving; the birth
+  position is now `spawnEdge(width) = -(√2·HALF + 3·width)`, the mirror of the 3σ
+  retirement rule (`e⁻⁹` ≈ 0.0001 at the most upwind corner), and the sweep gust's
+  speed is derived from that same width-scaled crossing over `SWEEP_MS`.
+- Found in review: the shader-injection test asserted against a hand-written stub
+  containing the anchor strings, so a renamed or dropped three chunk would have
+  left the silent `.replace()` no-op undetected; it now feeds the real
+  `THREE.ShaderLib.standard` vertex and fragment sources.
 - The module-level `footSystem` ref the plan sketched was dropped as unused.
 - `paintColors` applied `meadowTint` to every vertex, not only to flat cells:
   only the swell *geometry* was gated by `flatWeight`, so a raised cell carried
