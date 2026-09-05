@@ -32,21 +32,44 @@ export const BASES: Record<BaseId, BaseInfo> = {
   'match-music': { id: 'match-music', beats: 42, attacks: [0, 2, 5, 8, 12, 14, 17, 21, 24, 27, 31, 34, 37, 40], scale: [9, 0, 2, 4, 7] },
 }
 
-export function isInScale(midi: number, scale: number[]): boolean {
-  return scale.includes(((midi % 12) + 12) % 12)
-}
-
 export interface Part {
   voice: VoiceName
   notes: Note[]
   /** −1 left … +1 right. */
   pan: number
-  /** Linear gain of the dry part before the layer is levelled as a whole. */
+  /** Linear gain of the dry part, before the per-phrase balance below. */
   level: number
   /** 0..1 share sent to the reverb. */
   reverbSend: number
   /** 0..1 share sent to the ping-pong delay. */
   delaySend: number
+}
+
+export function isInScale(midi: number, scale: number[]): boolean {
+  return scale.includes(((midi % 12) + 12) % 12)
+}
+
+/** One run of notes: consecutive onsets no more than 1.5 beats apart. */
+export interface Phrase {
+  /** Stable name for the mix map — `voice@firstBeat`. */
+  key: string
+  notes: Note[]
+}
+
+/**
+ * A part's notes grouped into phrases. The mix balances a phrase at a time: the
+ * base's level differs from gap to gap, so one gain for a whole part leaves some
+ * runs shouting and others inaudible.
+ */
+export function phrasesOf(part: Part): Phrase[] {
+  const notes = [...part.notes].sort((a, b) => a.beat - b.beat)
+  const groups: Note[][] = []
+  for (const note of notes) {
+    const last = groups[groups.length - 1]
+    if (last && note.beat - last[last.length - 1].beat <= 1.5) last.push(note)
+    else groups.push([note])
+  }
+  return groups.map((g) => ({ key: `${part.voice}@${g[0].beat}`, notes: g }))
 }
 
 // MIDI: E3 52, G3 55, B3 59, E4 64, G4 67, B4 71, D5 74, E5 76, G5 79; A2 45, E3 52, A3 57,

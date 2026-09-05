@@ -6,7 +6,7 @@
 import { SR, seedRandom, midiToFreq, mixInto } from './synth.ts'
 import { reverb, pingPong, haas, pan, addStereo, type Stereo } from './fx.ts'
 import { modalString, KOTO, NYLON, breathTone, mutedTrumpet } from './voices.ts'
-import { PARTS, type BaseId, type Crop, type Part, type VoiceName } from './scores.ts'
+import { PARTS, phrasesOf, type BaseId, type Crop, type Part, type VoiceName } from './scores.ts'
 
 /** Seconds of tail rendered past the loop end before wrapping (reverb RT60 + delay). */
 const TAIL_SECONDS = 8
@@ -32,7 +32,14 @@ function wrap(buf: Float32Array, loopSamples: number): Float32Array {
   return out
 }
 
-export function renderLayer(baseId: BaseId, crop: Crop, loopSamples: number, beatSeconds: number, seed: number): Stereo {
+/**
+ * Per-phrase gains, keyed by `Phrase.key` — how loud each run sits against the
+ * base in its own gap. The build script measures the base there and fills this
+ * in; an absent key means 1.
+ */
+export type PhraseGains = ReadonlyMap<string, number>
+
+export function renderLayer(baseId: BaseId, crop: Crop, loopSamples: number, beatSeconds: number, seed: number, gains?: PhraseGains): Stereo {
   const rand = seedRandom(seed)
   const total = loopSamples + Math.round(TAIL_SECONDS * SR)
   const dry: Stereo = [new Float32Array(total), new Float32Array(total)]
@@ -41,9 +48,12 @@ export function renderLayer(baseId: BaseId, crop: Crop, loopSamples: number, bea
   for (const part of PARTS[baseId][crop] as Part[]) {
     const voice = voiceFor(part.voice, rand)
     const mono = new Float32Array(total)
-    for (const note of part.notes) {
-      const tone = voice(midiToFreq(note.midi), note.dur * beatSeconds)
-      mixInto(mono, tone, note.beat * beatSeconds * SR, (note.gain ?? 1) * part.level)
+    for (const phrase of phrasesOf(part)) {
+      const phraseGain = gains?.get(phrase.key) ?? 1
+      for (const note of phrase.notes) {
+        const tone = voice(midiToFreq(note.midi), note.dur * beatSeconds)
+        mixInto(mono, tone, note.beat * beatSeconds * SR, (note.gain ?? 1) * part.level * phraseGain)
+      }
     }
     const stereo = pan(mono, part.pan)
     addStereo(dry, stereo, 1)

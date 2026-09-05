@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { BASES, PARTS, isInScale } from '../scores.ts'
+import { BASES, PARTS, isInScale, phrasesOf } from '../scores.ts'
 
 const BASE_IDS = ['lobby-music', 'match-music'] as const
 const CROPS = ['rice', 'corn'] as const
@@ -65,5 +65,28 @@ describe('ornament scores', () => {
     expect(isInScale(65, BASES['lobby-music'].scale)).toBe(false)  // F4
     expect(isInScale(60, BASES['match-music'].scale)).toBe(true)   // C4
     expect(isInScale(61, BASES['match-music'].scale)).toBe(false)  // C#4
+  })
+})
+
+describe('phrasesOf', () => {
+  it('groups a run of notes and splits on a gap longer than 1.5 beats', () => {
+    const part = {
+      voice: 'koto' as const, pan: 0, level: 1, reverbSend: 0, delaySend: 0,
+      notes: [
+        { beat: 1, midi: 64, dur: 1 }, { beat: 1.5, midi: 67, dur: 1 }, { beat: 2.5, midi: 69, dur: 1 },
+        { beat: 9, midi: 71, dur: 1 }, { beat: 9.5, midi: 74, dur: 1 },
+      ],
+    }
+    const phrases = phrasesOf(part)
+    expect(phrases.map((p) => p.key)).toEqual(['koto@1', 'koto@9'])
+    expect(phrases.map((p) => p.notes.length)).toEqual([3, 2])
+  })
+
+  it('covers every note of every part exactly once', () => {
+    for (const baseId of BASE_IDS) for (const crop of CROPS) for (const part of PARTS[baseId][crop]) {
+      const grouped = phrasesOf(part).flatMap((p) => p.notes)
+      expect(grouped.length).toBe(part.notes.length)
+      expect(new Set(grouped).size).toBe(part.notes.length)
+    }
   })
 })
