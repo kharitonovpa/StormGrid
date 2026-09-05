@@ -4,6 +4,7 @@ import type { DeathCause, PlayerId, CharacterType } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
 import RetryNotice from './RetryNotice.vue'
+import PointsStar from './PointsStar.vue'
 import { CROP_THEME, hexHue } from '../lib/cropTheme'
 import { t } from '../lib/i18n'
 import { formatDuration, streakChip, type MatchStats } from '../lib/matchSummary'
@@ -234,7 +235,7 @@ onUnmounted(() => {
       <p class="result-sub">{{ subtitle }}</p>
 
       <div v-if="chips.length || earnedChip" class="stat-row">
-        <span v-if="earnedChip" class="stat-chip stat-chip-points">{{ earnedChip }}</span>
+        <span v-if="earnedChip" class="stat-chip stat-chip-points points"><PointsStar />{{ earnedChip }}</span>
         <span v-for="c in chips" :key="c" class="stat-chip">{{ c }}</span>
       </div>
 
@@ -476,12 +477,6 @@ onUnmounted(() => {
   animation: fadeUp 0.5s 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.stat-chip-points {
-  border-color: rgba(255, 215, 0, 0.35);
-  background: rgba(255, 215, 0, 0.08);
-  color: rgba(255, 225, 120, 0.95);
-}
-
 .stat-chip {
   padding: 4px 10px;
   border-radius: 999px;
@@ -491,6 +486,13 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.3px;
+}
+
+/* After `.stat-chip`: same specificity, so source order decides the colour. */
+.stat-chip-points {
+  border-color: rgba(255, 215, 0, 0.35);
+  background: rgba(255, 215, 0, 0.08);
+  color: var(--sg-points);
 }
 
 .btn-again {

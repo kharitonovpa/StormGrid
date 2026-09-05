@@ -27,7 +27,7 @@ import { createBonusSystem } from './lib/bonus'
 import { streak, canRescue, seedStreak, winStreak, breakStreak, restoreStreak } from './lib/streak'
 import { presence, installPresence } from './lib/presence'
 import type { MatchStats } from './lib/matchSummary'
-import { points } from './lib/points'
+import { usePoints } from './lib/points'
 import { restDirection, isPortrait, LOBBY_PORTRAIT_OFFSET } from './lib/cameraRest'
 import { celebrate, disposeCelebrate } from './lib/celebrate'
 import { createLobbyDemo } from './lib/lobbyDemo'
@@ -54,6 +54,9 @@ import ReplayOverlay from './components/ReplayOverlay.vue'
 import VolumeControl from './components/VolumeControl.vue'
 import TutorialHud from './components/TutorialHud.vue'
 import { t } from './lib/i18n'
+
+/** After hydrateStorage() — main.ts awaits it before mounting, so the stored total is readable here. */
+const points = usePoints()
 
 const container = ref<HTMLElement | null>(null)
 let renderer: THREE.WebGLRenderer

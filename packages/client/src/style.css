@@ -18,6 +18,25 @@
   --sg-safe-bottom: env(safe-area-inset-bottom, 0px);
   --sg-safe-left: env(safe-area-inset-left, 0px);
   --sg-safe-right: env(safe-area-inset-right, 0px);
+
+  /* Match points — one gold for every star readout (see components/PointsStar.vue). */
+  --sg-points: rgba(255, 215, 0, 0.9);
+}
+
+/*
+ * A points readout: `<PointsStar />` followed by the number. Inline-flex so
+ * the star centres on the digits instead of sitting on the baseline, a
+ * font-relative gap so it holds at 10px and 14px alike, tabular digits so
+ * leaderboard columns stay put as scores tick over.
+ */
+.points {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  color: var(--sg-points);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 html, body, #app {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
 import { hydrateStorage } from '../storage.js'
-import { createPoints } from '../points.js'
+import { createPoints, usePoints } from '../points.js'
 
 /*
  * The one number that only grows. The lobby draws it before the socket is up
@@ -33,5 +33,13 @@ describe('points', () => {
     p.clearAward()
     expect(p.lastEarned.value).toBeNull()
     expect(p.total.value).toBe(19)
+  })
+
+  it('the shared instance reads storage on first use, not at import time', async () => {
+    // main.ts hydrates after App.vue (and this module) has been imported.
+    await hydrateStorage({ load: async () => ({ 'wheee:points-v1': '16' }), set: () => {} })
+    const p = usePoints()
+    expect(p.total.value).toBe(16)
+    expect(usePoints()).toBe(p)
   })
 })

@@ -99,7 +99,7 @@ const messages: Record<string, Record<string, string>> = {
     'gameover.statRound': 'Round {0}',
     'gameover.statTime': '{0}',
     'points.yours': 'Your points',
-    'points.earned': '+{0} ★',
+    'points.earned': '+{0}',
 
     'dir.N': 'north',
     'dir.S': 'south',
@@ -278,7 +278,7 @@ const messages: Record<string, Record<string, string>> = {
     'gameover.statRound': 'Раунд {0}',
     'gameover.statTime': '{0}',
     'points.yours': 'Ваши очки',
-    'points.earned': '+{0} ★',
+    'points.earned': '+{0}',
 
     'dir.N': 'северного',
     'dir.S': 'южного',

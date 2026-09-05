@@ -6,6 +6,7 @@ import { t } from '../lib/i18n'
 import { usePlatform } from '../lib/platform'
 import UserAvatar from './UserAvatar.vue'
 import RetryNotice from './RetryNotice.vue'
+import PointsStar from './PointsStar.vue'
 
 const platform = usePlatform()
 
@@ -123,7 +124,7 @@ onMounted(fetchLeaderboard)
           <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
           <UserAvatar :src="p.avatar" :name="p.name" :size="20" />
           <span class="lb-name">{{ p.name }}</span>
-          <span class="lb-stat lb-points">★ {{ p.points }}</span>
+          <span class="lb-stat lb-points points"><PointsStar />{{ p.points }}</span>
           <span class="lb-record"><span class="lb-wins">{{ p.wins }}W</span> <span class="lb-losses">{{ p.losses }}L</span></span>
         </div>
         <RetryNotice
@@ -186,6 +187,12 @@ onMounted(fetchLeaderboard)
   gap: 6px;
   min-width: 180px;
   max-width: 220px;
+}
+
+/* Compact lobby row (see LobbyOverlay.vue): give up the last 20px of width
+   before the row overflows a ~960px embed. */
+@media (max-width: 1149px) {
+  .lb { min-width: 160px; }
 }
 
 .lb-tabs {
@@ -295,9 +302,6 @@ onMounted(fetchLeaderboard)
   color: rgba(248, 113, 113, 0.6);
 }
 
-.lb-points {
-  color: rgba(255, 215, 0, 0.85);
-}
 
 .lb-record {
   font-size: 9px;

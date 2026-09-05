@@ -4,6 +4,7 @@ import { badgeFor, BADGE_REPLACES_FLAG_FROM } from '@wheee/shared'
 import type { TerrainState } from './terrain'
 import { t } from './i18n'
 import { formatPoints } from './formatPoints'
+import { STAR_PATH, STAR_VIEWBOX } from './star'
 
 const CANVAS_SCALE = 3
 const CANVAS_W = 512
@@ -22,7 +23,12 @@ const PADDING_X = 22 * CANVAS_SCALE
 const GAP = 10 * CANVAS_SCALE
 
 const POINTS_FONT = SUFFIX_FONT
-const POINTS_COLOR = 'rgba(255, 255, 255, 0.72)'
+/** Same gold as the HUD's `--sg-points`, a touch quieter so the name still leads. */
+const POINTS_COLOR = 'rgba(255, 215, 0, 0.85)'
+/** The star is drawn from the shared path, sized to the points digits' cap height. */
+const STAR_SIZE = 18 * CANVAS_SCALE
+const STAR_GAP = 6 * CANVAS_SCALE
+const STAR_SHAPE = new Path2D(STAR_PATH)
 
 const COLORS: Record<PlayerId, { text: string; glow: string }> = {
   A: { text: 'rgba(200, 225, 210, 0.92)', glow: 'rgba(74, 222, 128, 0.35)' },
@@ -85,7 +91,7 @@ function renderPlate(
   let pointsW = 0
   if (pointsText) {
     ctx.font = POINTS_FONT
-    pointsW = ctx.measureText(pointsText).width
+    pointsW = STAR_SIZE + STAR_GAP + ctx.measureText(pointsText).width
   }
 
   const contentW = nameW
@@ -153,9 +159,17 @@ function renderPlate(
   // Points sit last — after the flag, or after the badge once it has replaced
   // the flag — quieter than the name so the plate still reads name-first.
   if (pointsText) {
+    const starX = cursor + GAP
+    ctx.save()
+    ctx.translate(starX, textY - STAR_SIZE / 2)
+    ctx.scale(STAR_SIZE / STAR_VIEWBOX, STAR_SIZE / STAR_VIEWBOX)
+    ctx.fillStyle = POINTS_COLOR
+    ctx.fill(STAR_SHAPE)
+    ctx.restore()
+
     ctx.font = POINTS_FONT
     ctx.fillStyle = POINTS_COLOR
-    ctx.fillText(pointsText, cursor + GAP, textY + 1 * CANVAS_SCALE)
+    ctx.fillText(pointsText, starX + STAR_SIZE + STAR_GAP, textY + 1 * CANVAS_SCALE)
   }
 }
 

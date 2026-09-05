@@ -8,6 +8,7 @@ import { useAuth } from '../composables/useAuth'
 import { usePlatform } from '../lib/platform'
 import CharacterPreview from './CharacterPreview.vue'
 import LeaderboardPanel from './LeaderboardPanel.vue'
+import PointsStar from './PointsStar.vue'
 import RetryNotice from './RetryNotice.vue'
 import UserAvatar from './UserAvatar.vue'
 import { t, TAGLINES } from '../lib/i18n'
@@ -353,17 +354,17 @@ onUnmounted(() => {
         </div>
 
         <!-- Online counter -->
-        <div class="panel-divider" v-if="onlineCount > 0" />
+        <div class="panel-divider online-badge-divider" v-if="onlineCount > 0" />
         <div class="online-badge" v-if="onlineCount > 0">
           <div class="online-dot" />
           <span>{{ t('lobby.online', onlineCount) }}</span>
         </div>
-        <div class="points-badge" v-if="points > 0" :title="t('points.yours')">★ {{ points }}</div>
+        <div class="points-badge points" v-if="points > 0" :title="t('points.yours')"><PointsStar />{{ points }}</div>
 
         <!-- Leaderboard -->
         <template v-if="canShowLeaderboard">
-          <div class="panel-divider" />
-          <LeaderboardPanel />
+          <div class="panel-divider leaderboard-divider" />
+          <LeaderboardPanel class="lobby-leaderboard" />
         </template>
       </div>
     </div>
@@ -457,7 +458,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 32px;
-  padding: 28px 48px 36px;
+  /*
+   * Wider on the right: the volume button (VolumeControl.vue) sits fixed in
+   * the bottom-right corner, 18px in and 40px wide, and the leaderboard is the
+   * last column — without this its bottom row disappears under the button.
+   */
+  padding: 28px 72px 36px 48px;
   background: rgba(12, 16, 24, 0.55);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -810,11 +816,8 @@ onUnmounted(() => {
 /* ── Online badge ── */
 
 .points-badge {
-  color: rgba(255, 215, 0, 0.85);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
   margin-top: 6px;
 }
 
@@ -1091,6 +1094,44 @@ onUnmounted(() => {
   75% { width: 1.5em; }
 }
 
+/* ── Compact desktop: embedded players and small windows ── */
+
+/*
+ * The bottom row never wraps; at full size it needs ~1230px (three 120px
+ * cards, the actions, the online badge, the leaderboard, four 32px gaps).
+ * Portal iframes (Pikabu ≈ 1174×600) and half-screen windows fall short of
+ * that, and html is overflow:hidden, so the leaderboard was simply cut off.
+ * With the 72px right inset the full row needs ~1310px, hence the cut-off at
+ * 1339px. Tighten spacing first; drop the online badge only when even that
+ * fails.
+ */
+@media (max-width: 1339px) {
+  .panel-content {
+    gap: 20px;
+    padding: 24px 72px 32px 32px;
+  }
+
+  .panel-divider { margin: 4px 0; }
+
+  .char-select { gap: 8px; }
+  .char-preview-wrap { width: 96px; height: 96px; }
+}
+
+@media (min-width: 641px) and (max-width: 1149px) {
+  .char-preview-wrap { width: 80px; height: 80px; }
+  .online-badge, .online-badge + .points-badge { display: none; }
+  .online-badge-divider { display: none; }
+}
+
+/*
+ * Even the tightest row needs ~940px with the leaderboard. Below that the
+ * board would be clipped anyway, and the mobile column is too tall for a
+ * short embed, so the leaderboard goes; the mobile layout brings it back.
+ */
+@media (min-width: 641px) and (max-width: 939px) {
+  .leaderboard-divider, .lobby-leaderboard { display: none; }
+}
+
 /* ── Mobile ── */
 
 @media (max-width: 640px) {
@@ -1122,7 +1163,7 @@ onUnmounted(() => {
   }
 
   .online-badge { justify-content: center; }
-  .points-badge { text-align: center; }
+  .points-badge { justify-content: center; }
 
   .recent-corner { display: none; }
 }

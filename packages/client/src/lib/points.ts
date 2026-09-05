@@ -33,4 +33,13 @@ export function createPoints() {
   return { total, lastEarned, setTotal, award, clearAward }
 }
 
-export const points = createPoints()
+/**
+ * Built on first use, not at import time: App.vue pulls this module in while
+ * main.ts is still awaiting hydrateStorage(), and a total read that early is
+ * always 0 — the lobby would then show nothing until the socket's
+ * `points:total` arrives.
+ */
+let singleton: ReturnType<typeof createPoints> | null = null
+export function usePoints() {
+  return (singleton ??= createPoints())
+}
