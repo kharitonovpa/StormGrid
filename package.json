@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "workspaces": ["packages/*"],
+  "devDependencies": {
+    "bun-types": "^1.3.11"
+  },
   "scripts": {
     "dev": "bun run --filter '*' dev",
     "dev:client": "bun run --cwd packages/client dev",
@@ -11,6 +14,9 @@
     "build": "bun run --filter '*' build",
     "test": "bun test --cwd packages/server && bun test --cwd packages/client",
     "test:watch": "bun test --cwd packages/server --watch",
+    "music:build": "bun tools/music/build-variants.ts",
+    "music:test": "bun test tools/music",
+    "music:check": "bunx tsc --noEmit -p tools/music",
     "deploy": "bash deploy/deploy-all.sh",
     "deploy:server": "bash deploy/deploy-all.sh --server",
     "deploy:ru": "bash deploy/deploy-all.sh --ru",
