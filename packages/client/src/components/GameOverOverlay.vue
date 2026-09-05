@@ -4,7 +4,7 @@ import type { DeathCause, PlayerId, CharacterType } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { celebrate, disposeCelebrate } from '../lib/celebrate'
 import RetryNotice from './RetryNotice.vue'
-import { CROP_THEME } from '../lib/cropTheme'
+import { CROP_THEME, hexHue } from '../lib/cropTheme'
 import { t } from '../lib/i18n'
 import { formatDuration, streakChip, type MatchStats } from '../lib/matchSummary'
 
@@ -19,6 +19,8 @@ const props = defineProps<{
   /** The replay the player just clicked could not be fetched. */
   replayFailed: boolean
   character: CharacterType
+  /** Crop of the winning player — colours the fireworks. Null for draws and watchers. */
+  winnerCharacter?: CharacterType | null
   deathCauses?: Partial<Record<PlayerId, DeathCause>> | null
   /** Player the wind released because the other one left the board first. */
   windSpared?: PlayerId | null
@@ -43,6 +45,10 @@ const props = defineProps<{
   /** Rounds, length and badge — the match the card is about. */
   stats?: MatchStats | null
 }>()
+
+const fireworkHue = computed(() =>
+  props.winnerCharacter ? hexHue(CROP_THEME[props.winnerCharacter].identity) : undefined,
+)
 
 const emit = defineEmits<{
   playAgain: []
@@ -188,7 +194,7 @@ function launchFireworks() {
       const sy = cy + (Math.random() - 0.5) * h * 0.4
       const tx = sx + (Math.random() - 0.5) * 100
       const ty = sy - 40 - Math.random() * 60
-      celebrate(sx, sy, tx, ty, 0)
+      celebrate(sx, sy, tx, ty, 0, undefined, fireworkHue.value)
     }, i * 200))
   }
 
@@ -197,7 +203,7 @@ function launchFireworks() {
     const sy = h * 0.08 + Math.random() * h * 0.4
     const tx = sx + (Math.random() - 0.5) * 80
     const ty = sy - 30 - Math.random() * 50
-    celebrate(sx, sy, tx, ty, 0)
+    celebrate(sx, sy, tx, ty, 0, undefined, fireworkHue.value)
   }, 800)
 }
 

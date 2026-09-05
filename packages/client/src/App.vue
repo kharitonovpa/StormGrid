@@ -467,6 +467,16 @@ const showHud = computed(() =>
   game.phase.value === 'weather',
 )
 const showGameOver = computed(() => game.phase.value === 'finished')
+/** The winner's crop for the result-screen confetti; null for draws and watchers. */
+const winnerCharacter = computed<CharacterType | null>(() => {
+  const w = game.winner.value
+  if (!w || w === 'draw') return null
+  const me = game.myPlayer.value
+  if (me?.id === w) return me.character
+  const opp = game.opponentPlayer.value
+  if (opp?.id === w) return opp.character
+  return null
+})
 const showWatcher = computed(() => game.isWatcher.value && game.gameState.value !== null)
 const showArchitect = computed(() => game.isArchitect.value && game.gameState.value !== null)
 
@@ -2668,6 +2678,7 @@ onUnmounted(() => {
     :room-id="lastRoomId"
     :replay-failed="replayLoadFailed"
     :character="game.selectedCharacter.value"
+    :winner-character="winnerCharacter"
     :death-causes="game.deathCauses.value"
     :wind-spared="game.windSpared.value"
     :rain-spared="game.rainSpared.value"

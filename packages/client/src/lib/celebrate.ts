@@ -121,11 +121,21 @@ function tick(now: number) {
   rafId = requestAnimationFrame(tick)
 }
 
+/**
+ * Particle hue for a burst: the gold range for the points bursts (no hue
+ * given), or ±12° around the caller's hue — the winner's crop colour.
+ * `rand` is the 0..1 draw, passed in so the spread is testable.
+ */
+export function pickHue(hue: number | undefined, rand: number): number {
+  return hue === undefined ? 38 + rand * 20 : hue + (rand - 0.5) * 24
+}
+
 export function celebrate(
   sx: number, sy: number,
   tx: number, ty: number,
   points: number,
   onArrive?: () => void,
+  hue?: number,
 ) {
   ensureCanvas()
   const particles: Particle[] = []
@@ -137,7 +147,7 @@ export function celebrate(
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       size: 2 + Math.random() * 2,
-      hue: 38 + Math.random() * 20,
+      hue: pickHue(hue, Math.random()),
       alpha: 0.7 + Math.random() * 0.3,
     })
   }
