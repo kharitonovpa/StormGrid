@@ -104,7 +104,7 @@ function layerFor(crop: Crop, base: Base, beatSeconds: number, loopSamples: numb
 // ── ffmpeg I/O ─────────────────────────────────────────────────────────────
 function decode(file: string): { left: Float32Array; right: Float32Array } {
   const r = spawnSync('ffmpeg', ['-v', 'error', '-i', file, '-ac', '2', '-ar', String(SR), '-f', 'f32le', '-'], { maxBuffer: 1 << 28 })
-  if (r.status !== 0) throw new Error(`ffmpeg decode failed for ${file}: ${r.stderr}`)
+  if (r.error || r.status !== 0) throw new Error(`ffmpeg decode failed for ${file}: ${r.error?.message ?? r.stderr}`)
   // Copy into a fresh, 4-byte-aligned buffer — a Buffer slice's byteOffset need not be.
   const bytes = new Uint8Array(r.stdout.byteLength)
   bytes.set(r.stdout)
@@ -122,7 +122,7 @@ function encode(file: string, left: Float32Array, right: Float32Array): void {
     '-v', 'error', '-y', '-f', 'f32le', '-ar', String(SR), '-ac', '2', '-i', 'pipe:0',
     '-codec:a', 'libmp3lame', '-b:a', '128k', file,
   ], { input: Buffer.from(inter.buffer, inter.byteOffset, inter.byteLength), maxBuffer: 1 << 28 })
-  if (r.status !== 0) throw new Error(`ffmpeg encode failed for ${file}: ${r.stderr}`)
+  if (r.error || r.status !== 0) throw new Error(`ffmpeg encode failed for ${file}: ${r.error?.message ?? r.stderr}`)
 }
 
 // ── Build ──────────────────────────────────────────────────────────────────
@@ -149,9 +149,10 @@ for (const base of BASES) {
     }
     const outRms = rms(Float32Array.from(outL, (v, i) => (v + outR[i]) / 2))
     const file = resolve(OUT_DIR, `${base.id}-${crop}.mp3`)
-    encode(file, outL, outR)
-    console.log(`${base.id}-${crop}: ${(loopSamples / SR).toFixed(2)} s, ${(60 / beatSeconds).toFixed(1)} BPM, base ${dB(baseRms).toFixed(1)} dBFS, out ${dB(outRms).toFixed(1)} dBFS (Δ ${dB(outRms / baseRms).toFixed(2)} dB), peak ${peak.toFixed(3)}`)
-    if (Math.abs(dB(outRms / baseRms)) > 1) throw new Error(`${file}: loudness off by more than 1 dB`)
+    const deltaDb = dB(outRms / baseRms)
+    console.log(`${base.id}-${crop}: ${(loopSamples / SR).toFixed(2)} s, ${(60 / beatSeconds).toFixed(1)} BPM, base ${dB(baseRms).toFixed(1)} dBFS, out ${dB(outRms).toFixed(1)} dBFS (Δ ${deltaDb.toFixed(2)} dB), peak ${peak.toFixed(3)}`)
+    if (Math.abs(deltaDb) > 1) throw new Error(`${file}: loudness off by more than 1 dB`)
     if (peak >= 1) throw new Error(`${file}: peak reached full scale`)
+    encode(file, outL, outR)
   }
 }

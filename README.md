@@ -76,6 +76,18 @@ RECONNECT_GRACE_MS=2000 BOT_MATCH_DELAY_MS=600000 bun src/index.ts
 флакать при параллельном прогоне всех файлов — при падении перезапустите его отдельно:
 `bun test src/engine/__tests__/bot-room.test.ts`.
 
+### Музыкальный генератор (`tools/music`)
+
+```bash
+bun run music:build   # требует ffmpeg в PATH; пишет в packages/client/public/sounds
+bun run music:test    # bun test tools/music
+bun run music:check   # bunx tsc --noEmit -p tools/music
+```
+
+Четыре файла `{lobby,match}-music-{rice,corn}.mp3` в `packages/client/public/sounds/` —
+сгенерированные артефакты, зафиксированные в репозитории вместе с кодом, который их
+собирает; пересборка детерминирована (побайтово совпадает при неизменных скорах).
+
 ## Деплой
 
 ```bash

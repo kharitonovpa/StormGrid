@@ -20,7 +20,7 @@ import { createQueueAlert } from './queueAlert.js'
 import { runNudgePass } from './nudge.js'
 import { adoptDeviceStreak, seedDeviceStreak, growDeviceStreak, wipeDeviceStreak } from './db/streakStore.js'
 import { awardPoints, getPoints } from './db/pointsStore.js'
-import { pointsFor } from './points.js'
+import { pointsFor as matchPointsFor } from './points.js'
 import type { EventRow } from './db/eventStore.js'
 
 runMigrations()
@@ -194,7 +194,7 @@ const roomManager = new RoomManager({
         const who = data.analytics[pid]
         const userId = pid === 'A' ? data.playerAUserId : data.playerBUserId
         if (!who && !userId) continue // a bot slot
-        const earned = pointsFor({
+        const earned = matchPointsFor({
           result: data.winner === 'draw' ? 'draw' : data.winner === pid ? 'win' : 'loss',
           rounds: data.rounds,
           vsBot: data.vsBot,

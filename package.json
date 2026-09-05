@@ -12,7 +12,7 @@
     "dev:client": "bun run --cwd packages/client dev",
     "dev:server": "bun run --cwd packages/server dev",
     "build": "bun run --filter '*' build",
-    "test": "bun test --cwd packages/server && bun test --cwd packages/client",
+    "test": "bun test --cwd packages/server && bun test --cwd packages/client && bun test tools/music",
     "test:watch": "bun test --cwd packages/server --watch",
     "music:build": "bun tools/music/build-variants.ts",
     "music:test": "bun test tools/music",

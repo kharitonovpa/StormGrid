@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'bun:test'
 import {
   SR, seedRandom, midiToFreq, envelope, pluck, sawVoice, breathVoice,
-  mixInto, softLimit, rms, scaleTo, normalize, renderScore, spectralPeak,
+  mixInto, softLimit, rms, scaleTo, normalize, renderScore,
 } from '../synth.ts'
+import { spectralPeak } from './spectrum.ts'
 
 const dB = (ratio: number) => 20 * Math.log10(ratio)
 
