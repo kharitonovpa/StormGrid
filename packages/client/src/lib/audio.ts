@@ -314,14 +314,67 @@ export function createAudioSystem() {
 
   // ------ Scene transitions ------
 
+  const LOBBY_MUSIC_IDS: LoopId[] = LOOP_IDS.filter((id) => id === 'lobby-music' || id.startsWith('lobby-music-'))
+
+  /** Start the download of the other lobby variants so a later pick switches without a gap. */
+  function preloadLobbyVariants() {
+    for (const id of LOBBY_MUSIC_IDS) {
+      const h = howls.get(id)!
+      if (h.state() === 'unloaded') h.load()
+    }
+  }
+
+  function currentMusic(): LoopId | null {
+    for (const id of activeLoops) if (defs.get(id)!.layer === 'music') return id as LoopId
+    return null
+  }
+
+  /**
+   * Crossfade the music layer to `id`, keeping the playhead — the crop variants
+   * share the base loop, so a lobby pick changes the ornaments without a hiccup.
+   * A file that is still downloading re-reads the position when it lands.
+   */
+  function switchMusic(id: LoopId, duration = 600) {
+    if (disposed) return
+    const outgoingId = currentMusic()
+    if (outgoingId === id) return
+    const outgoing = outgoingId ? howls.get(outgoingId)! : null
+    const h = howls.get(id)!
+    const d = defs.get(id)!
+    const target = d.baseVolume * layerGain(d.layer)
+    cancelPendingStop(id)
+    const start = () => {
+      if (disposed) return
+      const position = outgoing && outgoing.playing() ? (outgoing.seek() as number) : 0
+      h.volume(0)
+      h.seek(position)
+      h.play()
+      h.fade(0, target, duration)
+    }
+    if (h.state() === 'loaded') start()
+    else { h.once('load', start); h.load() }
+    activeLoops.add(id)
+    if (outgoingId) fadeOut(outgoingId, duration)
+  }
+
   function enterLobby(character?: CharacterType) {
     cancelSceneTimers()
     stopWeather()
+    const id = resolveMusicId('lobby-music', character)
+    const current = currentMusic()
+    const lobbyMusicOn = current !== null && LOBBY_MUSIC_IDS.includes(current) && activeLoops.has('lobby-pad')
+    if (lobbyMusicOn) {
+      // Already in the lobby: only the crop changed — keep the base running.
+      switchMusic(id)
+      preloadLobbyVariants()
+      return
+    }
     fadeOutLayer('ambient', 1000)
     fadeOutLayer('music', 1000)
     sceneTimers.push(safeTimeout(() => {
       fadeIn('lobby-pad', 1200)
-      fadeIn(resolveMusicId('lobby-music', character), 1500)
+      fadeIn(id, 1500)
+      preloadLobbyVariants()
     }, 400))
   }
 
@@ -540,6 +593,7 @@ export function createAudioSystem() {
     update,
     dispose,
     enterLobby,
+    switchMusic,
     enterMatch,
     enterFinished,
     startWind,

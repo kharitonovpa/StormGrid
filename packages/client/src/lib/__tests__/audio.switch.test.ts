@@ -18,6 +18,8 @@ class FakeHowl {
   private queue: Queued[] = []
   private paused = true
   private vol = 0
+  private pos = 0
+  private loadListeners: Array<() => void> = []
   playCalls = 0
   stopCalls = 0
 
@@ -35,6 +37,9 @@ class FakeHowl {
     const q = this.queue
     this.queue = []
     for (const fn of q) fn()
+    const ls = this.loadListeners
+    this.loadListeners = []
+    for (const cb of ls) cb()
   }
   play(id?: number) {
     this.playCalls++
@@ -54,10 +59,16 @@ class FakeHowl {
     return this
   }
   volume(v?: number) { if (v !== undefined) { this.vol = v; return this } return this.vol }
+  seek(v?: number) {
+    if (v === undefined) return this.pos
+    if (this.state_ !== 'loaded') { this.queue.push(() => this.seek(v)); return this }
+    this.pos = v
+    return this
+  }
   playing() { return !this.paused }
   unload() { this.paused = true; this.state_ = 'unloaded'; this.queue = [] }
   on() { return this }
-  once() { return this }
+  once(event: string, cb: () => void) { if (event === 'load') this.loadListeners.push(cb); return this }
 }
 
 mock.module('howler', () => ({
@@ -106,6 +117,47 @@ describe('lobby music switching while a variant is still loading', () => {
     const rice = howl('lobby-music-rice')
     rice.finishLoad()
     expect(rice.playing()).toBe(true)
+    audio.dispose()
+  })
+})
+
+describe('switchMusic keeps the playhead across a crop switch', () => {
+  beforeEach(() => { FakeHowl.bySrc.clear() })
+
+  it('starts the new variant at the old one\'s position and stops the old one after the fade', async () => {
+    const audio = createAudioSystem()
+    audio.enterLobby('rice')
+    await sleep(450)
+    const rice = howl('lobby-music-rice')
+    rice.finishLoad()
+    expect(rice.playing()).toBe(true)
+    rice.seek(7.3)
+    // Preloading put the sibling variants into 'loading'; let corn finish.
+    const corn = howl('lobby-music-corn')
+    corn.finishLoad()
+
+    audio.enterLobby('corn')
+    expect(corn.seek()).toBe(7.3)
+    expect(corn.playing()).toBe(true)
+    await sleep(700) // fade 600 ms + stop timer
+    expect(rice.playing()).toBe(false)
+    audio.dispose()
+  })
+
+  it('lands in sync when the incoming file is still loading', async () => {
+    const audio = createAudioSystem()
+    audio.enterLobby('rice')
+    await sleep(450)
+    const rice = howl('lobby-music-rice')
+    rice.finishLoad()
+    const corn = howl('lobby-music-corn')
+    expect(corn.state()).toBe('loading') // preloaded on entering the lobby
+
+    audio.enterLobby('corn')
+    rice.seek(9.1) // the base keeps running while corn downloads
+    corn.finishLoad()
+    expect(corn.seek()).toBe(9.1)
+    expect(corn.playing()).toBe(true)
     audio.dispose()
   })
 })
