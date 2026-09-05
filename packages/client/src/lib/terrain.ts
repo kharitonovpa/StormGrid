@@ -5,6 +5,7 @@ import {
 } from './constants'
 import { clamp, noise2d, fbm, sstep, mix } from './noise'
 import { LOOK, srgbHexToLinear } from './look'
+import { swell, groove, flatWeight, meadowTint, SWELL_AMP } from './meadow'
 import { buildShadowField, buildRiseLists, buildRiseMask, contactOcclusionFrom, occlusionFromField, type HeightAt, type SunParams } from './terrainShade'
 
 // --- Terrain grids ---
@@ -35,9 +36,13 @@ export function getHeightRaw(wx: number, wz: number): number {
   const cx = clamp(Math.floor(gx), 0, CELLS - 1) | 0
   const cz = clamp(Math.floor(gz), 0, CELLS - 1) | 0
   const h = current[cz][cx]
-  if (Math.abs(h) < 0.001) return 0
+  // The meadow (lib/meadow.ts): a flat cell's swell and grooved borders, handed
+  // over to the hill noise as the cell rises so the surface stays continuous.
+  const flat = flatWeight(h)
+  const meadow = flat > 0 ? (swell(wx, wz) + groove(wx, wz)) * flat : 0
+  if (Math.abs(h) < 0.001) return meadow
   const n = fbm(wx * NOISE_FREQ, wz * NOISE_FREQ) * NOISE_AMP
-  return h * HEIGHT_SCALE + n * Math.abs(h)
+  return h * HEIGHT_SCALE + n * Math.abs(h) + meadow
 }
 
 const H_RES = 128
@@ -135,6 +140,8 @@ const ROCK = srgbHexToLinear(LOOK.terrain.rock)
 const MUD = srgbHexToLinear(LOOK.terrain.mud)
 const SNOW = srgbHexToLinear(LOOK.terrain.snow)
 const { checkerAmp: CHECKER_AMP, aoStrength: AO_STRENGTH, shadowStrength: SHADOW_STRENGTH, shadowTint: SHADOW_TINT } = LOOK.terrain
+const GRAIN = LOOK.terrain.grain
+const _tint: [number, number, number] = [1, 1, 1]
 
 // The sun in grid space for the baked shadow (lib/terrainShade.ts): the
 // horizontal unit direction plus the climb per cell — tan(elevation) rescaled
@@ -200,8 +207,9 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
   const { field: shadowField, rise: riseMask, risers: riseLists } = shadeTerms(isBottom)
   for (let i = 0; i < p.count; i++) {
     const wx = p.getX(i), wy = p.getY(i), wz = p.getZ(i)
-    const nv = noise2d(wx * 0.5 + 77, wz * 0.5 + 77) * 0.12
-    const nv2 = noise2d(wx * 0.9 + 33, wz * 0.9 + 33) * 0.08
+    // Fine grain only; the meadow swell below carries the coarse variation.
+    const nv = noise2d(wx * 0.9 + 33, wz * 0.9 + 33) * GRAIN * 2
+    meadowTint(swell(wx, wz) / SWELL_AMP, _tint)
 
     const slope = Math.abs(nm.getY(i))
     const h = isBottom ? -wy : wy
@@ -215,8 +223,8 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
 
     // Each material is its token colour modulated by the noise fields —
     // relative, so one recipe serves a dark mud and a near-white snow alike.
-    const gk = 1 + nv + nv2
-    const gr0 = GRASS[0] * gk, gr1 = GRASS[1] * gk, gr2 = GRASS[2] * (1 + nv * 0.5)
+    const gk = 1 + nv
+    const gr0 = GRASS[0] * gk * _tint[0], gr1 = GRASS[1] * gk * _tint[1], gr2 = GRASS[2] * (1 + nv * 0.5) * _tint[2]
     const mk = 1 + nv * 0.7
     const md0 = MUD[0] * mk, md1 = MUD[1] * mk, md2 = MUD[2] * mk
     const sk = 1 + nv * 0.3 - sgb * 0.5

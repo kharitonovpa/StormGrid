@@ -1,8 +1,10 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import * as THREE from 'three'
-import { paintColors, current } from '../terrain.js'
-import { SIZE, SEGMENTS, HALF, CELL_SIZE, THICKNESS } from '../constants.js'
+import { paintColors, current, getHeightRaw } from '../terrain.js'
+import { SIZE, SEGMENTS, HALF, CELL_SIZE, THICKNESS, HEIGHT_SCALE, NOISE_AMP, NOISE_FREQ } from '../constants.js'
 import { LOOK } from '../look.js'
+import { swell, groove, SWELL_AMP, GROOVE_DEPTH } from '../meadow.js'
+import { fbm } from '../noise.js'
 
 function makeSingleVertexGeo(x: number, y: number, z: number): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry()
@@ -93,5 +95,56 @@ describe('paintColors baked shading', () => {
       best = Math.min(best, performance.now() - t0)
     }
     expect(best).toBeLessThan(40)   // generous ceiling: guards against pathological regressions, not the 3 ms laptop budget
+  })
+})
+
+describe('the meadow on a flat board', () => {
+  it('lifts and dips the flat board within the decoration budget, never exactly flat', () => {
+    let lo = Infinity, hi = -Infinity
+    for (let z = -HALF; z <= HALF; z += 0.53) {
+      for (let x = -HALF; x <= HALF; x += 0.47) {
+        const y = getHeightRaw(x, z)
+        lo = Math.min(lo, y)
+        hi = Math.max(hi, y)
+      }
+    }
+    expect(lo).toBeGreaterThanOrEqual(-(SWELL_AMP + GROOVE_DEPTH))
+    expect(hi).toBeLessThanOrEqual(SWELL_AMP)
+    expect(hi - lo).toBeGreaterThan(0.05)
+  })
+
+  it('cuts the groove at a cell border', () => {
+    const wx = worldAt(2), wz = worldAt(3.5)
+    expect(getHeightRaw(wx, wz)).toBeCloseTo(swell(wx, wz) + groove(wx, wz), 6)
+    expect(getHeightRaw(wx, wz)).toBeLessThan(-GROOVE_DEPTH + SWELL_AMP + 1e-6)   // the swell can lift the floor by at most amp
+  })
+
+  it('carries no meadow on a fully raised cell', () => {
+    current[2][2] = 1
+    const wx = worldAt(2.5), wz = worldAt(2.5)
+    const expected = HEIGHT_SCALE + fbm(wx * NOISE_FREQ, wz * NOISE_FREQ) * NOISE_AMP
+    expect(getHeightRaw(wx, wz)).toBeCloseTo(expected, 6)
+  })
+
+  it('paints a crest warmer and lighter than a trough', () => {
+    // Find the strongest crest and trough on the flat board, away from borders.
+    let best = { s: -Infinity, x: 0, z: 0 }, worst = { s: Infinity, x: 0, z: 0 }
+    for (let gz = 0.3; gz < 7; gz += 0.1) {
+      for (let gx = 0.3; gx < 7; gx += 0.1) {
+        const x = worldAt(gx), z = worldAt(gz)
+        const s = swell(x, z)
+        if (s > best.s) best = { s, x, z }
+        if (s < worst.s) worst = { s, x, z }
+      }
+    }
+    const crest = makeSingleVertexGeo(best.x, 0, best.z)
+    const trough = makeSingleVertexGeo(worst.x, 0, worst.z)
+    paintColors(crest)
+    paintColors(trough)
+    // The checkerboard could mask the tint: compare against the same spot with the tint's driver removed
+    // is impossible, so require the tint to win by a margin larger than the checker's ±12 %.
+    const [cr, , cb] = colourOf(crest)
+    const [tr, , tb] = colourOf(trough)
+    expect(cr / cb).toBeGreaterThan((tr / tb) * 1.05)
   })
 })
