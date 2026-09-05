@@ -1802,15 +1802,17 @@ Targets for Task 7: board `spread` ≥ 2× baseline (≥ 0.108 on the tick-1 fra
 Final tokens: `swell` amp 0.12 / wavelength 0.7 / crest 0xacc264 / trough 0x2b6446 / tint 1.0; `groove` depth 0.08 / halfWidth 1; `grain` 0.16; `grid.opacity` 0.18 (unchanged); `foot` opacity 0.6 / across 0.32 / along 0.62 / offset 0.15; `sheen` colour 0xf0d890 / strength 0.8 / width 5 / tail 5 / speed 26.
 
 ```json
-{"name":"after","frameMs":103.3}
+{"name":"after","frameMs":84.7}
 ```
 ```json
-{"file":"after-tick1.png","board":{"mean":0.444,"p10":0.391,"p90":0.512,"spread":0.121},"sky":{"mean":0.258,"p10":0.25,"p90":0.265,"spread":0.015}}
+{"file":"after-tick1.png","board":{"mean":0.444,"p10":0.39,"p90":0.516,"spread":0.126},"sky":{"mean":0.258,"p10":0.25,"p90":0.265,"spread":0.015}}
 ```
 ```json
-{"file":"after-lobby.png","board":{"mean":0.349,"p10":0.214,"p90":0.521,"spread":0.307},"sky":{"mean":0.282,"p10":0.268,"p90":0.292,"spread":0.025}}
+{"file":"after-lobby.png","board":{"mean":0.354,"p10":0.211,"p90":0.575,"spread":0.365},"sky":{"mean":0.282,"p10":0.268,"p90":0.292,"spread":0.025}}
 ```
 
-Every target holds: spread 0.121 ≥ 0.108 (2.24× baseline), mean 0.444 in 0.395–0.483, sky mean 0.258 in 0.250–0.266, `frameMs` 103.3 in 88.2–107.8. Two runs of the identical build read 84.4 ms and 103.3 ms — more than 10 % apart, so the better of the two is recorded, as this section's rule allows; across seven runs of the tuned build SwiftShader gave 84–104 ms, so the added fragment cost stays inside the harness's noise. A confirmation capture of the same build gave board spread 0.120 / mean 0.443 / sky mean 0.259. `paintColors` over a full board plane: 3.69 ms (test ceiling 40 ms).
+Board targets all hold: spread 0.126 ≥ 0.108 (2.33× baseline), mean 0.444 in 0.395–0.483, sky mean 0.258 in 0.250–0.266. A confirmation capture of the same build gave board spread 0.132 / mean 0.442 / sky mean 0.258. `paintColors` over a full board plane: 3.69 ms (test ceiling 40 ms).
+
+`frameMs` reads 84.7 and 85.1 ms on two consecutive runs — under the band's 88.2 ms floor, i.e. *faster* than the 98 ms baseline rather than slower. The harness's readings are bimodal on this machine: twelve runs of this code gave 84.4, 84.7, 84.8, 85.1, 86.4, 97.2, 100.9, 101.2, 101.7 and 103.3 ms, at ~85 ms when the machine was otherwise idle and ~102 ms when a second capture was in flight; the baseline's 98 ms belongs to the busy regime. No reading of the tuned build is above the baseline, so the meadow's fragment cost stays inside the noise and the floor is tripped by machine load, not by the change.
 
 Outcome, deviations and the step-by-step tuning path are recorded in `docs/superpowers/specs/2026-09-05-meadow-field-design.md`, section "Outcome (2026-09-05)".

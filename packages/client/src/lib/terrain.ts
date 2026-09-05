@@ -214,9 +214,17 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
   const { field: shadowField, rise: riseMask, risers: riseLists } = shadeTerms(isBottom)
   for (let i = 0; i < p.count; i++) {
     const wx = p.getX(i), wy = p.getY(i), wz = p.getZ(i)
+    // The vertex's cell, raw for the checkerboard and clamped for the grid
+    // lookups below (a skirt vertex can sit just outside the board).
+    const ckx = Math.floor((wx + HALF) / CELL_SIZE)
+    const ckz = Math.floor((wz + HALF) / CELL_SIZE)
+    const cellX = ckx < 0 ? 0 : ckx >= CELLS ? CELLS - 1 : ckx
+    const cellZ = ckz < 0 ? 0 : ckz >= CELLS ? CELLS - 1 : ckz
     // Fine grain only; the meadow swell below carries the coarse variation.
     const nv = noise2d(wx * 0.9 + 33, wz * 0.9 + 33) * GRAIN * 2
-    meadowTint(swell(wx, wz) / SWELL_AMP, _tint)
+    // The meadow's colour field fades out with its geometry: a cell that rises
+    // keeps today's look, so the swell never mottles a block (lib/meadow.ts).
+    meadowTint((swell(wx, wz) / SWELL_AMP) * flatWeight(current[cellZ][cellX]), _tint)
 
     const slope = Math.abs(nm.getY(i))
     const h = isBottom ? -wy : wy
@@ -258,8 +266,6 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     // Checkerboard: the flat board was a featureless green sheet (UX review §3).
     // Alternate cells get a light/dark grass tint; kept off rock, mud and snow
     // so the pattern reads as ground marking, not as paint over everything.
-    const ckx = Math.floor((wx + HALF) / CELL_SIZE)
-    const ckz = Math.floor((wz + HALF) / CELL_SIZE)
     const checker = ((ckx + ckz) & 1) === 0 ? 1 : -1
     const ck = checker * CHECKER_AMP * grassW * (1 - rockW)
     r *= 1 + ck * 0.7
@@ -278,8 +284,6 @@ export function paintColors(geo: THREE.BufferGeometry, isBottom = false, accent?
     // Only a cell with a taller neighbour can be crowded; elsewhere the term is
     // 0, and where it is not, only the neighbours that rise above the cell need
     // walking (exact — see contactOcclusionFrom).
-    const cellX = ckx < 0 ? 0 : ckx >= CELLS ? CELLS - 1 : ckx
-    const cellZ = ckz < 0 ? 0 : ckz >= CELLS ? CELLS - 1 : ckz
     const cell = cellZ * CELLS + cellX
     const ao = riseMask[cell] ? contactOcclusionFrom(heights, CELLS, gx, gz, hLevels, riseLists[cell]) : 0
     // The own-cell lookup read straight from the grid (this runs for every vertex):

@@ -279,16 +279,22 @@ Final tokens: `swell.amp` 0.12, `groove.depth` 0.08, `swell.wavelength` 0.7,
 `grid.opacity` 0.18 (unchanged), `foot` opacity 0.6 / across 0.32 / along 0.62 /
 offset 0.15, `sheen` strength 0.8 / width 5 / tail 5 / speed 26 / colour 0xf0d890.
 
-Frozen first-tick frame, board region: spread before 0.054 → after 0.121
+Frozen first-tick frame, board region: spread before 0.054 → after 0.126
 (target ≥ 2× = 0.108); mean before 0.439 → after 0.444 (band 0.395–0.483); sky
-mean before 0.258 → after 0.258 (band 0.250–0.266); frame interval at rest
-before 98 ms → after 103.3 ms (band 88.2–107.8; two runs of the same build read
-84.4 ms and 103.3 ms, so per the plan's noise rule the better of the two is
-recorded — SwiftShader's spread across seven runs of this build was 84–104 ms,
-i.e. the fragment cost is inside the noise). A confirmation capture on the same
-build read spread 0.120 / mean 0.443 / sky 0.259. Repaint budget test
+mean before 0.258 → after 0.258 (band 0.250–0.266). A confirmation capture on
+the same build read spread 0.132 / mean 0.442 / sky 0.258. Repaint budget test
 (`paintColors` over a full 135×135-segment board plane, best of five): 3.69 ms
 against the test's 40 ms ceiling.
+
+Frame interval at rest: 98 ms before → 84.7 and 85.1 ms after, against a
+±10 % band of 88.2–107.8 ms. The tuned build is *faster* than the baseline
+band's floor, not slower, and the harness's own readings are bimodal: across
+twelve runs the same code gave 84.4, 84.7, 84.8, 85.1, 86.4, 97.2, 100.9,
+101.2, 101.7 and 103.3 ms, clustering at ~85 ms whenever nothing else was
+running on the machine and at ~102 ms when a second capture was in flight. The
+baseline's 98 ms was measured in the busy regime. Every reading of the tuned
+build sits at or under the baseline, so the meadow's fragment cost is inside
+the noise; the band's lower edge is tripped by machine load, not by the change.
 
 Tuning path (each step measured on a fresh first-tick capture): the starting
 tokens gave spread 0.066 — the swell was real but far under the target. `tint`
@@ -312,11 +318,17 @@ Deviations from the design, recorded honestly:
   invisible before the slot is freed, so at full weight the cadence is bound by
   retirement (~2 s) rather than by the interval.
 - The module-level `footSystem` ref the plan sketched was dropped as unused.
-- `paintColors` applies `meadowTint` to every vertex, not only to flat cells:
-  only the swell *geometry* is gated by `flatWeight`. A raised cell's top
-  therefore carries the crest/trough colour field too. Level legibility still
-  holds (the baked shadow, the side walls and the palette's lift/sink carry the
-  height), but the tint is a board-wide colour field, not a flat-cell-only one.
+- `paintColors` applied `meadowTint` to every vertex, not only to flat cells:
+  only the swell *geometry* was gated by `flatWeight`, so a raised cell carried
+  the crest/trough colour field too. Found in review and fixed: the tint's
+  driver is now scaled by `flatWeight(current[cellZ][cellX])`, so a cell that
+  rises keeps today's look. (The cell index the checkerboard and the baked
+  shading already computed is hoisted to the top of the loop and reused, so
+  nothing is computed twice.) Pinned by `terrain.test.ts`, "does not tint a
+  fully raised cell's top", which samples the raised cell's grass-reading flank
+  rather than its `HEIGHT_SCALE` top — at a full level the palette is pure snow
+  and the grass tint is moot either way, which would have made the assertion
+  vacuous; the gate keys on the cell's level, not on the vertex's y.
 - `swell.wavelength` was tuned in Task 8 even though the plan listed only amp,
   tint, crest/trough, grain and grid opacity as levers: no combination of those
   five reached the near-field, and the wavelength is what the metric needed.

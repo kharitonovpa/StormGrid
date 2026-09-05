@@ -47,7 +47,7 @@ export const LOOK = {
     // shadow maps), so the baked shadow darkens far more than it cools; this
     // only nudges its hue toward sky-lit.
     shadowTint: [0.75, 0.88, 1.4] as Vec3,
-    /** Fine per-vertex grass grain (± relative lightness). */
+    /** Fine per-vertex grass grain: a 0..2·grain relative lift. */
     grain: 0.16,
     /** The meadow swell on a flat cell (lib/meadow.ts): a tiny baked undulation
      *  the low sun lights, and the colour field it drives. amp is world units

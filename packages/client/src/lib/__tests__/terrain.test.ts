@@ -148,6 +148,39 @@ describe('the meadow on a flat board', () => {
     expect(cr / cb).toBeGreaterThan((tr / tb) * 1.05)
   })
 
+  it("does not tint a fully raised cell's top", () => {
+    // The strongest crest and trough inside cell (2, 2), clear of its borders.
+    let best = { s: -Infinity, x: 0, z: 0 }, worst = { s: Infinity, x: 0, z: 0 }
+    for (let gz = 2.1; gz < 2.9; gz += 0.02) {
+      for (let gx = 2.1; gx < 2.9; gx += 0.02) {
+        const x = worldAt(gx), z = worldAt(gz)
+        const s = swell(x, z)
+        if (s > best.s) best = { s, x, z }
+        if (s < worst.s) worst = { s, x, z }
+      }
+    }
+    const warmth = (x: number, y: number, z: number) => {
+      const geo = makeSingleVertexGeo(x, y, z)
+      paintColors(geo)
+      const [r, , b] = colourOf(geo)
+      return r / b
+    }
+
+    // Control: while the cell is flat, the tint separates the two spots.
+    expect(warmth(best.x, 0, best.z)).toBeGreaterThan(warmth(worst.x, 0, worst.z) * 1.05)
+
+    // Raised a full level, the cell keeps today's look: the meadow's colour
+    // field is gone, so crest and trough come out the same colour. Sampled on
+    // the cell's grass-reading flank rather than at HEIGHT_SCALE, where the
+    // palette is pure snow (snowW = 1) and the grass tint is moot either way —
+    // the gate keys on the cell's level, not on the vertex's y.
+    const RAISED_Y = HEIGHT_SCALE * 0.3
+    current[2][2] = 1
+    const upCrest = warmth(best.x, RAISED_Y, best.z)
+    const upTrough = warmth(worst.x, RAISED_Y, worst.z)
+    expect(Math.abs(upCrest / upTrough - 1)).toBeLessThan(0.02)
+  })
+
   it('keeps flat vertices on their grid: no sideways displacement on the meadow', () => {
     const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS)
     geo.rotateX(-Math.PI / 2)
