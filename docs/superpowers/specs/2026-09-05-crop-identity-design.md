@@ -141,3 +141,26 @@ butterflies cannot drift from the markers.
 - `packages/client/src/lib/audio.ts` — four loop ids, `MUSIC_TRACKS`, lazy preload.
 - `tools/music/build-variants.ts`, `tools/music/synth.ts` (+ tests) — generator.
 - `packages/client/public/sounds/*-music-{rice,corn}.mp3` — generated assets.
+
+## Outcome (2026-09-05)
+
+Built on branch `crop-identity`. Deviations from the design above, all reviewed:
+
+- `player.ts` recolours itself (`refreshIdentity` on `setActivePlayer` /
+  `applyPositions*`) instead of exposing `setIdentity` for `App.vue` to call — every
+  path that names the local player or a character already goes through those calls.
+- `insects.setPalette` was unnecessary: the butterfly atlas is already built per
+  marked player's crop from `GEMS`; only `mid` now derives from `identity`.
+- The local player's move-arc ribbon (`preview.showMove`) also takes the identity;
+  watcher predictions keep gold.
+- Music layer level: the build mixes the ornament layer at RMS −12 dB relative to the
+  base (the plan's reading), not "peak −12 dB below the RMS-normalised base" as written
+  above; on the shipped files the ornament peaks sit 1.9–3.0 dB under the base's peak.
+  Final level is the human's listening call; rebuild is deterministic.
+- `bun-types` is a root devDependency for `tools/music` (bun's isolated linker does not
+  hoist it from `packages/server`).
+- Visual acceptance (headless tutorial matches, one per crop): ring/arrows/highlight in
+  the identity colour, move-mode ring lighter, nameplate `(You) 🇯🇵 ★ 1 240` with thin
+  spaces, bot plate without points, butterflies coloured by the opponent's crop, lobby
+  cards in the jewel palette. Confetti hue not captured headlessly (tutorial matches are
+  untimed); covered by the `pickHue` test.

@@ -1509,3 +1509,34 @@ This task is run by the controller in the session, not by an implementer subagen
 
 - Spec coverage: identity tokens + lobby cards + butterflies (Task 1); my markers (Task 2 — `setIdentity` from the spec is realised as the internal `refreshIdentity`, no `App.vue` wiring needed because the player system already receives both characters and the local side); confetti (Task 3); `PlayerInfo.points` + `pointsFor` (Task 4); nameplate rendering + `formatPoints` (Task 5); DSP core + tests (Task 6); build script, assets, `audio.ts` wiring + tests (Task 7); visual and listening acceptance (Task 8). The spec's `insects.setPalette(crop)` is unnecessary — the atlas is already built per marked player's crop from `GEMS`; only `mid` is re-derived.
 - Type consistency: `hexToCss/hexToRgba/lightenHex/hexHue` (Task 1) are the names used in Tasks 1–3; `pointsFor` is spelled the same in `RoomCallbacks`, `RoomManagerOpts` and `index.ts`; `formatPoints` lives in its own module and is imported by `nameplate.ts`; the `Voice`/`Note` types and function names in Task 7 match Task 6's exports.
+
+## Amendments after execution (2026-09-05)
+
+The tasks ran as written (subagent-driven, one fix round in Task 4, one fix wave after
+the whole-branch review). The code is the source of truth for these; the task text is
+left as it ran.
+
+- **Task 4 (fix round):** `index.ts` wraps the `getPoints` call in `pointsFor(ws)` in
+  try/catch (`[db] getPoints failed:`), matching the file's other DB callbacks, so a
+  throwing points store cannot abort a join half-way.
+- **Task 6:** `bun-types` became a root devDependency — bun 1.3's isolated linker does
+  not hoist it from `packages/server`, so the brief's tsconfig could not resolve types.
+- **Task 7:** the implementer session could not play audio (`afplay` fails session-wide);
+  the mandatory listening check is owed by the human (files sent to the chat).
+- **Layer level (final review I2):** Global Constraints restated the spec's
+  *"layer peak ≈ 12 dB below the base's RMS-normalised level"* as *"layer RMS 12 dB
+  below the base RMS"*, and the build follows the plan. Measured on the shipped files
+  the ornament peaks land 1.9–3.0 dB below the base's own peak. Decision deferred to
+  the human's listening verdict; a quieter mix is a one-line change in
+  `build-variants.ts` plus `bun run music:build` (deterministic rebuild).
+- **Fix wave (final review):** move-arc ribbon coloured by the local player's identity
+  (`preview.showMove` colour parameter; watcher predictions keep gold); confetti arrival
+  glow follows the burst hue; build script asserts before encoding and reports
+  `spawnSync` errors; `tools/music` tests join the root `test` script; a client test
+  asserts every `LOOP_IDS` MP3 exists; the `./points.js` import is aliased
+  `matchPointsFor`; Goertzel helpers moved to `tools/music/__tests__/spectrum.ts`;
+  README documents the tool.
+- **Left as follow-ups (ledger):** threshold soft clip instead of global `tanh`;
+  nameplate truncation by measured width (a 16-character wide-glyph name plus points
+  can exceed the pill); watcher hover ring colour; `pickHue` hue wrap; `@types/bun` vs
+  `bun-types` flavour.
