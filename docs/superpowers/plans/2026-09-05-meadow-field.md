@@ -1783,4 +1783,16 @@ Send `before-tick1.png` and `after-tick1.png` (and `after-lobby.png`) to the use
 
 ## Baseline
 
-(Filled by Task 1, Step 5 and Task 8, Step 4.)
+Captured 2026-09-05 with the Task 1 harness (Playwright 1.62.1 + pngjs 7, headless Chromium/SwiftShader, viewport 1280×800) against the worktree's `packages/client` on `:5199` with a server already listening on `:3001` (default bot delay; the 90 s wait in `capture.mjs` covered it). First attempt succeeded — `before-tick1.png` showed the HUD (round-dot round tracker, "Round 1", "Opponent has moved") with the wheat character standing on a flat green board, and `before-lobby.png` showed the lobby's crop picker and Play button — so no rerun was needed.
+
+```json
+{"name":"before","frameMs":98}
+```
+```json
+{"file":"before-tick1.png","board":{"mean":0.439,"p10":0.412,"p90":0.466,"spread":0.054},"sky":{"mean":0.258,"p10":0.25,"p90":0.265,"spread":0.015}}
+```
+```json
+{"file":"before-lobby.png","board":{"mean":0.344,"p10":0.222,"p90":0.479,"spread":0.258},"sky":{"mean":0.281,"p10":0.268,"p90":0.292,"spread":0.024}}
+```
+
+Targets for Task 7: board `spread` ≥ 2× baseline (≥ 0.108 on the tick-1 frame); board `mean` within ±10% of baseline (0.395–0.483 on the tick-1 frame); sky `mean` within ±3% (0.250–0.266 on the tick-1 frame); `frameMs` within ±10% (88.2–107.8).
