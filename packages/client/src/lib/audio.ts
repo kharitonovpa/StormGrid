@@ -329,41 +329,56 @@ export function createAudioSystem() {
     return null
   }
 
+  // Bumped on every switchMusic call so a start() deferred behind a slow load can
+  // tell whether it is still the most recent request for the music layer.
+  let musicSwitchSeq = 0
+
   /**
    * Crossfade the music layer to `id`, keeping the playhead — the crop variants
    * share the base loop, so a lobby pick changes the ornaments without a hiccup.
-   * A file that is still downloading re-reads the position when it lands.
+   * The outgoing loop is only faded once the incoming one actually starts (never
+   * on a timer set up front), so a slow download never leaves a silent gap, and
+   * a file that is still downloading re-reads the position when it lands.
    */
   function switchMusic(id: LoopId, duration = 600) {
     if (disposed) return
-    const outgoingId = currentMusic()
-    if (outgoingId === id) return
-    const outgoing = outgoingId ? howls.get(outgoingId)! : null
+    const seq = ++musicSwitchSeq
     const h = howls.get(id)!
     const d = defs.get(id)!
     const target = d.baseVolume * layerGain(d.layer)
+    // Everything else in the music layer: what is audible is the outgoing loop (faded
+    // once the incoming one starts); what is not yet audible is a superseded pending
+    // switch — drop it now rather than let it fade something that never played.
+    const outgoingIds: LoopId[] = []
+    for (const other of [...activeLoops]) {
+      if (other === id || defs.get(other)!.layer !== 'music') continue
+      if (howls.get(other)!.playing()) outgoingIds.push(other as LoopId)
+      else fadeOut(other, duration)
+    }
+    if (outgoingIds.length === 0 && h.playing()) return // already on this variant
     cancelPendingStop(id)
+    activeLoops.add(id)
     const start = () => {
-      // A later switchMusic (or a layer-wide fadeOut, e.g. enterMatch) may have
-      // superseded this id while its file was still downloading — fadeOut's
-      // not-loaded branch deletes it from activeLoops synchronously, but
-      // cannot cancel this already-registered load listener. Without this
-      // check the stale start would replay the loop once its file lands,
-      // orphaned from activeLoops so nothing would ever hush/duck/fade it again.
-      if (disposed || !activeLoops.has(id)) return
-      const position = outgoing && outgoing.playing() ? (outgoing.seek() as number) : 0
+      // A later switchMusic (bumping musicSwitchSeq) or a layer-wide fadeOut (e.g.
+      // enterMatch, which drops id from activeLoops) may have superseded this
+      // attempt while the file was still downloading — fadeOut's not-loaded branch
+      // cannot cancel this already-registered load listener. Without this check a
+      // stale start would replay the loop once its file finally lands, on top of
+      // (or instead of) whatever actually owns the music layer by then.
+      if (disposed || seq !== musicSwitchSeq || !activeLoops.has(id)) return
+      // Read the outgoing loop's position, and only start fading it out, now that
+      // the incoming file has actually arrived — this is what keeps a slow load
+      // from leaving a gap or from racing a fixed-duration fade on its own.
+      const outgoing = outgoingIds.map((x) => howls.get(x)!).find((x) => x.playing())
+      const position = outgoing ? (outgoing.seek() as number) : 0
       h.volume(0)
       h.seek(position)
       h.play()
       h.fade(0, target, duration)
+      for (const other of outgoingIds) fadeOut(other, duration)
     }
-    // Track membership before start() can run — including synchronously, right
-    // below — so its supersession check (and a concurrent switchMusic/fadeOut)
-    // always sees this id as a current member until something truly drops it.
-    activeLoops.add(id)
     if (h.state() === 'loaded') start()
     else { h.once('load', start); h.load() }
-    if (outgoingId) fadeOut(outgoingId, duration)
   }
 
   function enterLobby(character?: CharacterType) {
@@ -375,7 +390,9 @@ export function createAudioSystem() {
     if (lobbyMusicOn) {
       // Already in the lobby: only the crop changed — keep the base running.
       switchMusic(id)
-      preloadLobbyVariants()
+      // The siblings' own download must not compete with the variant the player
+      // is actually waiting for — give it a head start before fetching them.
+      sceneTimers.push(safeTimeout(preloadLobbyVariants, 5000))
       return
     }
     fadeOutLayer('ambient', 1000)
@@ -383,8 +400,8 @@ export function createAudioSystem() {
     sceneTimers.push(safeTimeout(() => {
       fadeIn('lobby-pad', 1200)
       fadeIn(id, 1500)
-      preloadLobbyVariants()
     }, 400))
+    sceneTimers.push(safeTimeout(preloadLobbyVariants, 5000))
   }
 
   function enterMatch(character?: CharacterType) {
