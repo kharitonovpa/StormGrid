@@ -344,16 +344,25 @@ export function createAudioSystem() {
     const target = d.baseVolume * layerGain(d.layer)
     cancelPendingStop(id)
     const start = () => {
-      if (disposed) return
+      // A later switchMusic (or a layer-wide fadeOut, e.g. enterMatch) may have
+      // superseded this id while its file was still downloading — fadeOut's
+      // not-loaded branch deletes it from activeLoops synchronously, but
+      // cannot cancel this already-registered load listener. Without this
+      // check the stale start would replay the loop once its file lands,
+      // orphaned from activeLoops so nothing would ever hush/duck/fade it again.
+      if (disposed || !activeLoops.has(id)) return
       const position = outgoing && outgoing.playing() ? (outgoing.seek() as number) : 0
       h.volume(0)
       h.seek(position)
       h.play()
       h.fade(0, target, duration)
     }
+    // Track membership before start() can run — including synchronously, right
+    // below — so its supersession check (and a concurrent switchMusic/fadeOut)
+    // always sees this id as a current member until something truly drops it.
+    activeLoops.add(id)
     if (h.state() === 'loaded') start()
     else { h.once('load', start); h.load() }
-    activeLoops.add(id)
     if (outgoingId) fadeOut(outgoingId, duration)
   }
 

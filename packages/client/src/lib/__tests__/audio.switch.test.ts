@@ -161,3 +161,40 @@ describe('switchMusic keeps the playhead across a crop switch', () => {
     audio.dispose()
   })
 })
+
+describe('switchMusic drops a target superseded before its file lands', () => {
+  beforeEach(() => { FakeHowl.bySrc.clear() })
+
+  it('does not resurrect a switch target superseded by a later switchMusic', () => {
+    const audio = createAudioSystem()
+    audio.switchMusic('lobby-music')
+    const base = howl('lobby-music')
+    expect(base.state()).toBe('loading')
+
+    // Superseded before the base variant ever finishes loading.
+    audio.switchMusic('lobby-music-rice')
+    const rice = howl('lobby-music-rice')
+
+    base.finishLoad()
+    expect(base.playing()).toBe(false)
+
+    rice.finishLoad()
+    expect(rice.playing()).toBe(true)
+    audio.dispose()
+  })
+
+  it('does not resurrect a lobby switch superseded by enterMatch', async () => {
+    const audio = createAudioSystem()
+    audio.enterLobby()
+    await sleep(450)
+
+    audio.switchMusic('lobby-music-rice')
+    const rice = howl('lobby-music-rice')
+    expect(rice.state()).toBe('loading') // still downloading when the match starts
+
+    audio.enterMatch()
+    rice.finishLoad()
+    expect(rice.playing()).toBe(false)
+    audio.dispose()
+  })
+})
