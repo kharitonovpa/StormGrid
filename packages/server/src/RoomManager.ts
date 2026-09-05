@@ -28,6 +28,8 @@ export type RoomManagerOpts = {
   onStreakChange?: RoomCallbacks['onStreakChange']
   /** Rooms opened or closed — the lobby shows whether anything is watchable. */
   onRoomsChanged?: () => void
+  /** Nameplate points total for a joining human — see RoomCallbacks.pointsFor. */
+  pointsFor?: RoomCallbacks['pointsFor']
 }
 
 export class RoomManager {
@@ -41,6 +43,7 @@ export class RoomManager {
   private onRematchReady?: RoomCallbacks['onRematchReady']
   private onStreakChange?: RoomCallbacks['onStreakChange']
   private onRoomsChanged?: () => void
+  private pointsFor?: RoomCallbacks['pointsFor']
 
   constructor(opts?: RoomManagerOpts) {
     this.gracePeriodMs = opts?.gracePeriodMs
@@ -50,6 +53,7 @@ export class RoomManager {
     this.onRematchReady = opts?.onRematchReady
     this.onStreakChange = opts?.onStreakChange
     this.onRoomsChanged = opts?.onRoomsChanged
+    this.pointsFor = opts?.pointsFor
   }
 
   createRoom(opts?: RoomOpts): Room {
@@ -65,6 +69,7 @@ export class RoomManager {
       onAbandon: this.onAbandon,
       onRematchReady: this.onRematchReady,
       onStreakChange: this.onStreakChange,
+      pointsFor: this.pointsFor,
     }, opts)
     this.rooms.set(id, room)
     this.onRoomsChanged?.()

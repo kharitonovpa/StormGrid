@@ -69,6 +69,10 @@ const roomManager = new RoomManager({
   gracePeriodMs,
   replayStore,
   onRoomsChanged() { broadcastLobbyStatus() },
+  /** Nameplate points — the same total the leaderboard orders by. */
+  pointsFor(ws) {
+    return getPoints(ws.data.analytics?.deviceId ?? null, ws.data.userId)
+  },
   /** A finished PvP pair, offered another match while both are still here. */
   onRematchReady(roomId, a, b, lightningEnabled) {
     matchmaking.openRematch(roomId, a, b, lightningEnabled)

@@ -123,6 +123,8 @@ export type AbandonData = {
 export type RoomCallbacks = {
   onDispose: (id: string) => void
   onAbandon?: (data: AbandonData) => void
+  /** The player's points total for the nameplate — see PlayerInfo.points. */
+  pointsFor?: (ws: ServerWebSocket<WsData>) => number | undefined
   /**
    * A natural PvP ending with both humans still connected — the only case where
    * playing again with the same person is possible. See Room.humanPair.
@@ -321,12 +323,16 @@ export class Room {
     if (ws.data.analytics) {
       this.callbacks.onStreakChange?.(ws.data.analytics, { kind: 'adopt', reported: streak })
     }
-    this.playerInfoCache[pid] = {
+    const info: PlayerInfo = {
       displayName: ws.data.userName ?? randomSurname(),
       flag: ws.data.countryCode ? countryToFlag(ws.data.countryCode) : randomFlag(),
       // Self-reported and purely cosmetic — see PlayerInfo.streak.
       streak: Number.isFinite(streak) && streak > 0 ? Math.floor(streak) : 0,
     }
+    // Cosmetic too; only a known positive total is worth a field on the wire.
+    const points = this.callbacks.pointsFor?.(ws)
+    if (typeof points === 'number' && Number.isFinite(points) && points > 0) info.points = Math.floor(points)
+    this.playerInfoCache[pid] = info
     ws.data.roomId = this.id
     ws.data.playerId = pid
     ws.data.role = 'player'

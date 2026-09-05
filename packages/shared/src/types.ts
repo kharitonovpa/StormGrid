@@ -169,6 +169,12 @@ export type PlayerInfo = {
   flag: string
   /** Length of the badge streak; 0 means no badge. Cosmetic — see badgeFor(). */
   streak: number
+  /**
+   * Total match points when the player sat down — the leaderboard's number,
+   * drawn on the nameplate. Cosmetic; absent for bots, for unknown totals and
+   * for servers that predate it. Not updated during the match.
+   */
+  points?: number
 }
 
 /* ── Stats ── */
