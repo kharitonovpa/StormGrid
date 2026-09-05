@@ -42,9 +42,16 @@ points although the server knows every player's total (`pointsStore.getPoints`).
 
 ### Identity colours (client)
 
-`cropTheme.ts` gains `identity: number` (sRGB hex) per crop — wheat `0xe8c547`, rice
-`0x7bc47f`, corn `0xe8874a`, the colours the lobby cards already use; `LobbyOverlay.vue`
-reads them from `CROP_THEME` instead of its local literals (one source of truth).
+`cropTheme.ts` gains `identity: number` (sRGB hex) per crop, taken from the jewel
+palette the opponent's butterflies already use (`insects.ts` `GEMS[*].mid`): wheat
+topaz `0xf0940f`, rice aquamarine `0x16a8d2`, corn amethyst `0xb23bd6`. These are
+spread around the hue circle and were chosen to read over grass; the lobby cards'
+"natural" colours (gold / jade / amber) are not — jade vanishes on the green field and
+gold sits 20° from amber. Human ruling: the jewel palette becomes the one identity
+everywhere. `LobbyOverlay.vue` reads the card accent/glow from `CROP_THEME` (the cards
+change colour accordingly), and `insects.ts` derives each gem's `mid` from
+`CROP_THEME[crop].identity`, keeping its hand-tuned `deep`/`bright`/`edge`, so the
+butterflies cannot drift from the markers.
 
 - **My markers** (`player.ts`): the ring's rest/hover colour, the arrow and the cell
   highlight take `identity` of the local player's crop; the move-mode ring is the same
