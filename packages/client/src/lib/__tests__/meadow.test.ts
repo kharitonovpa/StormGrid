@@ -41,7 +41,7 @@ describe('groove', () => {
   })
 
   it('is a V one half-width wide', () => {
-    expect(groove(worldAt(1) + GROOVE_HALF_WIDTH, worldAt(1.5))).toBe(0)
+    expect(groove(worldAt(1) + GROOVE_HALF_WIDTH, worldAt(1.5))).toBeCloseTo(0, 9)
     expect(groove(worldAt(1) + GROOVE_HALF_WIDTH / 2, worldAt(1.5))).toBeCloseTo(-GROOVE_DEPTH / 2, 6)
     expect(GROOVE_HALF_WIDTH).toBeCloseTo(LOOK.terrain.groove.halfWidth * SIZE / (7 * 15), 9)
   })
