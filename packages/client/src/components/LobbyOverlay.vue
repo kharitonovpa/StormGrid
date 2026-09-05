@@ -12,6 +12,7 @@ import RetryNotice from './RetryNotice.vue'
 import UserAvatar from './UserAvatar.vue'
 import { t, TAGLINES } from '../lib/i18n'
 import { recentRowSides } from '../lib/recentRow'
+import { CROP_THEME, hexToCss, hexToRgba } from '../lib/cropTheme'
 
 const props = defineProps<{
   phase: string
@@ -90,11 +91,12 @@ const canInvite = platform.canLinkOut() || platform.type === 'discord'
 
 const canWatch = computed(() => canAuth && !!user.value && props.liveMatches > 0)
 
-const characters = computed(() => [
-  { id: 'wheat' as CharacterType, name: t('char.wheat'), color: '#e8c547', glow: 'rgba(232, 197, 71, 0.35)' },
-  { id: 'rice' as CharacterType, name: t('char.rice'), color: '#7bc47f', glow: 'rgba(123, 196, 127, 0.35)' },
-  { id: 'corn' as CharacterType, name: t('char.corn'), color: '#e8874a', glow: 'rgba(232, 135, 74, 0.35)' },
-])
+const characters = computed(() => (['wheat', 'rice', 'corn'] as const).map((id) => ({
+  id: id as CharacterType,
+  name: t(`char.${id}`),
+  color: hexToCss(CROP_THEME[id].identity),
+  glow: hexToRgba(CROP_THEME[id].identity, 0.35),
+})))
 
 const selected = ref<CharacterType>('wheat')
 const replays = ref<ReplaySummary[]>([])

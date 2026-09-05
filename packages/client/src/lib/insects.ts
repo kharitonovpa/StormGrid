@@ -2,12 +2,15 @@ import * as THREE from 'three'
 import { HALF, CELL_SIZE } from './constants'
 import type { CharacterType } from '@wheee/shared'
 import type { TerrainState } from './terrain'
+import { CROP_THEME, hexToCss } from './cropTheme'
 
 /**
  * The opponent is a plant standing on the far face of the slab. Butterflies with
  * gem-cut wings gather over the cell above them — the only hint that anything is
  * down there. Each character draws its own species, so the swarm also tells you
  * who you are facing. Nothing is drawn on the ground and no geometry is touched.
+ * The mid tone is the crop's identity colour (`cropTheme.ts`), the same colour
+ * the marked player sees on their own ring.
  */
 
 const COUNT = 3
@@ -56,13 +59,13 @@ interface Gem {
   tilt: number
 }
 
-const GEMS: Record<CharacterType, Gem> = {
+export const GEMS: Record<CharacterType, Gem> = {
   // Topaz: warm amber, reads instantly against grass.
-  wheat: { deep: '#a8500a', mid: '#f0940f', bright: '#ffd763', edge: '#fff6d0', span: 1, tilt: 0 },
+  wheat: { deep: '#a8500a', mid: hexToCss(CROP_THEME.wheat.identity), bright: '#ffd763', edge: '#fff6d0', span: 1, tilt: 0 },
   // Aquamarine: cold cyan, the strongest contrast of the three.
-  rice: { deep: '#0a5a8c', mid: '#16a8d2', bright: '#86ecf8', edge: '#e2fdff', span: 0.92, tilt: 0.16 },
+  rice: { deep: '#0a5a8c', mid: hexToCss(CROP_THEME.rice.identity), bright: '#86ecf8', edge: '#e2fdff', span: 0.92, tilt: 0.16 },
   // Amethyst: violet through rose.
-  corn: { deep: '#5f1a8a', mid: '#b23bd6', bright: '#f7a6f2', edge: '#ffe6fc', span: 1.08, tilt: -0.14 },
+  corn: { deep: '#5f1a8a', mid: hexToCss(CROP_THEME.corn.identity), bright: '#f7a6f2', edge: '#ffe6fc', span: 1.08, tilt: -0.14 },
 }
 
 function mixHex(a: string, b: string, t: number): string {
