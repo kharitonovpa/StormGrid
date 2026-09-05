@@ -3,6 +3,7 @@ import type { PlayerId, PlayerInfo } from '@wheee/shared'
 import { badgeFor, BADGE_REPLACES_FLAG_FROM } from '@wheee/shared'
 import type { TerrainState } from './terrain'
 import { t } from './i18n'
+import { formatPoints } from './formatPoints'
 
 const CANVAS_SCALE = 3
 const CANVAS_W = 512
@@ -19,6 +20,9 @@ const BG_COLOR = 'rgba(10, 14, 20, 0.55)'
 const BORDER_RADIUS = 18 * CANVAS_SCALE
 const PADDING_X = 22 * CANVAS_SCALE
 const GAP = 10 * CANVAS_SCALE
+
+const POINTS_FONT = SUFFIX_FONT
+const POINTS_COLOR = 'rgba(255, 255, 255, 0.72)'
 
 const COLORS: Record<PlayerId, { text: string; glow: string }> = {
   A: { text: 'rgba(200, 225, 210, 0.92)', glow: 'rgba(74, 222, 128, 0.35)' },
@@ -48,6 +52,7 @@ function renderPlate(
   flag: string,
   pid: PlayerId,
   badgeText: string,
+  pointsText: string,
 ): void {
   const ctx = canvas.getContext('2d')!
   const w = canvas.width
@@ -77,10 +82,17 @@ function renderPlate(
     badgeW = ctx.measureText(badgeText).width
   }
 
+  let pointsW = 0
+  if (pointsText) {
+    ctx.font = POINTS_FONT
+    pointsW = ctx.measureText(pointsText).width
+  }
+
   const contentW = nameW
     + (suffix ? SUFFIX_GAP + suffixW : 0)
     + (flag ? GAP + flagW : 0)
     + (badgeText ? GAP + badgeW : 0)
+    + (pointsText ? GAP + pointsW : 0)
   const maxPillW = w * 0.92
   const pillW = Math.min(contentW + PADDING_X * 2, maxPillW)
   const pillH = h * 0.72
@@ -135,6 +147,15 @@ function renderPlate(
   if (badgeText) {
     ctx.font = FLAG_FONT
     ctx.fillText(badgeText, cursor + GAP, textY + 2 * CANVAS_SCALE)
+    cursor += GAP + badgeW
+  }
+
+  // Points sit last — after the flag, or after the badge once it has replaced
+  // the flag — quieter than the name so the plate still reads name-first.
+  if (pointsText) {
+    ctx.font = POINTS_FONT
+    ctx.fillStyle = POINTS_COLOR
+    ctx.fillText(pointsText, cursor + GAP, textY + 1 * CANVAS_SCALE)
   }
 }
 
@@ -212,7 +233,7 @@ export function createNameplateSystem(
     const emoji = badgeFor(plate.info.streak ?? 0)
     const badgeText = emoji ? `${emoji}${plate.info.streak}` : ''
     const showFlag = !badgeText || (plate.info.streak ?? 0) < BADGE_REPLACES_FLAG_FROM
-    renderPlate(plate.canvas, plate.info.displayName, suffix, showFlag ? plate.info.flag : '', pid, badgeText)
+    renderPlate(plate.canvas, plate.info.displayName, suffix, showFlag ? plate.info.flag : '', pid, badgeText, formatPoints(plate.info.points))
     plate.texture.needsUpdate = true
     plate.hasContent = true
   }
