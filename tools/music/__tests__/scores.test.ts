@@ -5,7 +5,7 @@ const BASE_IDS = ['lobby-music', 'match-music'] as const
 const CROPS = ['rice', 'corn'] as const
 
 describe('ornament scores', () => {
-  it('keep every onset at least a quarter beat away from every base attack', () => {
+  it('keep every onset at least 0.4 beat away from every base attack', () => {
     for (const baseId of BASE_IDS) {
       const base = BASES[baseId]
       for (const crop of CROPS) {
@@ -14,7 +14,8 @@ describe('ornament scores', () => {
             const beat = ((note.beat % base.beats) + base.beats) % base.beats
             for (const attack of base.attacks) {
               const d = Math.min(Math.abs(beat - attack), base.beats - Math.abs(beat - attack))
-              expect(d).toBeGreaterThanOrEqual(0.25)
+              // Floating point: e.g. 24.4 - 24 is 0.3999999999999986, not 0.4.
+              expect(d).toBeGreaterThanOrEqual(0.4 - 1e-9)
             }
           }
         }
@@ -49,6 +50,13 @@ describe('ornament scores', () => {
       expect(part.reverbSend).toBeLessThanOrEqual(1)
       expect(part.delaySend).toBeGreaterThanOrEqual(0)
       expect(part.delaySend).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('keeps every trumpet note inside mutedTrumpet\'s valid range (midi <= 91)', () => {
+    for (const baseId of BASE_IDS) for (const crop of CROPS) for (const part of PARTS[baseId][crop]) {
+      if (part.voice !== 'trumpet') continue
+      for (const note of part.notes) expect(note.midi).toBeLessThanOrEqual(91)
     }
   })
 

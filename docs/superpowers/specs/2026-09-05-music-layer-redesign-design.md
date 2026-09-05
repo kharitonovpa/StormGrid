@@ -58,15 +58,23 @@ beat 38-40: B4 B4 B4
 beat    41: D5
 ```
 
-Match — A minor, 66.7 BPM, 28 beats of 0.900 s:
+Match — A minor, 100 BPM (the same pulse as the lobby), 42 beats of 0.600 s:
 
 ```
-beat   0: A3            beat  1-2: E4 (A3, G4)     beat 3-4: C4
-beat 5-7: A3 ringing    ← gap A                     beat   8: E4
-beat 9-10: G4 (E4)      beat 11-13: A4 ringing      ← gap B
-beat 14-15: D4          beat 16-17: C4
-beat 18-21: A3 / C4 ringing ← gap C                 beat 22-23: E4
-beat 24-25: G4          beat 26-27: A3
+beat   0-1: A3 A3
+beat   2-4: E4 E4 E4
+beat   5-7: C4 C4 C4
+beat  8-11: A3 ringing                          ← gap A: beats 9.5–11.5
+beat 12-13: E4 E4
+beat 14-16: G4 G4 G4
+beat 17-20: A4 ringing                          ← gap B: beats 17.5–21
+beat 21-23: D4 D4 D4
+beat 24-26: C4 C4 C4
+beat 27-30: A3 ringing                          ← gap C: beats 28.5–30.5
+beat 31-33: C4 C4 C4
+beat 34-36: E4 E4 E4
+beat 37-39: G4 G4 G4
+beat 40-41: A3 A3
 ```
 
 Rules derived from this: ornaments live in the gaps, start 0.25–0.5 beat after the
@@ -93,17 +101,17 @@ E G A B D; A minor pentatonic A C D E G), and never coincide with a base attack.
     vibrato that starts after 0.4 s (4.5 Hz, ±12 cents), breath noise band-passed at the
     fundamental (Q 12) at −20 dB, attack 0.35 s, release 1.2 s.
   - **Distant muted trumpet** (`mutedTrumpet`): band-limited pulse (harmonics up to
-    4 kHz), two formant band-passes (900 Hz and 1.8 kHz, Q 4) summed, one-pole low-pass
-    at 4 kHz, vibrato 5 Hz ±10 cents from 0.5 s, attack 0.12 s, release 0.6 s. Always
-    rendered at low level with a long reverb send.
+    4 kHz), two formant band-passes (900 Hz and 1.8 kHz, Q 4) summed, two one-pole
+    low-passes in series at 4 kHz (12 dB/oct roof), vibrato 5 Hz ±10 cents from 0.5 s,
+    attack 0.12 s, release 0.6 s. Always rendered at low level with a long reverb send.
 - `fx.ts`
   - **Reverb**: Freeverb topology per channel — 8 parallel comb filters with low-pass
     damping in the feedback, 4 series all-passes; right channel delays offset by 23
-    samples for decorrelation. Parameters: room size → RT60 4–6 s, damping 0.35,
+    samples for decorrelation. Parameters: room size → RT60 4–6 s, damping 0.3,
     pre-delay 25 ms, wet/dry per instrument. Verified by a test that measures the
     impulse response's RT60 within ±25 % of the target.
-  - **Ping-pong delay**: dotted-eighth (450 ms lobby, 675 ms match), feedback 0.35,
-    low-pass 3 kHz in the loop, alternating L/R.
+  - **Ping-pong delay**: dotted-eighth: 450 ms for both loops (both run at the same
+    100 BPM pulse), feedback 0.35, low-pass 3 kHz in the loop, alternating L/R.
   - **Widener**: Haas 12 ms on the wet path only (dry stays centred so mono playback is
     unaffected).
   - **Threshold soft clip**: identity below 0.85, tanh-shaped above; replaces the global
@@ -120,8 +128,8 @@ Rice (koto + shakuhachi):
   → soft, velocities 0.8→0.45; gap B (19.5–22.5) around the held G: `G5 E5 D5 B4`;
   gap C (33.5–35.5) three notes `E5 D5 B4`; shakuhachi one long `E5` from beat 24.4 to
   29 (over the E5–B4 section) at low level with slow vibrato.
-- Match: gap A (5.4–7.5) koto `A4 C5 D5 E5` ascending, gap C (18.4–21.5) `E5 D5 C5 A4`
-  descending; shakuhachi `E5` beats 11.3–14.
+- Match: gap A (9.5–11.5) koto `A4 C5 D5 E5` rising over the held A3, gap C (28.5–30.5)
+  `E5 D5 C5 A4` falling back onto the A; shakuhachi `E5` beats 17.5–21.
 
 Corn (nylon + distant trumpet):
 
@@ -129,7 +137,7 @@ Corn (nylon + distant trumpet):
   `G3 D4 G4 B4`, gap C `E3 B3 E4`; trumpet dyad `B4+D5` beats 12.4–13.8 then `E5+G5`
   beats 14.4–16, once per loop, at −20 dB with 60 % reverb.
 - Match: gap A nylon `A2 E3 A3 C4`, gap C `A2 E3 A3 C4 E4`; trumpet dyad `C5+E5` beats
-  11.3–13 at −22 dB.
+  17.5–20.5 at −22 dB.
 
 Every note carries a velocity; phrases decay; koto is panned 0.3 right, shakuhachi 0.3
 left, nylon 0.35 left, trumpet 0.4 right, reverb returns full width.
@@ -140,7 +148,11 @@ Layer RMS −14 dB relative to the base's RMS (with reverb tails included in the
 threshold soft clip, output RMS within ±0.5 dB of the base, peak < 0.95. Stereo: the
 base is untouched; the layer is stereo. Encoded 128 kbps like today, same length, tails
 wrapped to the loop start (as today). The build asserts all of this before writing any
-file.
+file. The whole-layer RMS target is one number shared by every part in a loop, so a
+part's local prominence in its own gap still varies with how loud the rest of the layer
+is elsewhere (e.g. a long-ringing breath tone can outweigh short plucked phrases) —
+per-part `level` and the per-loop `LAYER_DB` are the knobs for that balance, tuned in
+the listening rounds against the human's ear, not fixed by this spec.
 
 ### 4. Client: seamless crop switch in the lobby
 

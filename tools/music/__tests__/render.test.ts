@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'bun:test'
 import { SR, rms } from '../synth.ts'
 import { renderLayer } from '../render.ts'
+import { BASES } from '../scores.ts'
+import { spectralPeak } from './spectrum.ts'
 
 describe('renderLayer', () => {
   it('renders a stereo layer of exactly the loop length, deterministically, with tails wrapped', () => {
@@ -21,7 +23,7 @@ describe('renderLayer', () => {
 
   it('renders every variant without NaN and with finite peaks', () => {
     for (const baseId of ['lobby-music', 'match-music'] as const) {
-      const beats = baseId === 'lobby-music' ? 42 : 28
+      const beats = BASES[baseId].beats
       const loopSamples = Math.round(25.2 * SR)
       for (const crop of ['rice', 'corn'] as const) {
         const [l, r] = renderLayer(baseId, crop, loopSamples, 25.2 / beats, 1)
@@ -33,5 +35,19 @@ describe('renderLayer', () => {
         expect(peak).toBeGreaterThan(0)
       }
     }
+  })
+
+  it('is in tune end to end: the koto\'s first gap-A note in lobby/rice measures B4', () => {
+    const loopSamples = Math.round(25.2 * SR)
+    const [l, r] = renderLayer('lobby-music', 'rice', loopSamples, 0.6, 20260905)
+    const mid = new Float32Array(loopSamples)
+    for (let i = 0; i < loopSamples; i++) mid[i] = (l[i] + r[i]) / 2
+    const start = Math.round(8.5 * 0.6 * SR)
+    const window = mid.subarray(start, start + Math.round(0.45 * SR))
+    const target = 493.88 // B4, koto's { beat: 8.5, midi: 71 } in LOBBY_RICE
+    const peak = spectralPeak(window, target * 0.99, target * 1.01, target * 1e-4)
+    // Wide tolerance: the window also carries reverb tail and delay bleed from
+    // neighbouring notes, not just the clean fundamental the voice tests pin.
+    expect(Math.abs(1200 * Math.log2(peak / target))).toBeLessThan(3)
   })
 })

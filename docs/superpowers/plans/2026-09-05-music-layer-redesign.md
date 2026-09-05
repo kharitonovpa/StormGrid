@@ -13,11 +13,11 @@ Spec: `docs/superpowers/specs/2026-09-05-music-layer-redesign-design.md`.
 ## Global Constraints
 
 - Sample rate `SR = 44100`. All DSP is pure functions on `Float32Array`; only `build-variants.ts` touches ffmpeg or the filesystem. Builds are deterministic (seeded PRNG, `SEED = 20260905`).
-- Base loops are untouched: `packages/client/public/sounds/lobby-music.mp3` (E minor, 42 beats, 0.600 s/beat) and `match-music.mp3` (A minor, 28 beats, 0.900 s/beat), both 25.2 s, exactly A440.
+- Base loops are untouched: `packages/client/public/sounds/lobby-music.mp3` (E minor, 42 beats, 0.600 s/beat) and `match-music.mp3` (A minor, 42 beats, 0.600 s/beat — the same 100 BPM pulse as the lobby, confirmed by onset detection), both 25.2 s, exactly A440. Match's attacks: `[0, 2, 5, 8, 12, 14, 17, 21, 24, 27, 31, 34, 37, 40]`.
 - Pitch: every synthesised note within **1 cent** of its equal-tempered frequency (tests at 220, 440, 659.26, 783.99 Hz).
 - Scales: lobby ornaments use pitch classes {E, G, A, B, D} = MIDI mod 12 ∈ {4, 7, 9, 11, 2}; match ornaments use {A, C, D, E, G} = {9, 0, 2, 4, 7}.
 - Placement: every ornament onset is ≥ 0.25 beat away from every base attack in `BASE_ATTACKS` (test); the scores below use ≥ 0.4.
-- Reverb: Freeverb topology, RT60 target 5 s (lobby) and 6 s (match), pre-delay 25 ms, damping 0.3; right channel comb/allpass delays +23 samples. Ping-pong delay = dotted eighth (0.75 beat: 450 ms lobby, 675 ms match), feedback 0.35, low-pass 3 kHz in the loop. Haas 12 ms on wet paths only.
+- Reverb: Freeverb topology, RT60 target 5 s (lobby) and 6 s (match), pre-delay 25 ms, damping 0.3; right channel comb/allpass delays +23 samples. Ping-pong delay = dotted eighth (0.75 beat: 450 ms for both loops, since both run at 100 BPM), feedback 0.35, low-pass 3 kHz in the loop. Haas 12 ms on wet paths only.
 - Mix: layer (with tails) at RMS −14 dB relative to the base's mono RMS; output RMS within ±0.5 dB of the base; peak < 0.95 after a threshold soft clip (identity below 0.85); output length equals the base's sample count; tails wrap to the loop start. Encode 128 kbps MP3 with `libmp3lame`.
 - Assets are written only after every assertion passes; `MUSIC_OUT=<dir>` redirects output; `MUSIC_ONLY=<id>` (e.g. `lobby-music-rice`) builds one file.
 - Client: `switchMusic(id, duration = 600)` keeps the playhead (`outgoing.seek()`), crossfades, stops the outgoing loop after the fade; a still-loading incoming file re-reads the position on its `load` event. `enterLobby` uses it when lobby music is already playing; otherwise today's fade-out/fade-in. Entering the lobby `load()`s the other lobby variants. No other change to volumes, layers or fades.
@@ -710,11 +710,13 @@ export interface BaseInfo {
 
 // Lobby (E minor, 100 BPM): D5 B4 | E4 G4 G4 G4 | E4 (rings to beat 11) | B4 B4 | D5 ×3 |
 // G4 (rings to beat 23) | E5 ×3 | B4 ×3 | E4 (rings to 35) | G4 G4 | B4 ×3 | D5.
-// Match (A minor, 66.7 BPM): A3 | E4 | E4 | C4 C4 | A3 (rings to 7) | E4 | G4 G4 | A4 (rings
-// to 13) | D4 D4 | C4 C4 | A3 (C4 joins at 20, rings to 21) | E4 E4 | G4 G4 | A3 A3.
+// Match (A minor, 100 BPM — the same pulse as the lobby, 42 beats): A3 A3 | E4 (rings to 4) |
+// C4 (to 7) | A3 (rings to 11) | E4 E4 | G4 (to 16) | A4 (rings to 20) | D4 (to 23) | C4 (to 26) |
+// A3 (rings to 30) | C4 (to 33) | E4 (to 36) | G4 (to 39) | A3 A3. Gaps: A 9.5–11.5, B 17.5–21,
+// C 28.5–30.5.
 export const BASES: Record<BaseId, BaseInfo> = {
   'lobby-music': { id: 'lobby-music', beats: 42, attacks: [0, 2, 3, 6, 12, 14, 17, 24, 27, 30, 36, 38, 41], scale: [4, 7, 9, 11, 2] },
-  'match-music': { id: 'match-music', beats: 28, attacks: [0, 1, 3, 5, 8, 9, 11, 14, 16, 18, 20, 22, 24, 26], scale: [9, 0, 2, 4, 7] },
+  'match-music': { id: 'match-music', beats: 42, attacks: [0, 2, 5, 8, 12, 14, 17, 21, 24, 27, 31, 34, 37, 40], scale: [9, 0, 2, 4, 7] },
 }
 
 export function isInScale(midi: number, scale: number[]): boolean {
@@ -778,13 +780,15 @@ const MATCH_RICE: Part[] = [
   {
     voice: 'koto', pan: 0.3, level: 1, reverbSend: 0.5, delaySend: 0.25,
     notes: [
-      { beat: 5.4, midi: 69, dur: 1, gain: 0.75 }, { beat: 5.9, midi: 72, dur: 1, gain: 0.7 }, { beat: 6.4, midi: 74, dur: 1, gain: 0.65 }, { beat: 6.9, midi: 76, dur: 1.5, gain: 0.6 },
-      { beat: 18.4, midi: 76, dur: 1, gain: 0.7 }, { beat: 18.8, midi: 74, dur: 1, gain: 0.6 }, { beat: 19.2, midi: 72, dur: 1, gain: 0.5 }, { beat: 19.6, midi: 69, dur: 1.5, gain: 0.45 },
+      // gap A — rising over the held A3
+      { beat: 9.5, midi: 69, dur: 1, gain: 0.75 }, { beat: 10, midi: 72, dur: 1, gain: 0.7 }, { beat: 10.5, midi: 74, dur: 1, gain: 0.65 }, { beat: 11, midi: 76, dur: 1, gain: 0.6 },
+      // gap C — falling back onto the A
+      { beat: 28.5, midi: 76, dur: 1, gain: 0.7 }, { beat: 29, midi: 74, dur: 1, gain: 0.6 }, { beat: 29.5, midi: 72, dur: 1, gain: 0.5 }, { beat: 30, midi: 69, dur: 1, gain: 0.45 },
     ],
   },
   {
     voice: 'shakuhachi', pan: -0.3, level: 0.6, reverbSend: 0.65, delaySend: 0,
-    notes: [{ beat: 11.4, midi: 76, dur: 2.6, gain: 1 }],
+    notes: [{ beat: 17.5, midi: 76, dur: 3.5, gain: 1 }],
   },
 ]
 
@@ -792,13 +796,13 @@ const MATCH_CORN: Part[] = [
   {
     voice: 'nylon', pan: -0.35, level: 1, reverbSend: 0.45, delaySend: 0.15,
     notes: [
-      { beat: 5.4, midi: 45, dur: 2.5, gain: 0.8 }, { beat: 6, midi: 52, dur: 2.5, gain: 0.7 }, { beat: 6.6, midi: 57, dur: 2.5, gain: 0.65 }, { beat: 7.2, midi: 60, dur: 2.5, gain: 0.55 },
-      { beat: 18.4, midi: 45, dur: 2.5, gain: 0.75 }, { beat: 18.9, midi: 52, dur: 2.5, gain: 0.65 }, { beat: 19.4, midi: 57, dur: 2.5, gain: 0.6 }, { beat: 20.4, midi: 60, dur: 2.5, gain: 0.5 }, { beat: 20.9, midi: 64, dur: 2.5, gain: 0.45 },
+      { beat: 9.5, midi: 45, dur: 2.5, gain: 0.8 }, { beat: 10.1, midi: 52, dur: 2.5, gain: 0.7 }, { beat: 10.7, midi: 57, dur: 2.5, gain: 0.65 }, { beat: 11.3, midi: 60, dur: 2.5, gain: 0.55 },
+      { beat: 28.5, midi: 45, dur: 2.5, gain: 0.75 }, { beat: 29, midi: 52, dur: 2.5, gain: 0.65 }, { beat: 29.5, midi: 57, dur: 2.5, gain: 0.6 }, { beat: 30, midi: 60, dur: 2.5, gain: 0.5 }, { beat: 30.5, midi: 64, dur: 2.5, gain: 0.45 },
     ],
   },
   {
     voice: 'trumpet', pan: 0.4, level: 0.3, reverbSend: 0.65, delaySend: 0.2,
-    notes: [{ beat: 11.4, midi: 72, dur: 1.6, gain: 1 }, { beat: 11.4, midi: 76, dur: 1.6, gain: 0.7 }],
+    notes: [{ beat: 17.5, midi: 72, dur: 3, gain: 1 }, { beat: 17.5, midi: 76, dur: 3, gain: 0.7 }],
   },
 ]
 
@@ -1265,4 +1269,4 @@ Not a subagent task. After Task 4 the controller sends the demo `lobby-music-ric
 
 - Spec coverage: engine (Tasks 1–2), writing (Task 3), mix and build (Task 4), client crossfade + preload (Task 5), process/acceptance (Task 6). The spec's "layer at −14 dB RMS with tails" → `LAYER_DB = -14` on the layer's mid RMS after rendering (tails included) ✓; "peak < 0.95, clip above 0.85" ✓; "output ±0.5 dB" ✓; "assert before writing" ✓ (`encode` last).
 - Type consistency: `Stereo` from `fx.ts` is used by `render.ts`; `Part`/`PARTS`/`BASES`/`BaseId`/`Crop` from `scores.ts`; `modalString(freq, seconds, preset, rand)`, `breathTone(freq, seconds, rand)`, `mutedTrumpet(freq, seconds)` match between Task 2 and `render.ts`; `renderLayer(baseId, crop, loopSamples, beatSeconds, seed)` matches its test and the build script; `switchMusic(id, duration)` matches the tests.
-- Placement check by hand: lobby onsets 8.5–11 (attacks 6, 12 → ≥ 1), 19.5–22 (17, 24 → ≥ 2), 33.5–35 (30, 36 → 1), 24.4 (24 → 0.4), 12.4/14.4 (12/14 → 0.4); match onsets 5.4–6.9 (5, 8 → 0.4), 11.4 (11 → 0.4), 18.4–19.6 (18, 20 → 0.4), 20.4/20.9 (20, 22 → 0.4). Scale check: all pitch classes listed in Global Constraints.
+- Placement check by hand: lobby onsets 8.5–11 (attacks 6, 12 → ≥ 1), 19.5–22 (17, 24 → ≥ 2), 33.5–35 (30, 36 → 1), 24.4 (24 → 0.4), 12.4/14.4 (12/14 → 0.4); match onsets 9.5/10/10.5/11 (8, 12 → ≥ 1), 17.5 (17 → 0.5), 28.5–30.5 (27, 31 → ≥ 0.5). Scale check: all pitch classes listed in Global Constraints.
