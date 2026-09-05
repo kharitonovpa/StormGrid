@@ -31,8 +31,17 @@ export interface SchedulerOptions {
 }
 
 export const MAX_GUSTS = 3
-/** A gust is born this far upwind of the centre and dies the same distance past it. */
-export const SPAWN_EDGE = -1.4 * HALF
+/** Half the board's diagonal: the furthest a corner can sit from the centre along any bearing. */
+const FAR_CORNER = Math.SQRT2 * HALF
+/**
+ * Where a gust of this width is born, along its own direction. 3σ upwind of the
+ * far corner — the mirror of the retirement rule — so the head's Gaussian
+ * (exp(-d²/w²) = e⁻⁹) is invisible on the upwind edge at birth whatever azimuth
+ * a broken vane picks. A fixed edge would pop a wide gust in at full strength.
+ */
+export function spawnEdge(width: number): number { return -(FAR_CORNER + 3 * width) }
+/** Where it is dropped: 3σ plus its tail past the far corner, the tail being the part still behind. */
+function retireEdge(width: number, tail: number): number { return FAR_CORNER + 3 * width + tail }
 const LIVE_WEIGHT = 0.05
 const INTERVAL_FAINT = 6      // seconds between gusts at weight → 0
 const INTERVAL_FULL = 1.8     // at weight 1
@@ -52,7 +61,7 @@ export function createGustScheduler(opts: SchedulerOptions) {
 
   function spawn(azimuth: number, strength: number, width: number, speed: number) {
     const [dirX, dirZ] = gustDirection(azimuth)
-    live.push({ dirX, dirZ, pos: SPAWN_EDGE, strength, width, tail: T.tail, speed })
+    live.push({ dirX, dirZ, pos: spawnEdge(width), strength, width, tail: T.tail, speed })
   }
 
   return {
@@ -60,8 +69,10 @@ export function createGustScheduler(opts: SchedulerOptions) {
     sweep(dir: WindDir) {
       if (reduced) return
       live.length = 0
-      const crossing = 2 * -SPAWN_EDGE
-      spawn(DIR_AZIMUTH[dir], 1, T.width * 2, crossing / (sweepMs / 1000))
+      const width = T.width * 2
+      // its own crossing — birth to retirement, both widened with it — in the front's own time
+      const crossing = retireEdge(width, T.tail) - spawnEdge(width)
+      spawn(DIR_AZIMUTH[dir], 1, width, crossing / (sweepMs / 1000))
       nextIn = interval(1)
     },
     update(dt: number) {
@@ -70,7 +81,7 @@ export function createGustScheduler(opts: SchedulerOptions) {
         const g = live[i]
         g.pos += g.speed * dt
         // 3σ past the far corner: the Gaussian has to be invisible before the gust is dropped
-        if (g.pos > -SPAWN_EDGE + 3 * g.width + g.tail) live.splice(i, 1)
+        if (g.pos > retireEdge(g.width, g.tail)) live.splice(i, 1)
       }
       if (reduced) return
       // pick the live masses (in slot order, so two candidates alternate)
@@ -79,7 +90,12 @@ export function createGustScheduler(opts: SchedulerOptions) {
       for (const m of masses) if (m.weight > LIVE_WEIGHT) { liveCount++; maxWeight = Math.max(maxWeight, m.weight) }
       if (liveCount === 0) return
       nextIn -= dt
-      if (nextIn > 0 || live.length >= MAX_GUSTS) return
+      // Never bank time while every slot is taken. The spawn below fires on
+      // `nextIn <= 0` either way, so this changes no cadence today; it keeps
+      // nextIn an honest countdown, so a capped stretch can never hand a later,
+      // fainter interval a head start it did not earn.
+      if (live.length >= MAX_GUSTS) { nextIn = Math.max(nextIn, 0); return }
+      if (nextIn > 0) return
       let k = turn % liveCount
       turn++
       for (const m of masses) {
@@ -139,6 +155,7 @@ export function createSheenSystem(material: THREE.MeshStandardMaterial, schedule
     uSheenColor: { value: new THREE.Color(T.color) },
   }
   const previous = material.onBeforeCompile
+  const previousCacheKey = material.customProgramCacheKey
   material.onBeforeCompile = (shader, renderer) => {
     previous?.(shader, renderer)
     Object.assign(shader.uniforms, uniforms)
@@ -173,6 +190,10 @@ export function createSheenSystem(material: THREE.MeshStandardMaterial, schedule
     },
     dispose() {
       material.onBeforeCompile = previous ?? (() => {})
+      // The cache key has to go back with it: left pinned at 'meadow-sheen',
+      // needsUpdate resolves the same cached patched program and dispose draws
+      // the gusts on forever.
+      material.customProgramCacheKey = previousCacheKey
       material.needsUpdate = true
     },
   }

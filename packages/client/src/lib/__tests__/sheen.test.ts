@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test'
 import * as THREE from 'three'
 import type { Gust } from '../sheen.js'
-import { createGustScheduler, createSheenSystem, MAX_GUSTS, SPAWN_EDGE } from '../sheen.js'
+import { createGustScheduler, createSheenSystem, MAX_GUSTS, spawnEdge } from '../sheen.js'
 import { DIR_AZIMUTH, gustDirection } from '../bearing.js'
 import { LOOK } from '../look.js'
 import { HALF } from '../constants.js'
@@ -50,10 +50,30 @@ describe('gust scheduler', () => {
     const [dx, dz] = gustDirection(DIR_AZIMUTH.E)
     expect(g.dirX).toBeCloseTo(dx, 6)
     expect(g.dirZ).toBeCloseTo(dz, 6)
-    expect(g.pos).toBe(SPAWN_EDGE)   // born this frame: update() advances first, then spawns
+    expect(g.pos).toBe(spawnEdge(LOOK.terrain.sheen.width))   // born this frame: update() advances first, then spawns
     expect(g.speed).toBe(LOOK.terrain.sheen.speed)
     expect(g.width).toBe(LOOK.terrain.sheen.width)
     expect(g.tail).toBe(LOOK.terrain.sheen.tail)
+  })
+
+  it('is invisible on the upwind board edge at birth', () => {
+    // The head's Gaussian at the most upwind board corner, for the worst azimuth
+    // a broken vane can pick (45°, where the corner sits a full half-diagonal
+    // upwind). Anything that reads here is a gust popping in at full strength.
+    const leadAtCorner = (azimuth: number, width: number) => {
+      const [dx, dz] = gustDirection(azimuth)
+      const pos = spawnEdge(width)
+      const d = (-HALF * Math.sign(dx)) * dx + (-HALF * Math.sign(dz)) * dz - pos
+      return Math.exp(-(d * d) / (width * width))
+    }
+    const T = LOOK.terrain.sheen
+    expect(leadAtCorner(Math.PI / 4, T.width)).toBeLessThan(0.02)
+    expect(leadAtCorner(Math.PI / 4, T.width * 2)).toBeLessThan(0.02)   // the sweep gust
+  })
+
+  it('births a gust 3σ upwind of the far corner, so the edge scales with its width', () => {
+    expect(spawnEdge(5)).toBeCloseTo(-(Math.SQRT2 * HALF + 15), 6)
+    expect(spawnEdge(10)).toBeCloseTo(-(Math.SQRT2 * HALF + 30), 6)
   })
 
   it('scales strength with the mass weight', () => {
@@ -98,7 +118,8 @@ describe('gust scheduler', () => {
     s.follow([{ azimuth: 0, weight: 1 }])
     s.update(0.01)
     s.follow([])                      // no more spawns
-    run(s, (2 * 1.4 * HALF + T.width + T.tail) / T.speed + 0.3)
+    // birth (−(√2·HALF + 3w)) → one width past the far corner (√2·HALF + w)
+    run(s, (2 * Math.SQRT2 * HALF + 4 * T.width + T.tail) / T.speed + 0.3)
     expect(s.gusts()).toHaveLength(1)
   })
 
@@ -107,7 +128,9 @@ describe('gust scheduler', () => {
     s.follow([{ azimuth: 0, weight: 1 }])
     s.update(0.01)
     s.follow([])                      // no more spawns
-    run(s, (2 * 1.4 * HALF + 2 * LOOK.terrain.sheen.width) / LOOK.terrain.sheen.speed + 1)
+    const T = LOOK.terrain.sheen
+    // the whole crossing: birth to 3σ + tail past the far corner
+    run(s, (2 * Math.SQRT2 * HALF + 6 * T.width + T.tail) / T.speed + 1)
     expect(s.gusts()).toHaveLength(0)
   })
 
@@ -121,8 +144,33 @@ describe('gust scheduler', () => {
     expect(gs[0].dirX).toBeCloseTo(dx, 6)
     expect(gs[0].dirZ).toBeCloseTo(dz, 6)
     expect(gs[0].strength).toBe(1)
-    expect(gs[0].width).toBe(LOOK.terrain.sheen.width * 2)
-    expect(gs[0].speed).toBeCloseTo((2 * 1.4 * HALF) / 2, 6)   // crossing distance / sweep seconds
+    const W = LOOK.terrain.sheen.width * 2
+    expect(gs[0].width).toBe(W)
+    // its own crossing — birth to retirement, both scaled by its double width — over the sweep's seconds
+    expect(gs[0].speed).toBeCloseTo((2 * Math.SQRT2 * HALF + 6 * W + LOOK.terrain.sheen.tail) / 2, 6)
+  })
+
+  it('does not bank the spawn timer while it sits at the cap', () => {
+    // random → 0 draws the shortest interval (1.8 s × 0.7 at weight 1), under
+    // the rate the three slots free at, so the pool really is held at MAX_GUSTS
+    // and the timer runs on with nowhere to spawn. Drop the masses to a faint
+    // weight afterwards and the faint interval (6 s × 0.7 = 3.9 s at weight
+    // 0.1) has to be honoured from there on: a timer that banked the capped
+    // seconds would rattle gusts out back to back instead.
+    const s = mk({ random: () => 0 })
+    s.follow([{ azimuth: 0, weight: 1 }])
+    run(s, 20)
+    expect(s.gusts()).toHaveLength(MAX_GUSTS)
+    s.follow([{ azimuth: 0, weight: 0.1 }])
+    const at: number[] = []
+    const seen = new Set(s.gusts())
+    const dt = 0.05
+    for (let t = 0; t < 20; t += dt) {
+      s.update(dt)
+      for (const g of s.gusts()) if (!seen.has(g)) { seen.add(g); at.push(t) }
+    }
+    expect(at.length).toBeGreaterThan(2)
+    for (let i = 1; i < at.length; i++) expect(at[i] - at[i - 1]).toBeGreaterThan(3.8)
   })
 
   it('spawns nothing under reduced motion, sweep included', () => {
@@ -150,6 +198,11 @@ describe('sheen system (material patch)', () => {
     vertexShader,
     fragmentShader,
   })
+  // The injection test feeds the real MeshStandardMaterial sources three ships
+  // with, not a hand-written string holding the anchors: a hand-written stub
+  // would keep passing after three renamed or dropped <begin_vertex> /
+  // <color_fragment>, which is exactly the break this test exists to catch.
+  const standardShader = () => stub(THREE.ShaderLib.standard.vertexShader, THREE.ShaderLib.standard.fragmentShader)
 
   it('installs the patch once and marks the program', () => {
     const { mat } = make()
@@ -159,7 +212,7 @@ describe('sheen system (material patch)', () => {
 
   it('injects the band into a standard shader', () => {
     const { mat } = make()
-    const shader = stub('#include <begin_vertex>\n', '#include <color_fragment>\n')
+    const shader = standardShader()
     mat.onBeforeCompile(shader as never, {} as never)
     expect(shader.vertexShader).toContain(VERT_PAYLOAD)
     expect(shader.fragmentShader).toContain(FRAG_PAYLOAD)
@@ -172,6 +225,17 @@ describe('sheen system (material patch)', () => {
     mat.onBeforeCompile(shader as never, {} as never)
     expect(shader.vertexShader).not.toContain(VERT_PAYLOAD)
     expect(shader.fragmentShader).not.toContain(FRAG_PAYLOAD)
+  })
+
+  it('really lets go of the material on dispose', () => {
+    const { mat, sys } = make()
+    sys.dispose()
+    const shader = standardShader()
+    mat.onBeforeCompile(shader as never, {} as never)
+    expect(shader.fragmentShader).not.toContain(FRAG_PAYLOAD)
+    // The cache key has to go back too: left pinned, needsUpdate resolves the
+    // same cached patched program and the dispose is a no-op on screen.
+    expect(mat.customProgramCacheKey()).not.toContain('sheen')
   })
 
   it('copies live gusts into the uniform array and zeroes the rest', () => {
