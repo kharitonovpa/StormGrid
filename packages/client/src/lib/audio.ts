@@ -7,9 +7,11 @@ import type { CharacterType } from '@wheee/shared'
 // Sound IDs
 // ---------------------------------------------------------------------------
 
-const LOOP_IDS = [
+export const LOOP_IDS = [
   'lobby-pad', 'game-drone',
   'lobby-music', 'match-music',
+  'lobby-music-rice', 'lobby-music-corn',
+  'match-music-rice', 'match-music-corn',
   'wind-loop', 'rain-loop',
   'static-crackle',
 ] as const
@@ -79,13 +81,16 @@ function saveSettings(s: AudioSettings) {
 // ---------------------------------------------------------------------------
 
 /**
- * Per-crop overrides for the two music loops. Empty today — no regional
- * tracks exist yet — so resolveMusicId always falls back to the shared
- * track below. Populating an entry here (plus adding its file under
- * public/sounds and its SoundId case in def()) is the whole integration
- * point for a future crop-specific track.
+ * Per-crop versions of the two music loops: the same loops with a sparse
+ * ornamental layer mixed in offline (tools/music/build-variants.ts) — koto
+ * plucks for rice, nylon strums and a trumpet third for corn. Wheat keeps the
+ * base files. Every Howl is created with preload: false and loaded on its first
+ * fadeIn, so the variants cost nothing until a rice or corn player hears them.
  */
-const MUSIC_TRACKS: Partial<Record<CharacterType, Partial<Record<'lobby-music' | 'match-music', LoopId>>>> = {}
+const MUSIC_TRACKS: Partial<Record<CharacterType, Partial<Record<'lobby-music' | 'match-music', LoopId>>>> = {
+  rice: { 'lobby-music': 'lobby-music-rice', 'match-music': 'match-music-rice' },
+  corn: { 'lobby-music': 'lobby-music-corn', 'match-music': 'match-music-corn' },
+}
 
 export function resolveMusicId(base: 'lobby-music' | 'match-music', character?: CharacterType): LoopId {
   return (character && MUSIC_TRACKS[character]?.[base]) || base
@@ -106,8 +111,12 @@ function def(id: SoundId): SoundDef {
     case 'lobby-pad':    return { src, loop: true,  layer: 'ambient', baseVolume: 0.60 }
     case 'game-drone':   return { src, loop: true,  layer: 'ambient', baseVolume: 0.55 }
     // Music loops (clean plucked notes)
-    case 'lobby-music':  return { src, loop: true,  layer: 'music',   baseVolume: 0.75 }
-    case 'match-music':  return { src, loop: true,  layer: 'music',   baseVolume: 0.70 }
+    case 'lobby-music':
+    case 'lobby-music-rice':
+    case 'lobby-music-corn':  return { src, loop: true,  layer: 'music',   baseVolume: 0.75 }
+    case 'match-music':
+    case 'match-music-rice':
+    case 'match-music-corn':  return { src, loop: true,  layer: 'music',   baseVolume: 0.70 }
     // Weather loops
     case 'wind-loop':       return { src, loop: true,  layer: 'sfx', baseVolume: 0.70 }
     case 'rain-loop':       return { src, loop: true,  layer: 'sfx', baseVolume: 0.60 }
