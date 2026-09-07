@@ -107,7 +107,24 @@ export function useGameSocket() {
 
   function createSocket() {
     armOfflineTimer()
-    const socket = new WebSocket(buildWsUrl())
+    let socket: WebSocket
+    try {
+      socket = new WebSocket(buildWsUrl())
+    } catch (e) {
+      // Refused, not failed. A portal whose CSP `connect-src` leaves this
+      // game's host out makes the constructor itself throw `SecurityError`,
+      // synchronously — there is no socket to hang an `onclose` on. That throw
+      // used to escape into App's setup, Vue abandoned the render, and the
+      // player got a black screen instead of a game. Land it where a socket
+      // that died before opening lands: back off, retry, and let
+      // `offline`/`gaveUp` put "no connection / try again" on screen.
+      console.warn('[ws] connection refused before it opened:', e)
+      connected.value = false
+      ws.value = null
+      stopHeartbeat()
+      if (!intentionalClose) scheduleReconnect()
+      return
+    }
     ws.value = socket
 
     socket.onopen = () => {

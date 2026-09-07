@@ -55,9 +55,62 @@
         document.write('<script src="https://telegram.org/js/telegram-web-app.js"><\/script>');
       }
     </script>
+
+    <!--
+      Boot state (the #app placeholder at the top of <body>). Inline so it
+      paints before the module bundle is even requested: the game used to show
+      a bare black rectangle for however long boot took — and forever when a
+      portal's CSP silently blocked an SDK the adapter was waiting on.
+    -->
+    <style>
+      #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: #0a0e14; color: #fff; font-family: Comfortaa, system-ui, sans-serif; text-align: center; padding: 24px; }
+      #boot .mark { font-size: 28px; letter-spacing: .04em; opacity: .55; animation: boot-pulse 1.6s ease-in-out infinite; }
+      #boot .msg { display: none; font-size: 15px; line-height: 1.5; opacity: .8; max-width: 22em; }
+      #boot .again { display: none; margin: 18px auto 0; padding: 10px 24px; border-radius: 8px; font: inherit; font-size: 14px;
+        border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: #fff; cursor: pointer; }
+      #boot.stalled .mark { display: none; }
+      #boot.stalled .msg, #boot.stalled .again { display: block; }
+      @keyframes boot-pulse { 0%, 100% { opacity: .3 } 50% { opacity: .75 } }
+      @media (prefers-reduced-motion: reduce) { #boot .mark { animation: none } }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <!--
+      Vue's mount() clears #app, so this disappears on its own the moment the
+      app is up; main.ts's own failure card replaces it too. Styles in <head>.
+    -->
+    <div id="app">
+      <div id="boot">
+        <div>
+          <div class="mark">wheee</div>
+          <p class="msg"></p>
+          <button class="again" type="button"></button>
+        </div>
+      </div>
+    </div>
+    <!--
+      Last-resort watchdog: everything below this point depends on the module
+      bundle arriving and running, and neither is guaranteed — a blocked or
+      dropped request for /assets/*.js leaves main.ts's own failure card
+      unreachable. Longer than main.ts's whole boot budget on purpose, so a
+      slow-but-working start is never interrupted; it only ever fires while
+      this element is still the only thing on screen.
+    -->
+    <script>
+      setTimeout(function () {
+        var boot = document.getElementById('boot')
+        if (!boot || boot.classList.contains('stalled')) return
+        var ru = (navigator.language || 'en').slice(0, 2) === 'ru'
+        boot.querySelector('.msg').textContent = ru
+          ? 'Не удалось загрузить игру. Проверь подключение к интернету и попробуй снова.'
+          : 'Failed to load the game. Check your internet connection and try again.'
+        var again = boot.querySelector('.again')
+        again.textContent = ru ? 'Перезагрузить' : 'Reload'
+        again.addEventListener('click', function () { location.reload() })
+        boot.className = 'stalled'
+      }, 25000)
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
