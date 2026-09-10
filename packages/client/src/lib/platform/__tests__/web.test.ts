@@ -92,3 +92,47 @@ describe('WebAdapter.login — failure vs. cancel', () => {
     await expect(pending).resolves.toBeNull()
   })
 })
+
+describe('WebAdapter on itch.io', () => {
+  const saved = process.env.VITE_PLATFORM
+  const originalFetch = globalThis.fetch
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env.VITE_PLATFORM
+    else process.env.VITE_PLATFORM = saved
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: originalFetch })
+  })
+
+  it('does not ask the API for a session the frame can never hold', async () => {
+    process.env.VITE_PLATFORM = 'itch'
+    const adapter = await freshAdapter(() => new FakePopup())
+    let calls = 0
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value: async () => { calls++; return new Response('{"user":null}') },
+    })
+    await adapter.init()
+    expect(calls).toBe(0)
+  })
+
+  it('reports itch as the host so analytics can split its traffic', async () => {
+    process.env.VITE_PLATFORM = 'itch'
+    const adapter = await freshAdapter(() => new FakePopup())
+    expect(adapter.type).toBe('web')
+    expect(adapter.hostId).toBe('itch')
+  })
+
+  it('hides sign-in, which needs a cookie the itch frame cannot keep', async () => {
+    process.env.VITE_PLATFORM = 'itch'
+    const adapter = await freshAdapter(() => new FakePopup())
+    expect(adapter.canAuth()).toBe(false)
+    expect(adapter.canLinkOut()).toBe(true)
+  })
+
+  it('keeps the plain web build unchanged', async () => {
+    delete process.env.VITE_PLATFORM
+    const adapter = await freshAdapter(() => new FakePopup())
+    expect(adapter.hostId).toBeNull()
+    expect(adapter.canAuth()).toBe(true)
+  })
+})

@@ -33,7 +33,7 @@ for arg in "$@"; do
       echo "  --env-only   Only sync .env to Polish VPS"
       echo "  --server     Deploy server on Polish VPS (env sync + git pull + docker compose)"
       echo "  --ru         Deploy static files to Russian VPS"
-      echo "  --archives   Build Yandex + GamePush archives"
+      echo "  --archives   Build Yandex + GamePush + itch.io archives"
       echo ""
       echo "  No flags = do everything in order"
       exit 0
@@ -173,6 +173,17 @@ if $DO_ARCHIVES; then
     STEPS+=("gamepush-zip: OK")
   else
     STEPS+=("gamepush-zip: FAILED")
+    FAILED=1
+  fi
+
+  echo ""
+  echo "═══════════════════════════════════════════════════"
+  echo "  Step 4c: Build itch.io archive"
+  echo "═══════════════════════════════════════════════════"
+  if bash "$SCRIPT_DIR/deploy-itch.sh"; then
+    STEPS+=("itch-zip: OK")
+  else
+    STEPS+=("itch-zip: FAILED")
     FAILED=1
   fi
 fi

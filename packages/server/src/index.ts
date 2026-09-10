@@ -255,12 +255,15 @@ const ALLOWED_ORIGINS = new Set(
 
 const YANDEX_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*yandex\.(ru|com|net)$/
 const GAMEPUSH_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*(gamepush\.com|pikabu\.ru|eponesh\.com)$/
+// itch.io serves HTML5 uploads from its own sandbox domain, e.g. html-classic.itch.zone.
+const ITCH_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*itch\.zone$/
 
 app.use('/api/*', cors({
   origin: (origin) => {
     if (ALLOWED_ORIGINS.has(origin)) return origin
     if (YANDEX_ORIGIN_RE.test(origin)) return origin
     if (GAMEPUSH_ORIGIN_RE.test(origin)) return origin
+    if (ITCH_ORIGIN_RE.test(origin)) return origin
     return null as unknown as string
   },
   credentials: true,

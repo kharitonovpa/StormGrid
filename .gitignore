@@ -25,6 +25,7 @@ deploy/.deploy.env
 # Build artifacts
 wheee-yandex.zip
 wheee-gamepush.zip
+wheee-itch.zip
 
 # Agent tooling — permission lists full of this machine's absolute paths
 .claude/

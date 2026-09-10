@@ -44,6 +44,12 @@ export function buildInviteUrl(code: string, platform: PlatformType): string {
   if (platform === 'telegram') {
     return `${TG_APP_URL}?startapp=${code}`
   }
+  // itch.io runs the game on a sandbox origin that is not a page anyone should
+  // be sent to, and `?join=` on the itch page never reaches the frame. wheee.io
+  // plays on the same servers, so the friend lands in the same match.
+  if (import.meta.env.VITE_PLATFORM === 'itch') {
+    return `https://wheee.io/?join=${code}`
+  }
   // On the web the current origin is the right one: ru.wheee.io players should
   // hand out ru.wheee.io links.
   return `${location.origin}${location.pathname}?join=${code}`

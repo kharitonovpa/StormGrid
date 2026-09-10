@@ -8,11 +8,20 @@ const authCallbacks = new Set<() => void>()
 
 export default class WebAdapter implements PlatformAdapter {
   readonly type = 'web' as const
-  readonly hostId = null
+  /**
+   * The itch.io archive runs this same adapter. Marking the host keeps its
+   * traffic out of the wheee.io numbers in the analytics platform split.
+   */
+  readonly hostId = import.meta.env.VITE_PLATFORM === 'itch' ? 'itch' : null
   readonly storage = createLocalStorage()
   readonly sound = createLocalSound()
 
-  canAuth(): boolean { return true }
+  /**
+   * Not on itch.io. The session lives in an api.wheee.io cookie, which inside
+   * itch's game frame is a third-party cookie browsers drop, and the OAuth popup
+   * only reports back to wheee.io origins. A guest plays everything but spectating.
+   */
+  canAuth(): boolean { return import.meta.env.VITE_PLATFORM !== 'itch' }
   canShowLeaderboard(): boolean { return true }
   canLinkOut(): boolean { return true }
 
@@ -21,6 +30,7 @@ export default class WebAdapter implements PlatformAdapter {
   onStickyChange = noSticky.onStickyChange
 
   async init(): Promise<void> {
+    if (!this.canAuth()) return
     try {
       const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
       if (res.ok) {
