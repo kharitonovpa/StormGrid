@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { gameTitle, usesCatalogTitle } from './src/lib/gameTitle'
 
 const platform = process.env.VITE_PLATFORM ?? ''
 const GP_PROJECT_ID = process.env.VITE_GP_PROJECT_ID ?? ''
@@ -15,6 +16,26 @@ function stripExternalMeta(html: string): string {
   html = html.replace(/\s*<link rel="preconnect"[^>]*fonts[^>]*\/?>(\s*\n?)?/g, '')
   html = html.replace(/\s*<link[^>]*fonts\.googleapis\.com[^>]*\/?>(\s*\n?)?/g, '')
   return stripHreflang(html)
+}
+
+/**
+ * Yandex Games rule 5.1.3: the title inside the game must match the catalog
+ * entry in every language. index.html is static and English, so the tab
+ * title, the meta titles and the boot splash get the English catalog title
+ * here, and a one-line script swaps in the Russian one for Russian browsers
+ * before the bundle takes over (gameTitle.ts owns the strings). Inline
+ * scripts run under the portals' CSP — see the boot watchdog below it.
+ */
+function applyCatalogTitle(html: string): string {
+  const en = gameTitle('yandex', 'en').full
+  const ru = gameTitle('yandex', 'ru').full
+  html = html.replace(/wheee — PvP Storm Tactics/g, en)
+  html = html.replace(/content="wheee"/g, `content="${en}"`)
+  html = html.replace(
+    '<div class="mark">wheee</div>',
+    `<div class="mark">${en}</div>\n          <script>if(/^ru\\b/i.test(navigator.language)){document.title=${JSON.stringify(ru)};document.querySelector('#boot .mark').textContent=document.title}</script>`,
+  )
+  return html
 }
 
 function stripTelegramSdk(html: string): string {
@@ -36,6 +57,7 @@ function platformHtmlPlugin(): Plugin {
         html = stripExternalMeta(html)
         html = stripTelegramSdk(html)
       }
+      if (usesCatalogTitle(platform)) html = applyCatalogTitle(html)
 
       // itch.io puts no CSP on the game frame, so Google Fonts stay. The page
       // is itch's, not wheee.io's: the hreflang alternates would point search

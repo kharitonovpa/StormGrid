@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, inject, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted, watch, watchEffect } from 'vue'
 import type { CharacterType, ReplaySummary } from '@wheee/shared'
-import { GAME_TITLE } from '@wheee/shared'
 import type { AudioSystem } from '../lib/audio'
 import { fetchReplayList } from '../lib/replayPlayer'
 import { useAuth } from '../composables/useAuth'
@@ -11,7 +10,8 @@ import LeaderboardPanel from './LeaderboardPanel.vue'
 import PointsStar from './PointsStar.vue'
 import RetryNotice from './RetryNotice.vue'
 import UserAvatar from './UserAvatar.vue'
-import { t, TAGLINES } from '../lib/i18n'
+import { t, lang, TAGLINES } from '../lib/i18n'
+import { gameTitle } from '../lib/gameTitle'
 import { recentRowSides } from '../lib/recentRow'
 import { CROP_THEME, hexToCss, hexToRgba } from '../lib/cropTheme'
 
@@ -170,9 +170,17 @@ const charLabel = computed<Record<string, string>>(() => ({
 /** Falls back to the pre-discord behavior (share only where a URL exists)
  * when the caller doesn't pass an explicit value. */
 const canShareResolved = computed(() => props.canShare ?? !!props.inviteUrl)
+/** Portal builds show the catalog title (see gameTitle.ts); the rest, `wheee`. */
+const title = computed(() => gameTitle(platform.type, lang.value))
 const tagline = computed(() => {
+  if (title.value.subtitle) return title.value.subtitle
   const tags = TAGLINES.value
   return tags[Math.floor(Math.random() * tags.length)]
+})
+// Rule 5.1.3 counts the tab title too, and the portal switches language after
+// index.html has already painted its English default.
+watchEffect(() => {
+  if (title.value.subtitle && typeof document !== 'undefined') document.title = title.value.full
 })
 
 function onClickOutside(e: MouseEvent) {
@@ -200,7 +208,7 @@ onUnmounted(() => {
   <div class="lobby">
     <!-- Title -->
     <div class="lobby-title-area">
-      <h1 class="lobby-title">{{ GAME_TITLE }}</h1>
+      <h1 class="lobby-title">{{ title.name }}</h1>
       <p class="lobby-tagline">{{ tagline }}</p>
     </div>
 

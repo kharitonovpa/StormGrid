@@ -187,6 +187,13 @@ This:
 4. Creates `wheee-yandex.zip` from `dist/`
 5. Upload the zip to [Yandex Games Console](https://games.yandex.ru/console)
 
+Yandex and GamePush builds call the game **«Wheee! Storm Tactics» / «Wheee!
+Штормовая тактика»** (lobby heading + subtitle, tab title, boot splash) instead
+of `wheee`: Yandex moderation rejected the bare brand under rule 8.2.1 and then
+required the in-game title to match the catalog entry per language (rule 5.1.3).
+The strings live in `packages/client/src/lib/gameTitle.ts`; keep them equal to
+the GamePush "Название игры (EN/RU)" fields.
+
 ### GamePush (Pikabu Games)
 
 ```bash
