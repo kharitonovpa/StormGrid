@@ -119,7 +119,7 @@ onMounted(fetchLeaderboard)
         >{{ t('leaderboard.watchers') }}</button>
       </div>
 
-      <div class="lb-list" v-if="activeTab === 'players'">
+      <div class="lb-list sg-scroll" v-if="activeTab === 'players'">
         <div v-for="(p, i) in players" :key="p.userId" class="lb-row">
           <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
           <UserAvatar :src="p.avatar" :name="p.name" :size="20" />
@@ -142,7 +142,7 @@ onMounted(fetchLeaderboard)
         <div v-if="players.length === 0" class="lb-empty">{{ t('leaderboard.noPlayers') }}</div>
       </div>
 
-      <div class="lb-list" v-if="activeTab === 'watchers'">
+      <div class="lb-list sg-scroll" v-if="activeTab === 'watchers'">
         <div v-for="(w, i) in watchers" :key="w.userId" class="lb-row">
           <span class="lb-rank" :class="RANK_CLASS[i]">{{ i + 1 }}</span>
           <UserAvatar :src="w.avatar" :name="w.name" :size="20" />

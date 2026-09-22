@@ -153,18 +153,34 @@ export default class GamePushAdapter implements PlatformAdapter {
   canShowLeaderboard(): boolean { return !this.isGameDistribution }
   canLinkOut(): boolean { return false }
 
+  /**
+   * Never rejects. The SDK is an optional extra — ads, cloud saves, portal
+   * auth — and the portal is entitled to take it away: Yandex Games enforces a
+   * CSP whose `connect-src` allows `*.eponesh.com` but not
+   * `api.gamepush.com`/`apip.gamepush.com`, so the SDK dies on its own chunk
+   * load and `onGPInit` never fires. This used to reject, `withBudget`
+   * propagated it by design, and `main.ts` painted "Не удалось загрузить игру"
+   * over a game that would have played perfectly — the 2026-09-21 moderation
+   * reject under rule 1.14. Every `gp`-dependent method below already guards
+   * for null, so failing here costs the extras and nothing else.
+   *
+   * Silence is left to `withBudget` rather than timed out again here: a second
+   * timer would only race the first to the same answer, and letting the SDK
+   * arrive late still upgrades the session it lands in.
+   */
   async init(): Promise<void> {
     if (gp) return
+    try {
+      await this.connectSdk()
+    } catch (e) {
+      gp = null
+      console.warn('[gamepush] SDK unavailable — booting without it:', e)
+    }
+  }
 
-    gp = await new Promise<GamePushInstance>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error('GamePush SDK initialization timeout')),
-        10_000,
-      )
-      window.onGPInit = (instance) => {
-        clearTimeout(timeout)
-        resolve(instance)
-      }
+  private async connectSdk(): Promise<void> {
+    gp = await new Promise<GamePushInstance>((resolve) => {
+      window.onGPInit = resolve
     })
 
     await gp.player.ready

@@ -1176,6 +1176,48 @@ onUnmounted(() => {
   .recent-corner { display: none; }
 }
 
+/*
+ * Short viewports — a phone held sideways, where the game gets roughly 740×260
+ * inside a portal frame. Everything above keys off width, so a landscape phone
+ * is wider than the 640px phone breakpoint and was served the desktop lobby in
+ * a quarter of its height: the character row, "Как играть" and "Отмена" all
+ * fell past the bottom edge, with `overflow: hidden` and no scroll to reach
+ * them (Yandex moderation reject 2026-09-21, rule 1.10.1).
+ *
+ * Height, not orientation, is the thing that actually breaks — a squat desktop
+ * window breaks identically — so this keys off height alone and stays a
+ * horizontal layout, which is what a wide-and-short screen wants anyway. The
+ * title shrinks hardest because it is the one block that buys nothing back.
+ */
+@media (max-height: 480px) {
+  .lobby-title-area { padding: 12px 24px; padding-top: calc(var(--sg-safe-top, 0px) + 12px); }
+  .lobby-title { font-size: 26px; letter-spacing: 3px; }
+  .lobby-tagline { margin-top: 4px; font-size: 9px; letter-spacing: 1.5px; }
+
+  /* `flex-direction` is restated because the 640px block above stacks the
+     panel into a column, and a phone held sideways matches both. */
+  .panel-content { flex-direction: row; align-items: center; gap: 20px; padding: 12px 64px 12px 24px; }
+  .panel-section { gap: 8px; }
+  .panel-fade { display: none; }
+
+  .char-select { gap: 6px; }
+  .char-btn { font-size: 9px; padding: 4px 6px 6px; gap: 2px; border-radius: 12px; }
+  .char-preview-wrap { width: 56px; height: 56px; border-radius: 8px; }
+
+  .btn-role { padding: 6px 10px; min-height: 32px; font-size: 11px; }
+  .btn-role svg { width: 12px; height: 12px; }
+
+  /*
+   * The replay list is the one block that can grow without bound. Capped by
+   * dropping whole rows rather than by `max-height` + `overflow: hidden`:
+   * clipping the list leaves a half-drawn row against the panel, which is the
+   * very thing rule 1.10.1 is about. The label is the first child, so this
+   * keeps three replays.
+   */
+  .recent-corner { top: calc(var(--sg-safe-top, 0px) + 10px); right: calc(var(--sg-safe-right, 0px) + 16px); }
+  .recent-corner > :nth-child(n + 5) { display: none; }
+}
+
 /* Narrow phones: keep the three secondary actions readable on one line,
    falling back to a centered two-row wrap only if 320px is too tight. */
 @media (max-width: 420px) {

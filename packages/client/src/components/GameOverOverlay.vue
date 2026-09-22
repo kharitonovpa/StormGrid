@@ -275,8 +275,13 @@ onUnmounted(() => {
           :disabled="rescueBusy"
           @click="onRescueClick"
         >
+          <!-- Both rewarded buttons wear the same video mark: rule 4.5.1 wants
+               the ad unmistakable from the button alone, so neither the heart
+               that used to sit here nor the gift box below can stand in for
+               it. The word "Реклама" leads the label; this repeats it. -->
           <svg v-if="!rescueBusy" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 21s-7-4.35-9.33-8.42A5.4 5.4 0 0112 5.5a5.4 5.4 0 019.33 7.08C19 16.65 12 21 12 21z" />
+            <rect x="2" y="5" width="20" height="14" rx="2.5" />
+            <path d="M10 9.5l5 2.5-5 2.5z" fill="currentColor" stroke="none" />
           </svg>
           <div v-else class="rewarded-spinner" />
           <span>{{ t('gameover.keepStreak', streakBadge ?? '') }}</span>
@@ -284,11 +289,8 @@ onUnmounted(() => {
 
         <button v-else-if="showRewardedButton" class="btn-rewarded" :class="{ loading: rewardedBusy }" :disabled="rewardedBusy" @click="onRewardedClick">
           <svg v-if="!rewardedBusy" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="8" width="18" height="13" rx="2" />
-            <path d="M12 8V21" />
-            <path d="M3 12h18" />
-            <path d="M12 8c-2-3-6-4-6-1s4 1 6 1" />
-            <path d="M12 8c2-3 6-4 6-1s-4 1-6 1" />
+            <rect x="2" y="5" width="20" height="14" rx="2.5" />
+            <path d="M10 9.5l5 2.5-5 2.5z" fill="currentColor" stroke="none" />
           </svg>
           <div v-else class="rewarded-spinner" />
           <span>{{ t('gameover.rewardedPlay') }}</span>

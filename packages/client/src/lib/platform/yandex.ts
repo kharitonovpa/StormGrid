@@ -50,13 +50,26 @@ export default class YandexAdapter implements PlatformAdapter {
   closeSticky = noSticky.closeSticky
   onStickyChange = noSticky.onStickyChange
 
+  /**
+   * Never rejects — same contract as the GamePush adapter, for the same
+   * reason: a missing or blocked portal SDK costs ads and portal auth, not the
+   * whole game, and a throw from here reaches `main.ts` as the "failed to
+   * load" card (the 2026-09-21 Yandex moderation reject under rule 1.14).
+   * `ysdk` stays null and every method below already guards for it.
+   */
   async init(): Promise<void> {
-    if (typeof YaGames === 'undefined') {
-      throw new Error('Yandex Games SDK not loaded')
+    try {
+      if (typeof YaGames === 'undefined') {
+        throw new Error('Yandex Games SDK not loaded')
+      }
+      ysdk = await YaGames.init()
+      ysdk.on('game_api_pause', () => { for (const cb of pauseCbs) cb() })
+      ysdk.on('game_api_resume', () => { for (const cb of resumeCbs) cb() })
+    } catch (e) {
+      ysdk = null
+      console.warn('[yandex] SDK unavailable — booting without it:', e)
+      return
     }
-    ysdk = await YaGames.init()
-    ysdk.on('game_api_pause', () => { for (const cb of pauseCbs) cb() })
-    ysdk.on('game_api_resume', () => { for (const cb of resumeCbs) cb() })
 
     try {
       const player = await ysdk.getPlayer({ signed: true })

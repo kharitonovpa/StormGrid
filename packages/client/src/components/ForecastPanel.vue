@@ -627,4 +627,25 @@ onUnmounted(() => {
   .cardinal { font-size: 10px; }
   .cardinal-n { font-size: 11px; }
 }
+
+/*
+ * Short viewports — a phone held sideways. The dial is anchored to the top
+ * edge and the flip/volume buttons to the bottom, but the bottom pair is also
+ * lifted by `--sticky-inset` (110px of portal banner), so on a landscape phone
+ * the two met and the dial covered the "Переворот" button — Yandex moderation
+ * reject 2026-09-21, rule 1.10.3.
+ *
+ * A fixed smaller size would not do: what is actually scarce is the height
+ * left over *after* the banner, which is why this sizes off it directly. The
+ * dial is an SVG on a 200×200 viewBox, so its labels and needle scale with it.
+ */
+@media (max-height: 480px) {
+  .forecast-panel {
+    top: calc(var(--sg-safe-top, 0px) + 10px);
+    right: calc(var(--sg-safe-right, 0px) + 10px);
+    --dial: min(120px, calc((100vh - var(--sticky-inset, 0px)) * 0.42));
+    --dial: min(120px, calc((100dvh - var(--sticky-inset, 0px)) * 0.42));
+  }
+  .compass-svg { width: var(--dial); height: var(--dial); }
+}
 </style>

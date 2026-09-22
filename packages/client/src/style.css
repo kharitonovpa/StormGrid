@@ -48,6 +48,32 @@ html, body, #app {
   user-select: none;
 }
 
-canvas {
+/*
+ * The game claims every touch gesture, because on a portal the page it cannot
+ * reach is the one that moves: inside Yandex Games the game is an iframe on
+ * yandex.ru, and any drag the game does not consume is handled by that parent
+ * document — it scrolls, and on iOS a downward drag also fires swipe-to-
+ * refresh. `overflow: hidden` above says nothing about this; it only governs
+ * this document. `touch-action: none` on the root was the missing half:
+ * without it only `canvas` was claimed, so a drag begun on any DOM overlay —
+ * the game-over card in Yandex's own recording — scrolled the portal out from
+ * under the player (moderation reject 2026-09-21, rule 1.10.2).
+ *
+ * `overscroll-behavior: none` covers the same gesture where a scroll does
+ * start here, so it can never chain outward to the portal either.
+ */
+html, body, #app, canvas {
   touch-action: none;
+  overscroll-behavior: none;
+}
+
+/*
+ * The exception, for the panels that genuinely scroll (leaderboard, watcher
+ * history): vertical panning inside them stays allowed, and `contain` keeps
+ * that scroll from chaining out to the portal once the list hits an end.
+ */
+.sg-scroll {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }

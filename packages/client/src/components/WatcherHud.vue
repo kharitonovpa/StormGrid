@@ -129,7 +129,7 @@ const recentPredictions = computed(() =>
     </div>
 
     <!-- Prediction History -->
-    <div v-if="recentPredictions.length" class="wh-block wh-history">
+    <div v-if="recentPredictions.length" class="wh-block wh-history sg-scroll">
       <div
         v-for="(p, i) in recentPredictions"
         :key="i"
